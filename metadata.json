@@ -1,0 +1,7 @@
+{
+  "name": "Fake MS",
+  "description": "A tactile mission system interface for helicopter operations featuring dynamic map modes, telemetry, and system controls.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
