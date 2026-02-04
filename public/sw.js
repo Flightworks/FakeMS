@@ -4,9 +4,7 @@ const TILE_CACHE = 'fake-ms-tiles-v3'; // Increment version to invalidate old ti
 // Assets to pre-cache immediately
 const PRECACHE_ASSETS = [
   '/FakeMS/',
-  '/FakeMS/index.html',
-  // External critical CSS/JS
-  'https://cdn.tailwindcss.com'
+  '/FakeMS/index.html'
 ];
 
 self.addEventListener('install', (event) => {
@@ -68,9 +66,7 @@ self.addEventListener('fetch', (event) => {
         const fetchPromise = fetch(event.request).then((networkResponse) => {
           if (networkResponse.ok && event.request.method === 'GET') {
              // Cache internal assets and specific CDNs
-             if (url.origin === self.location.origin || 
-                 url.hostname === 'aistudiocdn.com' || 
-                 url.hostname === 'cdn.tailwindcss.com') {
+             if (url.origin === self.location.origin) {
                 cache.put(event.request, networkResponse.clone());
              }
           }
