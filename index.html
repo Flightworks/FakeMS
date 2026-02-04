@@ -9,7 +9,7 @@
     
     <title>Fake MS - Tactical Mission System</title>
     
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/020617/10b981.png?text=FMS&font=roboto" />
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -49,7 +49,7 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
+      navigator.serviceWorker.register('./sw.js')
         .then(reg => console.log('SW Registered', reg))
         .catch(err => console.log('SW Failed', err));
     });
@@ -58,5 +58,6 @@
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

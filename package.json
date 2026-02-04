@@ -2,6 +2,7 @@
   "name": "fake-ms",
   "private": true,
   "version": "0.0.0",
+  "homepage": "https://Flightworks.github.io/FakeMS/",
   "type": "module",
   "scripts": {
     "dev": "vite",

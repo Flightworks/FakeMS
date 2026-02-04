@@ -3,8 +3,8 @@ const TILE_CACHE = 'fake-ms-tiles-v3'; // Increment version to invalidate old ti
 
 // Assets to pre-cache immediately
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
+  '/FakeMS/',
+  '/FakeMS/index.html',
   // External critical CSS/JS
   'https://cdn.tailwindcss.com'
 ];
