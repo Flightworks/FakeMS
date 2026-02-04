@@ -9,54 +9,21 @@
     
     <title>Fake MS - Tactical Mission System</title>
     
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/020617/10b981.png?text=FMS&font=roboto" />
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      /* Custom scrollbar hiding for touch interfaces */
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW Registered', reg))
+            .catch(err => console.log('SW Failed', err));
+        });
       }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-      /* Prevent text selection and rubber-banding for tactile feel */
-      html, body {
-        overscroll-behavior: none;
-        touch-action: none;
-        height: 100%;
-        width: 100%;
-      }
-      body {
-        user-select: none;
-        -webkit-user-select: none;
-        background-color: #020617; /* slate-950 */
-        overflow: hidden;
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0"
-  }
-}
-</script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('SW Registered', reg))
-        .catch(err => console.log('SW Failed', err));
-    });
-  }
-</script>
-</head>
+    </script>
+  </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

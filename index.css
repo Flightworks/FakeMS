@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar hiding for touch interfaces */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+/* Prevent text selection and rubber-banding for tactile feel */
+html, body {
+  overscroll-behavior: none;
+  touch-action: none;
+  height: 100%;
+  width: 100%;
+}
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: #020617; /* slate-950 */
+  overflow: hidden;
+}
