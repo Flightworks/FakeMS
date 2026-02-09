@@ -340,11 +340,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   });
 
   const bind = useGesture({
-    onDrag: ({ offset: [ox, oy], event, first, last, velocity: [vx, vy], direction: [dx, dy], movement: [mx, my], memo }) => {
-      // Logic:
-      // We want the map to move with the finger.
-      // If we move finger right (+x), map view should move left (camera moves left relative to world).
-
+    onDrag: ({ event, first, movement: [mx, my], memo }) => {
       if (first) {
         isDraggingRef.current = true;
         startTapTime.current = Date.now();
@@ -545,7 +541,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 bg-slate-950 overflow-hidden cursor-move touch-none z-0" 
+    <div className="absolute inset-0 bg-slate-950 overflow-hidden cursor-move z-0"
+        style={{ touchAction: 'none' }}
         {...bind()}
         onClick={() => { if (!clickBlockerRef.current) { onSelectEntity(null); setPieMenu(null); } }}
         onContextMenu={(e) => e.preventDefault()}
