@@ -27,8 +27,8 @@ Fake MS is a high-fidelity, tactile-first Mission System interface designed for 
 The Pie Menu is the primary interaction layer for mission tasking. It is designed to minimize cognitive load by using spatial memory. short press pie menu is for objects and long press anywhere on map.
 
 ### Activation Mechanics
-- **Trigger**: A long-press gesture (configurable threshold, default ~1000ms).
-- **Visual Feedback**: An emerald "Progress Ring" appears after an initial delay (`indicatorDelay`) to signal the transition from a map pan/tap to a menu request.
+- **Trigger**: A Short press or a a long-press gesture (configurable threshold, default ~1000ms).
+- **Visual Feedback**: An emerald "Progress Ring" appears after an initial delay (`indicatorDelay`) to signal the transition from a short press to a long press. after the delay (when ring is full), the long press pie menu will open.
 - **Selection**: Radial selection uses a "Pointer-Release" paradigm. Users move their finger/cursor toward a sector to highlight it and release to execute.
 
 ### Contextual Logic

@@ -101,6 +101,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const clickBlockerRef = useRef(false);
   const isDraggingRef = useRef(false);
   const isPinchingRef = useRef(false);
+  const isInertiaRef = useRef(false);
   const lastUpdateRef = useRef(0);
   const lastEmittedPanRef = useRef<{ x: number, y: number }[]>([]);
   const lastEmittedZoomRef = useRef(zoomLevel);
@@ -331,7 +332,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const lastPans = lastEmittedPanRef.current;
     const lastZoom = lastEmittedZoomRef.current;
 
-    const isEchoPan = lastPans.some(p => Math.abs(panOffset.x - p.x) < 1.0 && Math.abs(panOffset.y - p.y) < 1.0);
+    // If inertia is active, be much more tolerant of lag, only interrupt for explicit jumps (e.g. Center Button)
+    const tolerance = isInertiaRef.current ? 50.0 : 1.0;
+    const isEchoPan = lastPans.some(p => Math.abs(panOffset.x - p.x) < tolerance && Math.abs(panOffset.y - p.y) < tolerance);
     const isEchoZoom = Math.abs(zoomLevel - lastZoom) < 0.001;
 
     if (isEchoPan && isEchoZoom) {
@@ -372,6 +375,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       if (first) {
         cancelLongPress();
         isDraggingRef.current = true;
+        isInertiaRef.current = false;
         // Store initial offset
         return { initialTx: x.get(), initialTy: y.get() };
       }
@@ -389,7 +393,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       const newX = initialTx - rmx / stateRef.current.zoomLevel;
       const newY = initialTy - rmy / stateRef.current.zoomLevel;
 
-      api.start({ x: newX, y: newY, immediate: true });
+      api.start({ x: newX, y: newY, immediate: true, onStart: () => { isInertiaRef.current = false; } });
 
       return memo;
     },
@@ -418,7 +422,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       const targetX = x.get() - rThrowX / stateRef.current.zoomLevel;
       const targetY = y.get() - rThrowY / stateRef.current.zoomLevel;
 
-      api.start({ x: targetX, y: targetY, config: { friction: 50, tension: 200, mass: 1 } });
+      isInertiaRef.current = true;
+      api.start({
+        x: targetX,
+        y: targetY,
+        config: { friction: 50, tension: 200, mass: 1 },
+        onRest: () => { isInertiaRef.current = false; }
+      });
     },
     onPinch: ({ origin: [ox, oy], offset: [s], movement: [ms], event, memo, first, last }) => {
       // Pinch zoom
@@ -458,7 +468,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       const newPanX = newViewCenterX - ownship.position.x;
       const newPanY = newViewCenterY - ownship.position.y;
 
-      api.start({ x: newPanX, y: newPanY, zoom: newZoom, immediate: true });
+      api.start({ x: newPanX, y: newPanY, zoom: newZoom, immediate: true, onStart: () => { isInertiaRef.current = false; } });
 
       return memo;
     },
