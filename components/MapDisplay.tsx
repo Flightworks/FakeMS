@@ -101,7 +101,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const clickBlockerRef = useRef(false);
   const isDraggingRef = useRef(false);
   const lastUpdateRef = useRef(0);
-  const lastLocalUpdateRef = useRef(0);
 
   const heading = typeof ownship.heading === 'number' ? ownship.heading : 0;
   const rotation = mapMode === MapMode.HEADING_UP ? -heading : 0;
@@ -280,7 +279,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTapTime = useRef(0);
-  const longPressTriggered = useRef(false);
 
   // We use useSpring to drive values, but we essentially sync it to the parent state.
   // We use the spring to handle inertia and smoothing, but we report back to parent.
@@ -295,7 +293,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     onPanRef.current = onPan;
     onZoomRef.current = onZoom;
   }, [onPan, onZoom]);
-
+  
   // Controller for the map transform
   const [{ x, y, zoom }, api] = useSpring(() => ({
     x: panOffset.x,
@@ -307,7 +305,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
        const value = result.value;
        if (!value) return;
 
-       lastLocalUpdateRef.current = Date.now();
        // Throttle parent updates to avoid excessive re-renders (Performance)
        const now = Date.now();
        if (now - lastUpdateRef.current > 32) { // ~30fps update for logic/tiles
@@ -320,17 +317,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   // Sync spring with props (when external changes happen, e.g. "Center Ownship")
   useEffect(() => {
-    // Don't restart spring if the update came from the spring itself (local interaction)
-    if (Date.now() - lastLocalUpdateRef.current < 100) {
-        return;
-    }
-
     // Fix Inertia Loop: Don't restart spring if prop matches current spring value (within epsilon)
     // This allows inertia to continue even if parent re-renders with "old" (or slightly different) props.
     const cx = x.get();
     const cy = y.get();
     const cz = zoom.get();
-
+    
     if (Math.abs(panOffset.x - cx) < 0.1 && Math.abs(panOffset.y - cy) < 0.1 && Math.abs(zoomLevel - cz) < 0.001) {
         return;
     }
@@ -343,53 +335,35 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     // viewCenter logic duplicated with spring values
     const vCX = ownship.position.x + xv;
     const vCY = ownship.position.y + yv;
-
+    
     return `scale(${sZoom}) rotate(${rotation}deg) translate(${-vCX}px, ${-vCY}px)`;
   });
 
-  const startLongPress = (x: number, y: number) => {
-    longPressTriggered.current = false;
-    cancelLongPress(); 
-    
-    indicatorTimeout.current = setTimeout(() => {
-      setLongPressIndicator({ x, y });
-      vib(10); 
-    }, gestureSettings.indicatorDelay);
-
-    longPressTimeout.current = setTimeout(() => {
-      setPieMenu({ x, y, type: 'MAP' });
-      vib(50); 
-      longPressTriggered.current = true;
-      setLongPressIndicator(null); 
-    }, gestureSettings.longPressDuration);
-  };
-  
-  const cancelLongPress = () => {
-    if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
-    if (indicatorTimeout.current) clearTimeout(indicatorTimeout.current);
-    longPressTimeout.current = null;
-    indicatorTimeout.current = null;
-    setLongPressIndicator(null);
-  };
-
   const bind = useGesture({
-    onDrag: ({ event, first, movement: [mx, my], memo, cancel }) => {
+    onDrag: ({ event, first, movement: [mx, my], memo }) => {
       if (first) {
         isDraggingRef.current = true;
         startTapTime.current = Date.now();
         // start long press logic
         const client = (event as any).touches ? { x: (event as any).touches[0].clientX, y: (event as any).touches[0].clientY } : { x: (event as any).clientX, y: (event as any).clientY };
 
-        startLongPress(client.x, client.y);
+        cancelLongPress();
+        indicatorTimeout.current = setTimeout(() => {
+            setLongPressIndicator(client);
+            vib(10);
+        }, gestureSettings.indicatorDelay);
+        longPressTimeout.current = setTimeout(() => {
+             setPieMenu({ x: client.x, y: client.y, type: 'MAP' });
+             vib(50);
+             setLongPressIndicator(null);
+        }, gestureSettings.longPressDuration);
 
         // Store initial offset
         return { initialTx: x.get(), initialTy: y.get() };
       }
 
-      // Cancel long press if moved significantly
-      if (Math.hypot(mx, my) > gestureSettings.jitterTolerance) {
-          cancelLongPress();
-      }
+      // Cancel long press if moved
+      cancelLongPress();
 
       const { initialTx, initialTy } = memo;
 
@@ -407,12 +381,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       api.start({ x: newX, y: newY, immediate: true });
 
       return memo;
-    },
-    onPointerDown: ({ event }) => {
-        // Explicitly handle pointer down to start long press immediately for non-drag cases
-        const client = (event as any).touches ? { x: (event as any).touches[0].clientX, y: (event as any).touches[0].clientY } : { x: (event as any).clientX, y: (event as any).clientY };
-        startTapTime.current = Date.now();
-        startLongPress(client.x, client.y);
     },
     onDragEnd: ({ velocity: [vx, vy], direction: [dx, dy], movement: [mx, my], memo }) => {
         cancelLongPress();
@@ -526,6 +494,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         rubberband: true
     }
   });
+
+  const cancelLongPress = () => {
+    if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
+    if (indicatorTimeout.current) clearTimeout(indicatorTimeout.current);
+    longPressTimeout.current = null;
+    indicatorTimeout.current = null;
+    setLongPressIndicator(null);
+  };
 
   const handleEntityClick = (e: React.MouseEvent | React.TouchEvent, entity: Entity) => {
     e.stopPropagation();
