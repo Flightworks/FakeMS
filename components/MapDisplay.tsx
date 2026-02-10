@@ -101,6 +101,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const clickBlockerRef = useRef(false);
   const isDraggingRef = useRef(false);
   const lastUpdateRef = useRef(0);
+  const lastEmittedPanRef = useRef(panOffset);
+  const lastEmittedZoomRef = useRef(zoomLevel);
 
   const heading = typeof ownship.heading === 'number' ? ownship.heading : 0;
   const rotation = mapMode === MapMode.HEADING_UP ? -heading : 0;
@@ -279,6 +281,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTapTime = useRef(0);
+  const pointerDownRef = useRef<{ x: number, y: number } | null>(null);
 
   // We use useSpring to drive values, but we essentially sync it to the parent state.
   // We use the spring to handle inertia and smoothing, but we report back to parent.
@@ -309,6 +312,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
        const now = Date.now();
        if (now - lastUpdateRef.current > 32) { // ~30fps update for logic/tiles
          lastUpdateRef.current = now;
+         lastEmittedPanRef.current = { x: value.x, y: value.y };
+         lastEmittedZoomRef.current = value.zoom;
          onPanRef.current({ x: value.x, y: value.y });
          onZoomRef.current(value.zoom);
        }
@@ -319,6 +324,19 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   useEffect(() => {
     // Fix Inertia Loop: Don't restart spring if prop matches current spring value (within epsilon)
     // This allows inertia to continue even if parent re-renders with "old" (or slightly different) props.
+
+    // Echo Cancellation: Check if incoming prop matches what we last emitted
+    const lastPan = lastEmittedPanRef.current;
+    const lastZoom = lastEmittedZoomRef.current;
+
+    const isEchoPan = Math.abs(panOffset.x - lastPan.x) < 0.1 && Math.abs(panOffset.y - lastPan.y) < 0.1;
+    const isEchoZoom = Math.abs(zoomLevel - lastZoom) < 0.001;
+
+    if (isEchoPan && isEchoZoom) {
+        return;
+    }
+
+    // Also check against current spring value to avoid restarting smooth animations if target is close
     const cx = x.get();
     const cy = y.get();
     const cz = zoom.get();
@@ -326,6 +344,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     if (Math.abs(panOffset.x - cx) < 0.1 && Math.abs(panOffset.y - cy) < 0.1 && Math.abs(zoomLevel - cz) < 0.001) {
         return;
     }
+
     api.start({ x: panOffset.x, y: panOffset.y, zoom: zoomLevel, immediate: false });
   }, [panOffset, zoomLevel, api, x, y, zoom]);
 
@@ -343,27 +362,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     onDrag: ({ event, first, movement: [mx, my], memo }) => {
       if (first) {
         isDraggingRef.current = true;
-        startTapTime.current = Date.now();
-        // start long press logic
-        const client = (event as any).touches ? { x: (event as any).touches[0].clientX, y: (event as any).touches[0].clientY } : { x: (event as any).clientX, y: (event as any).clientY };
-
-        cancelLongPress();
-        indicatorTimeout.current = setTimeout(() => {
-            setLongPressIndicator(client);
-            vib(10);
-        }, gestureSettings.indicatorDelay);
-        longPressTimeout.current = setTimeout(() => {
-             setPieMenu({ x: client.x, y: client.y, type: 'MAP' });
-             vib(50);
-             setLongPressIndicator(null);
-        }, gestureSettings.longPressDuration);
-
         // Store initial offset
         return { initialTx: x.get(), initialTy: y.get() };
       }
-
-      // Cancel long press if moved
-      cancelLongPress();
 
       const { initialTx, initialTy } = memo;
 
@@ -503,6 +504,45 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     setLongPressIndicator(null);
   };
 
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Only primary pointer
+    if (e.button !== 0) return;
+
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    startTapTime.current = Date.now();
+    pointerDownRef.current = { x: clientX, y: clientY };
+
+    cancelLongPress();
+    indicatorTimeout.current = setTimeout(() => {
+        setLongPressIndicator({ x: clientX, y: clientY });
+        vib(10);
+    }, gestureSettings.indicatorDelay);
+
+    longPressTimeout.current = setTimeout(() => {
+         setPieMenu({ x: clientX, y: clientY, type: 'MAP' });
+         vib(50);
+         setLongPressIndicator(null);
+         pointerDownRef.current = null; // Consume
+    }, gestureSettings.longPressDuration);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+      if (!pointerDownRef.current) return;
+      const dx = e.clientX - pointerDownRef.current.x;
+      const dy = e.clientY - pointerDownRef.current.y;
+      if (Math.sqrt(dx*dx + dy*dy) > 10) {
+          cancelLongPress();
+          pointerDownRef.current = null;
+      }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+      cancelLongPress();
+      pointerDownRef.current = null;
+  };
+
   const handleEntityClick = (e: React.MouseEvent | React.TouchEvent, entity: Entity) => {
     e.stopPropagation();
     if (clickBlockerRef.current || isDraggingRef.current) return;
@@ -540,10 +580,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     }
   };
 
+  const bindProps = bind();
   return (
     <div className="absolute inset-0 bg-slate-950 overflow-hidden cursor-move z-0"
         style={{ touchAction: 'none' }}
-        {...bind()}
+        {...bindProps}
+        onPointerDown={(e) => { bindProps.onPointerDown && bindProps.onPointerDown(e as any); handlePointerDown(e); }}
+        onPointerMove={(e) => { bindProps.onPointerMove && bindProps.onPointerMove(e as any); handlePointerMove(e); }}
+        onPointerUp={(e) => { bindProps.onPointerUp && bindProps.onPointerUp(e as any); handlePointerUp(e); }}
         onClick={() => { if (!clickBlockerRef.current) { onSelectEntity(null); setPieMenu(null); } }}
         onContextMenu={(e) => e.preventDefault()}
     >
