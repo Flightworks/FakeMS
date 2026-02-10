@@ -380,6 +380,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         return { initialTx: x.get(), initialTy: y.get() };
       }
 
+      if (!memo) {
+        // Recover from undefined memo state
+        return { initialTx: x.get(), initialTy: y.get() };
+      }
       const { initialTx, initialTy } = memo;
 
       // Rotate movement
@@ -397,7 +401,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
       return memo;
     },
-    onDragEnd: ({ velocity: [vx, vy], direction: [dx, dy], movement: [mx, my], memo }) => {
+    onDragEnd: ({ velocity: [vx, vy], direction: [dx, dy], movement: [mx, my] }) => {
       cancelLongPress();
       setTimeout(() => { isDraggingRef.current = false; }, 50);
 
