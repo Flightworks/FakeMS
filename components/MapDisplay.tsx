@@ -1,5 +1,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { useSpring, animated, to } from '@react-spring/web';
+import { useGesture } from '@use-gesture/react';
 import { Entity, EntityType, MapMode, PrototypeSettings } from '../types';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -22,12 +24,10 @@ interface MapDisplayProps {
   onSelectEntity: (id: string | null) => void;
   origin: { lat: number; lon: number };
   gestureSettings: PrototypeSettings;
-  // Added setGestureSettings to props to fix line 371 error
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
 }
 
 const GRID_SIZE = 1000; 
-
 const TILE_SIZE = 256;
 const EARTH_RADIUS = 6378137;
 const INITIAL_RESOLUTION = 2 * Math.PI * EARTH_RADIUS / TILE_SIZE;
@@ -95,18 +95,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onSelectEntity,
   origin,
   gestureSettings,
-  // Destructured setGestureSettings from props to fix missing name error
   setGestureSettings
 }) => {
-  const [isInteracting, setIsInteracting] = useState(false);
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const clickBlockerRef = useRef(false);
-
-  const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const indicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTriggered = useRef(false);
-  const startTapTime = useRef(0);
-  const [longPressIndicator, setLongPressIndicator] = useState<{x: number, y: number} | null>(null);
+  const isDraggingRef = useRef(false);
+  const lastUpdateRef = useRef(0);
+  const lastLocalUpdateRef = useRef(0);
 
   const heading = typeof ownship.heading === 'number' ? ownship.heading : 0;
   const rotation = mapMode === MapMode.HEADING_UP ? -heading : 0;
@@ -126,19 +121,50 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const viewGlobalY = originMeters.y - viewCenterY; 
   const safeZoomLevel = zoomLevel || 1; 
 
+  // --- Coordinate transformations ---
   const worldToScreen = (wx: number, wy: number) => {
     const dx = wx - viewCenterX;
     const dy = wy - viewCenterY;
+    // Rotate around center (0,0 of screen relative to viewCenter)
     const rad = (rotation * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
     const rx = dx * cos - dy * sin;
     const ry = dx * sin + dy * cos;
+
+    // Scale and translate to screen center
     const sx = rx * safeZoomLevel;
     const sy = ry * safeZoomLevel;
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
     return { x: cx + sx, y: cy + sy };
+  };
+
+  const screenToWorld = (sx: number, sy: number, currentPan = panOffset, currentZoom = safeZoomLevel, currentRotation = rotation) => {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+
+    // Undo translation
+    const dx = sx - cx;
+    const dy = sy - cy;
+
+    // Undo scale
+    const rx = dx / currentZoom;
+    const ry = dy / currentZoom;
+
+    // Undo rotation
+    const rad = (-currentRotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const wx_rel = rx * cos - ry * sin;
+    const wy_rel = rx * sin + ry * cos;
+
+    // Undo pan (add view center)
+    // viewCenter = ownship + panOffset
+    const viewX = ownship.position.x + currentPan.x;
+    const viewY = ownship.position.y + currentPan.y;
+
+    return { x: viewX + wx_rel, y: viewY + wy_rel };
   };
 
   const closePieMenu = () => {
@@ -147,9 +173,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
      setTimeout(() => { clickBlockerRef.current = false; }, 400); 
   };
 
+  // --- Tile Generation ---
   const tiles = useMemo(() => {
     const tileMap = new Map();
-    const radius = 4;
+    // Increase radius slightly to prevent blank edges during fast pans
+    const radius = 5;
     const addTilesAround = (centerX: number, centerY: number) => {
         const centerTile = metersToTile(centerX, centerY, optimalTileZoom);
         const res = getResolution(optimalTileZoom);
@@ -176,9 +204,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         }
     };
     addTilesAround(viewGlobalX, viewGlobalY);
-    addTilesAround(originMeters.x + ownship.position.x, originMeters.y - ownship.position.y);
+    // Also load around ownship if distinct? Maybe just viewCenter is enough.
+    // addTilesAround(originMeters.x + ownship.position.x, originMeters.y - ownship.position.y);
     return Array.from(tileMap.values());
-  }, [viewGlobalX, viewGlobalY, originMeters, optimalTileZoom, ownship.position.x, ownship.position.y]);
+  }, [viewGlobalX, viewGlobalY, originMeters, optimalTileZoom]);
 
   const getEntityIcon = (entity: Entity) => {
     const isSelected = entity.id === selectedEntityId;
@@ -188,12 +217,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       case EntityType.AIRPORT: return <AirportSymbol selected={isSelected} />;
       default: return <WaypointSymbol selected={isSelected} />;
     }
-  };
-
-  const mapStyle: React.CSSProperties = {
-    transform: `scale(${safeZoomLevel}) rotate(${rotation}deg) translate(${-viewCenterX}px, ${-viewCenterY}px)`,
-    transformOrigin: '0 0',
-    width: '0px', height: '0px', position: 'absolute', left: '50%', top: '50%', willChange: 'transform'
   };
 
   const gridLines = useMemo(() => {
@@ -217,22 +240,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     return lines;
   }, [viewCenterX, viewCenterY, safeZoomLevel]);
 
-  const rotateVector = (x: number, y: number, angleDeg: number) => {
-    const rad = angleDeg * (Math.PI / 180);
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return { x: x * cos - y * sin, y: x * sin + y * cos };
-  };
-
   const speedVectors = useMemo(() => {
     if (!gestureSettings.showSpeedVectors) return null;
     return entities.map(entity => {
       if (!entity.speed || entity.speed === 0 || entity.heading === undefined) return null;
-      
-      // Calculate end point based on heading and speed
-      // Simulation moves by 0.5 units per frame, 1 knot = ~1852m/h
-      // Let's draw a vector representing 1 minute of travel at current speed for visualization
-      // Or just a standard scale factor
       const scale = 10; 
       const vx = Math.cos((entity.heading - 90) * (Math.PI / 180)) * entity.speed * scale;
       const vy = Math.sin((entity.heading - 90) * (Math.PI / 180)) * entity.speed * scale;
@@ -252,19 +263,89 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     });
   }, [entities, gestureSettings.showSpeedVectors, safeZoomLevel]);
 
-  const gestureState = useRef({
-    startPanOffset: { x: 0, y: 0 },
-    startClient: { x: 0, y: 0 },
-    mode: 'NONE' as 'NONE' | 'PAN' | 'PINCH'
-  });
+  // --- Gesture Logic ---
 
-  const getClientCenter = (touches: React.TouchList | React.MouseEvent) => {
-    if ('clientX' in touches) return { x: touches.clientX, y: touches.clientY };
-    if (touches.length === 0) return { x: 0, y: 0 };
-    let x = 0, y = 0;
-    for (let i = 0; i < touches.length; i++) { x += touches[i].clientX; y += touches[i].clientY; }
-    return { x: x / touches.length, y: x / touches.length };
-  };
+  // Ref to track internal state for gestures to avoid closure staleness
+  const stateRef = useRef({
+    panOffset,
+    zoomLevel,
+    rotation
+  });
+  // Sync refs
+  useEffect(() => {
+    stateRef.current = { panOffset, zoomLevel, rotation };
+  }, [panOffset, zoomLevel, rotation]);
+
+  const [longPressIndicator, setLongPressIndicator] = useState<{x: number, y: number} | null>(null);
+  const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startTapTime = useRef(0);
+  const longPressTriggered = useRef(false);
+
+  // We use useSpring to drive values, but we essentially sync it to the parent state.
+  // We use the spring to handle inertia and smoothing, but we report back to parent.
+  // Since parent state update triggers re-render, we need to be careful.
+  // Actually, for "State of the Art" feel, we might want to decouple render from parent state during interaction
+  // but the whole App depends on parent state.
+  // Let's use `onChange` to update parent.
+
+  const onPanRef = useRef(onPan);
+  const onZoomRef = useRef(onZoom);
+  useEffect(() => {
+    onPanRef.current = onPan;
+    onZoomRef.current = onZoom;
+  }, [onPan, onZoom]);
+
+  // Controller for the map transform
+  const [{ x, y, zoom }, api] = useSpring(() => ({
+    x: panOffset.x,
+    y: panOffset.y,
+    zoom: zoomLevel,
+    config: { friction: 20, tension: 200, mass: 1 },
+    onChange: (result) => {
+       // Check if value exists (it should in controller mode)
+       const value = result.value;
+       if (!value) return;
+
+       lastLocalUpdateRef.current = Date.now();
+       // Throttle parent updates to avoid excessive re-renders (Performance)
+       const now = Date.now();
+       if (now - lastUpdateRef.current > 32) { // ~30fps update for logic/tiles
+         lastUpdateRef.current = now;
+         onPanRef.current({ x: value.x, y: value.y });
+         onZoomRef.current(value.zoom);
+       }
+    }
+  }));
+
+  // Sync spring with props (when external changes happen, e.g. "Center Ownship")
+  useEffect(() => {
+    // Don't restart spring if the update came from the spring itself (local interaction)
+    if (Date.now() - lastLocalUpdateRef.current < 100) {
+        return;
+    }
+
+    // Fix Inertia Loop: Don't restart spring if prop matches current spring value (within epsilon)
+    // This allows inertia to continue even if parent re-renders with "old" (or slightly different) props.
+    const cx = x.get();
+    const cy = y.get();
+    const cz = zoom.get();
+
+    if (Math.abs(panOffset.x - cx) < 0.1 && Math.abs(panOffset.y - cy) < 0.1 && Math.abs(zoomLevel - cz) < 0.001) {
+        return;
+    }
+    api.start({ x: panOffset.x, y: panOffset.y, zoom: zoomLevel, immediate: false });
+  }, [panOffset, zoomLevel, api, x, y, zoom]);
+
+  const transform = to([x, y, zoom], (xv, yv, zv) => {
+    const sZoom = zv || 1;
+    // Use spring values for visual transform (Fast, 60fps)
+    // viewCenter logic duplicated with spring values
+    const vCX = ownship.position.x + xv;
+    const vCY = ownship.position.y + yv;
+
+    return `scale(${sZoom}) rotate(${rotation}deg) translate(${-vCX}px, ${-vCY}px)`;
+  });
 
   const startLongPress = (x: number, y: number) => {
     longPressTriggered.current = false;
@@ -291,68 +372,171 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     setLongPressIndicator(null);
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (pieMenu) return; 
-    setIsInteracting(true);
-    const center = getClientCenter(e.touches);
-    gestureState.current.startPanOffset = { ...panOffset };
-    gestureState.current.startClient = center;
-    startTapTime.current = Date.now();
-    
-    if (e.touches.length === 2) {
-      gestureState.current.mode = 'PINCH';
-      cancelLongPress(); 
-    } else {
-      gestureState.current.mode = 'PAN';
-      startLongPress(center.x, center.y);
+  const bind = useGesture({
+    onDrag: ({ event, first, movement: [mx, my], memo, cancel }) => {
+      if (first) {
+        isDraggingRef.current = true;
+        startTapTime.current = Date.now();
+        // start long press logic
+        const client = (event as any).touches ? { x: (event as any).touches[0].clientX, y: (event as any).touches[0].clientY } : { x: (event as any).clientX, y: (event as any).clientY };
+
+        startLongPress(client.x, client.y);
+
+        // Store initial offset
+        return { initialTx: x.get(), initialTy: y.get() };
+      }
+
+      // Cancel long press if moved significantly
+      if (Math.hypot(mx, my) > gestureSettings.jitterTolerance) {
+          cancelLongPress();
+      }
+
+      const { initialTx, initialTy } = memo;
+
+      // Rotate movement
+      const rad = (-stateRef.current.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+
+      const rmx = mx * cos - my * sin;
+      const rmy = mx * sin + my * cos;
+
+      const newX = initialTx - rmx / stateRef.current.zoomLevel;
+      const newY = initialTy - rmy / stateRef.current.zoomLevel;
+
+      api.start({ x: newX, y: newY, immediate: true });
+
+      return memo;
+    },
+    onPointerDown: ({ event }) => {
+        // Explicitly handle pointer down to start long press immediately for non-drag cases
+        const client = (event as any).touches ? { x: (event as any).touches[0].clientX, y: (event as any).touches[0].clientY } : { x: (event as any).clientX, y: (event as any).clientY };
+        startTapTime.current = Date.now();
+        startLongPress(client.x, client.y);
+    },
+    onDragEnd: ({ velocity: [vx, vy], direction: [dx, dy], movement: [mx, my], memo }) => {
+        cancelLongPress();
+        setTimeout(() => { isDraggingRef.current = false; }, 50);
+
+        // Inertia
+        const power = 0.8 * gestureSettings.uiScale; // Adjust feel
+
+        // Inertia Logic
+        // vx, vy are absolute speeds
+        // direction is [-1/0/1, -1/0/1]
+
+        const screenThrowX = (vx * dx) * 200 * power;
+        const screenThrowY = (vy * dy) * 200 * power;
+
+        // Rotate throw
+        const rad = (-stateRef.current.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+
+        const rThrowX = screenThrowX * cos - screenThrowY * sin;
+        const rThrowY = screenThrowX * sin + screenThrowY * cos;
+
+        const targetX = x.get() - rThrowX / stateRef.current.zoomLevel;
+        const targetY = y.get() - rThrowY / stateRef.current.zoomLevel;
+
+        api.start({ x: targetX, y: targetY, config: { friction: 50, tension: 200, mass: 1 } });
+    },
+    onPinch: ({ origin: [ox, oy], offset: [s], movement: [ms], event, memo }) => {
+        // Pinch zoom
+
+        if (!memo) {
+            // Initial state
+            const initialZoom = stateRef.current.zoomLevel;
+            // Get world point under pinch center
+            const worldPoint = screenToWorld(ox, oy, stateRef.current.panOffset, initialZoom, stateRef.current.rotation);
+            return { initialZoom, worldPoint };
+        }
+
+        const { initialZoom, worldPoint } = memo;
+
+        // offset[0] is scale factor
+        const scaleFactor = s;
+        const newZoom = Math.min(Math.max(initialZoom * scaleFactor, 0.0001), 5);
+
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+
+        const rx = (ox - cx) / newZoom;
+        const ry = (oy - cy) / newZoom;
+
+        const rad = (stateRef.current.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+
+        const dx = rx * cos + ry * sin;
+        const dy = -rx * sin + ry * cos;
+
+        const newViewCenterX = worldPoint.x - dx;
+        const newViewCenterY = worldPoint.y - dy;
+
+        const newPanX = newViewCenterX - ownship.position.x;
+        const newPanY = newViewCenterY - ownship.position.y;
+
+        api.start({ x: newPanX, y: newPanY, zoom: newZoom, immediate: true });
+
+        return memo;
+    },
+    onWheel: ({ event, delta: [dx, dy], memo }) => {
+        // Zoom on wheel
+        // Zoom towards mouse pointer
+        const mouseX = (event as any).clientX;
+        const mouseY = (event as any).clientY;
+
+        const currentZoom = zoom.get(); // use animated value for smoothness?
+        const scaleFactor = Math.exp(-dy * 0.001);
+        const newZoom = Math.min(Math.max(currentZoom * scaleFactor, 0.0001), 5);
+
+        // Calculate fix point
+        const worldPoint = screenToWorld(mouseX, mouseY, { x: x.get(), y: y.get() }, currentZoom, stateRef.current.rotation);
+
+        // Calculate new pan to keep worldPoint under mouse
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+
+        const rx = (mouseX - cx) / newZoom;
+        const ry = (mouseY - cy) / newZoom;
+
+        const rad = (stateRef.current.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+
+        const rdx = rx * cos + ry * sin;
+        const rdy = -rx * sin + ry * cos;
+
+        const newViewCenterX = worldPoint.x - rdx;
+        const newViewCenterY = worldPoint.y - rdy;
+
+        const newPanX = newViewCenterX - ownship.position.x;
+        const newPanY = newViewCenterY - ownship.position.y;
+
+        api.start({ x: newPanX, y: newPanY, zoom: newZoom });
     }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isInteracting || pieMenu) return;
-    const center = getClientCenter(e.touches);
-    const moveDist = Math.hypot(center.x - gestureState.current.startClient.x, center.y - gestureState.current.startClient.y);
-    
-    if (moveDist > gestureSettings.jitterTolerance) cancelLongPress();
-    if (longPressTriggered.current) return;
-
-    if (gestureState.current.mode === 'PAN') {
-      const dxScreen = center.x - gestureState.current.startClient.x;
-      const dyScreen = center.y - gestureState.current.startClient.y;
-      const rotatedDelta = rotateVector(dxScreen, dyScreen, -rotation);
-      onPan({ x: gestureState.current.startPanOffset.x - rotatedDelta.x / safeZoomLevel, y: gestureState.current.startPanOffset.y - rotatedDelta.y / safeZoomLevel });
+  }, {
+    drag: {
+        filterTaps: true,
+        threshold: 10
+    },
+    pinch: {
+        scaleBounds: { min: 0.1, max: 5 },
+        rubberband: true
     }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    cancelLongPress();
-    if (e.touches.length === 0) {
-      setIsInteracting(false);
-      gestureState.current.mode = 'NONE';
-    }
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || pieMenu) return;
-    setIsInteracting(true);
-    gestureState.current.mode = 'PAN';
-    gestureState.current.startClient = { x: e.clientX, y: e.clientY };
-    gestureState.current.startPanOffset = { ...panOffset };
-    startTapTime.current = Date.now();
-    startLongPress(e.clientX, e.clientY);
-  };
-
-  const handleMouseUp = () => {
-    cancelLongPress();
-    setIsInteracting(false);
-    gestureState.current.mode = 'NONE';
-  };
+  });
 
   const handleEntityClick = (e: React.MouseEvent | React.TouchEvent, entity: Entity) => {
     e.stopPropagation();
-    if (clickBlockerRef.current) return;
+    if (clickBlockerRef.current || isDraggingRef.current) return;
     const dur = Date.now() - startTapTime.current;
     
+    // Tap logic is now handled partly by useGesture (filterTaps), but we need to know if it was a drag or tap.
+    // useGesture's onClick might be better?
+    // We'll keep manual check for now, assuming drag didn't fire or movement was small.
+    // If movement > threshold, drag fired.
+
     if (dur < gestureSettings.tapThreshold) {
       const screenPos = worldToScreen(entity.position.x, entity.position.y);
       setPieMenu({ x: screenPos.x, y: screenPos.y, type: 'ENTITY', entityId: entity.id });
@@ -381,14 +565,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 bg-slate-950 overflow-hidden cursor-move touch-none z-0" 
-        onClick={() => { if (!longPressTriggered.current) { onSelectEntity(null); setPieMenu(null); } }}
-        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown} onMouseMove={handleTouchMove} onMouseUp={handleMouseUp}
-        onWheel={(e) => { const scale = Math.exp(-e.deltaY * 0.001); onZoom(zoomLevel * scale); }}
+    <div className="absolute inset-0 bg-slate-950 overflow-hidden cursor-move z-0"
+        style={{ touchAction: 'none' }}
+        {...bind()}
+        onClick={() => { if (!clickBlockerRef.current) { onSelectEntity(null); setPieMenu(null); } }}
         onContextMenu={(e) => e.preventDefault()}
     >
-      <div style={mapStyle}>
+      <animated.div style={{
+          transform,
+          transformOrigin: '0 0',
+          width: '0px', height: '0px', position: 'absolute', left: '50%', top: '50%', willChange: 'transform'
+      }}>
         <div className="absolute top-0 left-0 w-0 h-0 overflow-visible pointer-events-none" style={{ zIndex: -1 }}>
             {tiles.map(t => (
                <img key={t.key} src={`https://${t.subdomain}.tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`} className="absolute select-none max-w-none" style={t.style} />
@@ -402,14 +589,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           )}
         </svg>
         {entities.map(entity => (
-          <div key={entity.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center cursor-pointer group" style={{ left: `${entity.position.x}px`, top: `${entity.position.y}px`, width: `${40 / safeZoomLevel}px`, height: `${40 / safeZoomLevel}px`, zIndex: 10 }} onClick={(e) => handleEntityClick(e, entity)}>
+          <div key={entity.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center cursor-pointer group" style={{ left: `${entity.position.x}px`, top: `${entity.position.y}px`, width: `${48 / safeZoomLevel}px`, height: `${48 / safeZoomLevel}px`, zIndex: 10 }} onClick={(e) => handleEntityClick(e, entity)}>
             <div className="w-full h-full" style={{ filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.8))' }}>{getEntityIcon(entity)}</div>
           </div>
         ))}
         <div className="absolute transform -translate-x-1/2 -translate-y-1/2" style={{ left: `${ownship.position.x}px`, top: `${ownship.position.y}px`, transform: `translate(-50%, -50%) rotate(${mapMode === MapMode.NORTH_UP ? (ownship.heading || 0) : 0}deg)`, width: `${64 / safeZoomLevel}px`, height: `${64 / safeZoomLevel}px`, zIndex: 50 }} onClick={(e) => handleEntityClick(e, ownship)}>
           <div className="w-full h-full"><HelicopterSymbol color="text-cyan-400" /></div>
         </div>
-      </div>
+      </animated.div>
       {longPressIndicator && <LongPressRing x={longPressIndicator.x} y={longPressIndicator.y} duration={gestureSettings.longPressDuration - gestureSettings.indicatorDelay} />}
       {pieMenu && (
         <PieMenu 
