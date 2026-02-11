@@ -127,16 +127,12 @@ const MapController: React.FC<{
     zoomend: () => {
       onMapZoom(map.getZoom());
     },
-    // We handle map clicks here, but obey the block flag to prevent ghost clicks
     click: (e) => {
-      if (!onMapClickBlockCheck()) {
-        // Normal map click (e.g. clear selection)
-        // But wait, our custom logic handles taps too? 
-        // If custom logic handled a "Map Tap", it cleared selection.
-        // If custom logic didn't handle it (e.g. very quick tap not caught?), Leaflet catches it.
-        // Let's rely on Custom Logic for Taps. Leaflet click is fallback?
-        // Actually, better to disable Leaflet click handling if Custom handles it.
-      }
+      // We handle all 'clicks' via our unified Pointer/Gesture system in the parent div.
+      // Therefore, we must swallow Leaflet's generated click events to prevent 
+      // conflicts, ghost clicks, or 'click outside' logic in other components from firing.
+      e.originalEvent.stopPropagation();
+      // e.originalEvent.preventDefault(); // Don't prevent default if input fields need focus? Map clicks shouldn't need focus.
     }
   });
 
@@ -206,7 +202,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     if (indTimer.current) clearTimeout(indTimer.current);
     if (hldTimer.current) clearTimeout(hldTimer.current);
 
-    interactionRef.current = { startTime: Date.now(), startX: x, startY: y, type, entityId };
+    interactionRef.current = { startTime: Date.now(), startX: x, startY: y, type, entityId, autoTriggered: false };
     isDraggingRef.current = false;
     setLongPressIndicator(null);
 
@@ -222,6 +218,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     hldTimer.current = setTimeout(() => {
       if (!isDraggingRef.current && interactionRef.current) {
         // Auto-open menu
+        interactionRef.current.autoTriggered = true;
         openMenu(x, y, type, entityId);
       }
     }, gestureSettings.longPressDuration);
@@ -243,7 +240,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const endInteraction = (x: number, y: number) => {
     if (!interactionRef.current) return;
 
-    const { startTime, type, entityId } = interactionRef.current;
+    const { startTime, type, entityId, autoTriggered } = interactionRef.current;
     const duration = Date.now() - startTime;
 
     if (indTimer.current) clearTimeout(indTimer.current);
@@ -252,6 +249,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     interactionRef.current = null;
 
     if (isDraggingRef.current) return;
+
+    // Renew interaction lock on release to prevent ghost clicks
+    if (autoTriggered) {
+      menuOpenTimeRef.current = Date.now();
+      return;
+    }
 
     // Logic based on timing
     if (duration <= gestureSettings.tapThreshold) {
@@ -265,17 +268,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         setPieMenu(null);
       }
     } else if (duration > gestureSettings.indicatorDelay) {
-      // Long Press (Released between IND and HLD, or after HLD handled?)
-      // If HLD timer fired, menu is already open. We need to check if open.
-      // But handlePointerUp fires anyway.
-      // If menu was opened by HLD timer, usually we don't need to do anything.
-      // But reopening doesn't hurt.
+      // Long Press (Released between IND and HLD)
       openMenu(x, y, type, entityId);
     }
   };
 
   const openMenu = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
     setPieMenu({ x, y, type, entityId });
+    setLongPressIndicator(null);
     menuOpenTimeRef.current = Date.now();
     if (navigator.vibrate && gestureSettings.hapticEnabled) navigator.vibrate(50);
   };
