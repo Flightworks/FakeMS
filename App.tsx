@@ -6,7 +6,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
 
-const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 }; 
+const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 
 const INITIAL_OWNSHIP: Entity = {
   id: 'ownship',
@@ -27,16 +27,16 @@ const INITIAL_ENTITIES: Entity[] = [
 ];
 
 const App: React.FC = () => {
-  const [origin, setOrigin] = useState<{lat: number, lon: number} | null>(null);
+  const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(null);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
   const [entities, setEntities] = useState<Entity[]>(INITIAL_ENTITIES);
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(0.05); 
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 }); 
+  const [zoomLevel, setZoomLevel] = useState(0.05);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
-  
+
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
     tapThreshold: 300,
     indicatorDelay: 250,
@@ -75,40 +75,42 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleManualPan = (newOffset: {x: number, y: number}) => {
+  const handleManualPan = React.useCallback((newOffset: { x: number, y: number }) => {
+    // console.log('App: handleManualPan', newOffset);
     if (panAnimationRef.current) {
-        cancelAnimationFrame(panAnimationRef.current);
-        panAnimationRef.current = undefined;
+      cancelAnimationFrame(panAnimationRef.current);
+      panAnimationRef.current = undefined;
     }
     setPanOffset(newOffset);
-  };
+  }, []);
 
-  const centerOnOwnship = () => {
+  const centerOnOwnship = React.useCallback(() => {
+    // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
-    
+
     const start = { ...panOffset };
     const end = { x: 0, y: 0 };
     const duration = prototypeSettings.animationSpeed;
 
     if (duration <= 0 || (Math.abs(start.x) < 0.1 && Math.abs(start.y) < 0.1)) {
-        setPanOffset(end);
-        return;
+      setPanOffset(end);
+      return;
     }
 
     const startTime = performance.now();
     const animate = (time: number) => {
       const elapsed = time - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      
+
       if (isNaN(progress)) {
         setPanOffset(end);
         return;
       }
 
       const ease = 1 - Math.pow(1 - progress, 3);
-      setPanOffset({ 
-        x: start.x + (end.x - start.x) * ease, 
-        y: start.y + (end.y - start.y) * ease 
+      setPanOffset({
+        x: start.x + (end.x - start.x) * ease,
+        y: start.y + (end.y - start.y) * ease
       });
 
       if (progress < 1) {
@@ -116,9 +118,11 @@ const App: React.FC = () => {
       }
     };
     panAnimationRef.current = requestAnimationFrame(animate);
-  };
+  }, [panOffset, prototypeSettings.animationSpeed]);
 
-  useEffect(() => { centerOnOwnship(); }, [mapMode]);
+  useEffect(() => {
+    centerOnOwnship();
+  }, [mapMode]);
 
   const updateSimulation = (time: number) => {
     if (lastTimeRef.current !== undefined) {
@@ -134,18 +138,18 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div 
+    <div
       className="relative w-screen h-screen bg-black overflow-hidden font-sans select-none"
       style={{ '--ui-scale': prototypeSettings.uiScale } as any}
     >
-      <div 
-        className="absolute inset-0 transition-opacity duration-500" 
+      <div
+        className="absolute inset-0 transition-opacity duration-500"
         style={{ opacity: prototypeSettings.mapDim }}
       >
         {origin && (
-          <MapDisplay 
-            ownship={ownship} entities={entities} mapMode={mapMode} zoomLevel={zoomLevel} 
-            onZoom={(val) => setZoomLevel(Math.min(Math.max(val, 0.0001), 5))} 
+          <MapDisplay
+            ownship={ownship} entities={entities} mapMode={mapMode} zoomLevel={zoomLevel}
+            onZoom={(val) => setZoomLevel(Math.min(Math.max(val, 0.0001), 5))}
             panOffset={panOffset} onPan={handleManualPan}
             selectedEntityId={selectedEntityId} onSelectEntity={setSelectedEntityId}
             origin={origin} gestureSettings={prototypeSettings}
@@ -155,11 +159,11 @@ const App: React.FC = () => {
       </div>
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
-         <LeftSidebar 
-           mapMode={mapMode} setMapMode={setMapMode} toggleLayer={() => {}} systems={systems} toggleSystem={toggleSystem}
-           isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
-           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
-         />
+        <LeftSidebar
+          mapMode={mapMode} setMapMode={setMapMode} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
+          isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
+          gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
+        />
       </div>
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
@@ -175,8 +179,8 @@ const App: React.FC = () => {
       </div>
 
       {(Math.abs(panOffset.x) > 5 || Math.abs(panOffset.y) > 5) && (
-        <button 
-          onClick={centerOnOwnship} 
+        <button
+          onClick={centerOnOwnship}
           className="absolute bottom-28 right-4 z-30 bg-emerald-900/80 text-emerald-400 border border-emerald-600 p-3 rounded-full shadow-lg backdrop-blur hover:bg-emerald-800 transition-all active:scale-95 pointer-events-auto"
           style={{ transform: `scale(${prototypeSettings.uiScale})` }}
         >
