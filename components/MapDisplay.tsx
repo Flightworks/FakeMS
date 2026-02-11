@@ -98,8 +98,9 @@ const MapController: React.FC<{
   zoom: number,
   rotation: number,
   onMapMove: (center: L.LatLng) => void,
-  onMapZoom: (zoom: number) => void
-}> = ({ center, zoom, rotation, onMapMove, onMapZoom }) => {
+  onMapZoom: (zoom: number) => void,
+  onMapClickBlockCheck: () => boolean
+}> = ({ center, zoom, rotation, onMapMove, onMapZoom, onMapClickBlockCheck }) => {
   const map = useMap();
   const mapContainer = map.getContainer();
   const isInteracting = useRef(false);
@@ -107,8 +108,6 @@ const MapController: React.FC<{
   // Sync View
   useEffect(() => {
     if (!isInteracting.current) {
-      // App handles interpolation/animation (Physics based). 
-      // We must apply completely synchronously to avoid fighting the RAF loop.
       map.setView(center, zoom, { animate: false });
     }
   }, [center, zoom, map]);
@@ -127,6 +126,17 @@ const MapController: React.FC<{
     },
     zoomend: () => {
       onMapZoom(map.getZoom());
+    },
+    // We handle map clicks here, but obey the block flag to prevent ghost clicks
+    click: (e) => {
+      if (!onMapClickBlockCheck()) {
+        // Normal map click (e.g. clear selection)
+        // But wait, our custom logic handles taps too? 
+        // If custom logic handled a "Map Tap", it cleared selection.
+        // If custom logic didn't handle it (e.g. very quick tap not caught?), Leaflet catches it.
+        // Let's rely on Custom Logic for Taps. Leaflet click is fallback?
+        // Actually, better to disable Leaflet click handling if Custom handles it.
+      }
     }
   });
 
@@ -150,11 +160,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
 
-  // Interaction Refs
-  const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const indicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Interaction State
+  const interactionRef = useRef<{
+    startTime: number,
+    startX: number,
+    startY: number,
+    type: 'MAP' | 'ENTITY',
+    entityId?: string
+  } | null>(null);
+
   const isDraggingRef = useRef(false);
-  const touchStartPos = useRef<{ x: number, y: number } | null>(null);
+  const menuOpenTimeRef = useRef(0);
+
+  const indTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Rotation
   const mapRotation = mapMode === MapMode.HEADING_UP ? -(ownship.heading || 0) : 0;
@@ -167,9 +186,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     metersToLatLon(origin, centerMetersX, centerMetersY),
     [origin, centerMetersX, centerMetersY]);
 
-  // Approximate zoom mapping: App Zoom 1.0 ~= Leaflet Zoom 13
-  // App Zoom 0.05 ~= Leaflet Zoom 10
-  // formula: LZoom = 13 + Math.log2(AppZoom)
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
   const handleMapMove = (newCenter: L.LatLng) => {
@@ -180,62 +196,97 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapZoom = (newZoom: number) => {
-    // Inverse: AppZoom = 2^(LZoom - 13)
     const newAppZoom = Math.pow(2, newZoom - 13);
     onZoom(newAppZoom);
   };
 
-  // --- Gesture Handlers for Pie Menu (attached to Container) ---
-  const cancelLongPress = () => {
-    if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
-    if (indicatorTimeout.current) clearTimeout(indicatorTimeout.current);
-    setLongPressIndicator(null);
-  };
+  // --- Interaction Logic ---
 
-  const handlePointerDown = (e: React.PointerEvent | React.MouseEvent | TouchEvent) => {
-    const clientX = 'touches' in e ? (e as any).touches[0].clientX : (e as any).clientX;
-    const clientY = 'touches' in e ? (e as any).touches[0].clientY : (e as any).clientY;
+  const startInteraction = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
+    if (indTimer.current) clearTimeout(indTimer.current);
+    if (hldTimer.current) clearTimeout(hldTimer.current);
 
-    touchStartPos.current = { x: clientX, y: clientY };
+    interactionRef.current = { startTime: Date.now(), startX: x, startY: y, type, entityId };
     isDraggingRef.current = false;
-    cancelLongPress();
+    setLongPressIndicator(null);
 
-    indicatorTimeout.current = setTimeout(() => {
-      if (!isDraggingRef.current) {
-        setLongPressIndicator({ x: clientX, y: clientY });
+    // IND Timer (250ms)
+    indTimer.current = setTimeout(() => {
+      if (!isDraggingRef.current && interactionRef.current) {
+        setLongPressIndicator({ x, y });
         if (navigator.vibrate && gestureSettings.hapticEnabled) navigator.vibrate(10);
       }
     }, gestureSettings.indicatorDelay);
 
-    longPressTimeout.current = setTimeout(() => {
-      if (!isDraggingRef.current) {
-        setPieMenu({ x: clientX, y: clientY, type: 'MAP' });
-        if (navigator.vibrate && gestureSettings.hapticEnabled) navigator.vibrate(50);
-        setLongPressIndicator(null);
+    // HLD Timer (1000ms)
+    hldTimer.current = setTimeout(() => {
+      if (!isDraggingRef.current && interactionRef.current) {
+        // Auto-open menu
+        openMenu(x, y, type, entityId);
       }
     }, gestureSettings.longPressDuration);
   };
 
-  const handlePointerMove = (e: React.PointerEvent | React.MouseEvent | TouchEvent) => {
-    if (!touchStartPos.current) return;
-    const clientX = 'touches' in e ? (e as any).touches[0].clientX : (e as any).clientX;
-    const clientY = 'touches' in e ? (e as any).touches[0].clientY : (e as any).clientY;
-
-    const dx = clientX - touchStartPos.current.x;
-    const dy = clientY - touchStartPos.current.y;
+  const moveInteraction = (x: number, y: number) => {
+    if (!interactionRef.current) return;
+    const dx = x - interactionRef.current.startX;
+    const dy = y - interactionRef.current.startY;
 
     if (Math.sqrt(dx * dx + dy * dy) > 10) {
       isDraggingRef.current = true;
-      cancelLongPress();
+      if (indTimer.current) clearTimeout(indTimer.current);
+      if (hldTimer.current) clearTimeout(hldTimer.current);
+      setLongPressIndicator(null);
     }
   };
 
-  const handlePointerUp = () => {
-    cancelLongPress();
-    touchStartPos.current = null;
+  const endInteraction = (x: number, y: number) => {
+    if (!interactionRef.current) return;
+
+    const { startTime, type, entityId } = interactionRef.current;
+    const duration = Date.now() - startTime;
+
+    if (indTimer.current) clearTimeout(indTimer.current);
+    if (hldTimer.current) clearTimeout(hldTimer.current);
+    setLongPressIndicator(null);
+    interactionRef.current = null;
+
+    if (isDraggingRef.current) return;
+
+    // Logic based on timing
+    if (duration <= gestureSettings.tapThreshold) {
+      // Short Press
+      if (type === 'ENTITY') {
+        onSelectEntity(entityId || null);
+        openMenu(x, y, type, entityId); // User wants menu on short press too?
+      } else {
+        // Map Tap -> Clear Selection
+        onSelectEntity(null);
+        setPieMenu(null);
+      }
+    } else if (duration > gestureSettings.indicatorDelay) {
+      // Long Press (Released between IND and HLD, or after HLD handled?)
+      // If HLD timer fired, menu is already open. We need to check if open.
+      // But handlePointerUp fires anyway.
+      // If menu was opened by HLD timer, usually we don't need to do anything.
+      // But reopening doesn't hurt.
+      openMenu(x, y, type, entityId);
+    }
+  };
+
+  const openMenu = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
+    setPieMenu({ x, y, type, entityId });
+    menuOpenTimeRef.current = Date.now();
+    if (navigator.vibrate && gestureSettings.hapticEnabled) navigator.vibrate(50);
   };
 
   const closePieMenu = () => setPieMenu(null);
+
+  const checkMapClickBlock = () => {
+    // Prevent ghost clicks from closing the menu immediately
+    return (Date.now() - menuOpenTimeRef.current < 350);
+  };
+
   const getPieOptions = (): PieMenuOption[] => {
     if (!pieMenu) return [];
     if (pieMenu.type === 'ENTITY') {
@@ -290,10 +341,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   return (
     <div
       className="absolute inset-0 bg-slate-950 overflow-hidden"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerDown={(e) => startInteraction(e.clientX, e.clientY, 'MAP')}
+      onPointerMove={(e) => moveInteraction(e.clientX, e.clientY)}
+      onPointerUp={(e) => endInteraction(e.clientX, e.clientY)}
+      // PointerCancel needed?
+      onPointerCancel={() => setLongPressIndicator(null)}
     >
       <MapContainer
         center={centerLatLon}
@@ -302,6 +354,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         zoomControl={false}
         attributionControl={false}
         zoomAnimation={true}
+        zoomSnap={0}
+        zoomDelta={0.1}
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -313,6 +367,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           rotation={mapRotation}
           onMapMove={handleMapMove}
           onMapZoom={handleMapZoom}
+          onMapClickBlockCheck={checkMapClickBlock}
         />
 
         {/* Ownship */}
@@ -320,13 +375,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           position={metersToLatLon(origin, ownship.position.x, ownship.position.y)}
           icon={createEntityIcon(ownship, mapRotation, selectedEntityId === ownship.id)}
           eventHandlers={{
-            click: (e) => {
+            mousedown: (e) => {
               L.DomEvent.stopPropagation(e as any);
-              onSelectEntity(ownship.id);
               const evt = e.originalEvent as any;
-              const x = evt.clientX || e.containerPoint.x;
-              const y = evt.clientY || e.containerPoint.y;
-              setPieMenu({ x, y, type: 'ENTITY', entityId: ownship.id });
+              const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
+              const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
+              startInteraction(clientX, clientY, 'ENTITY', ownship.id);
             }
           }}
         />
@@ -338,13 +392,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             position={metersToLatLon(origin, entity.position.x, entity.position.y)}
             icon={createEntityIcon(entity, mapRotation, selectedEntityId === entity.id)}
             eventHandlers={{
-              click: (e) => {
+              mousedown: (e) => {
                 L.DomEvent.stopPropagation(e as any);
-                onSelectEntity(entity.id);
                 const evt = e.originalEvent as any;
-                const x = evt.clientX || e.containerPoint.x;
-                const y = evt.clientY || e.containerPoint.y;
-                setPieMenu({ x, y, type: 'ENTITY', entityId: entity.id });
+                const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
+                const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
+                startInteraction(clientX, clientY, 'ENTITY', entity.id);
               }
             }}
           />
