@@ -17,6 +17,7 @@ interface LeftSidebarProps {
   onToggle: () => void;
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  onOpenCommandPalette: () => void;
 }
 
 interface QakOption {
@@ -92,7 +93,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({ 
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings
+  gestureSettings, setGestureSettings, onOpenCommandPalette
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const lastTopRef = useRef(0);
@@ -184,6 +185,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   };
 
   const menuConfig: QakOption[] = [
+    {
+      id: 'search',
+      label: 'FIND',
+      subLabel: 'CMD',
+      icon: Search,
+      action: onOpenCommandPalette,
+      active: false
+    },
     {
       id: 'stab',
       label: 'STAB',

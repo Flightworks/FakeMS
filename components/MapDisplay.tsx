@@ -9,6 +9,7 @@ import {
   Lock, Anchor, Flag, Video, Wifi, Globe, Thermometer, Activity, 
   ArrowLeftRight, CornerUpRight, Flame, TrendingUp
 } from 'lucide-react';
+import { EARTH_RADIUS, ORIGIN_SHIFT, latLonToMeters } from '../utils/geo';
 
 interface MapDisplayProps {
   ownship: Entity;
@@ -29,16 +30,7 @@ interface MapDisplayProps {
 const GRID_SIZE = 1000; 
 
 const TILE_SIZE = 256;
-const EARTH_RADIUS = 6378137;
 const INITIAL_RESOLUTION = 2 * Math.PI * EARTH_RADIUS / TILE_SIZE;
-const ORIGIN_SHIFT = 2 * Math.PI * EARTH_RADIUS / 2.0;
-
-const latLonToMeters = (lat: number, lon: number) => {
-  const mx = lon * ORIGIN_SHIFT / 180.0;
-  let my = Math.log(Math.tan((90 + lat) * Math.PI / 360.0)) / (Math.PI / 180.0);
-  my = my * ORIGIN_SHIFT / 180.0;
-  return { x: mx, y: my };
-};
 
 const metersToTile = (mx: number, my: number, zoom: number) => {
   const res = INITIAL_RESOLUTION / Math.pow(2, zoom);
