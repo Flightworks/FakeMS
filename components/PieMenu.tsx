@@ -240,7 +240,14 @@ export const PieMenu: React.FC<PieMenuProps> = ({ x, y, options, onClose, title,
         }
       }
     } else {
-      // Released in center or gaps without selection -> Stay Open
+      // Released in center -> Close (if not immediate post-open release)
+      if (dist < INNER_R_IN) {
+        if (Date.now() - mountTime.current > 400) {
+          onClose();
+        }
+        return;
+      }
+      // Released in gaps without selection -> Stay Open
       return;
     }
   };
