@@ -294,7 +294,20 @@ export const PieMenu: React.FC<PieMenuProps> = ({ x, y, options, onClose, title,
       onPointerUp={handlePointerUp}
       onClick={(e) => {
         e.stopPropagation();
-        if (Date.now() - mountTime.current < 400) return;
+
+        // Mobile Fallback:
+        // Some touch devices might not fire PointerUp reliably or might fire Click afterwards.
+        // We explicitly check if this 'Click' event should close the menu.
+        const { dist } = calculateIndices(e.clientX, e.clientY);
+
+        // Logic:
+        // 1. Click Outside (dist > OUTER_R_OUT) -> Always Close
+        // 2. Click Center (dist < INNER_R_IN) -> Close ONLY if menu has been open for > 400ms.
+        //    (This protects against the case where the user 'Long Presses' to open the menu,
+        //     and releases their finger in the center immediately. We don't want that release to close it.)
+        if (dist > OUTER_R_OUT || (dist < INNER_R_IN && Date.now() - mountTime.current > 400)) {
+          onClose();
+        }
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -402,6 +415,6 @@ export const PieMenu: React.FC<PieMenuProps> = ({ x, y, options, onClose, title,
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 };
