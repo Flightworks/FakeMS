@@ -392,6 +392,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               // Leaflet mousedown is the only event we get on mobile for markers (touches are swallowed).
               // We pass 'touch' to bypass the Ghost Buster check.
               startInteraction(clientX, clientY, 'ENTITY', ownship.id, 'touch');
+            },
+            mouseup: (e) => {
+              L.DomEvent.stopPropagation(e as any);
+              const evt = e.originalEvent as any;
+              const clientX = evt.clientX || (evt.changedTouches ? evt.changedTouches[0].clientX : 0);
+              const clientY = evt.clientY || (evt.changedTouches ? evt.changedTouches[0].clientY : 0);
+              endInteraction(clientX, clientY);
             }
           }}
         />
@@ -409,6 +416,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
                 const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
                 startInteraction(clientX, clientY, 'ENTITY', entity.id, 'touch');
+              },
+              mouseup: (e) => {
+                L.DomEvent.stopPropagation(e as any);
+                const evt = e.originalEvent as any;
+                const clientX = evt.clientX || (evt.changedTouches ? evt.changedTouches[0].clientX : 0);
+                const clientY = evt.clientY || (evt.changedTouches ? evt.changedTouches[0].clientY : 0);
+                endInteraction(clientX, clientY);
               }
             }}
           />
