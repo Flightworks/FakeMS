@@ -58,3 +58,9 @@ The Pie Menu is the primary interaction layer for mission tasking, optimized for
 ### Simulation Logic
 - **Track Movement**: A simple frame-based simulation moves "Enemy" tracks based on their heading and speed. 
 - **State**: Centralized `PrototypeSettings` allows live manipulation of all gesture and visual variables without app reloads.
+
+### Interaction Logic & Mobile Compatibility (Ghost Buster)
+- **Problem**: Mobile browsers emulate mouse events ~300ms after touch events. This caused a "Double Trigger" where a short press opened the menu (via touch) but the subsequent emulated mouse down triggered the long-press timer.
+- **Solution (Ghost Buster)**: implemented a `lastTouchTime` reference to track global touch activity. The `startInteraction` function now ignores any `mouse` events that occur within 1000ms of a `touchstart`.
+- **Leaflet Specifics**: Leaflet consumes touch events on markers and fires a compatibility `mousedown`. To ensure markers work on mobile, the marker event handlers explicitly pass `'touch'` as the pointer type to `startInteraction`, bypassing the ghost check.
+- **Pie Menu Closing**: Logic updated to distinguish between "Tap to Close" (valid if menu open > 400ms) and "Long Press Release" (ignored if menu open < 400ms).
