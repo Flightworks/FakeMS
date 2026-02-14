@@ -1,7 +1,6 @@
 
 import { Entity, SystemStatus, MapMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Clock, Calculator, Map } from 'lucide-react';
-import { latLonToMeters, projectPoint } from './geo';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator } from 'lucide-react';
 
 export interface CommandContext {
   entities: Entity[];
@@ -105,7 +104,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
   // Entity Search (DCT)
   entities.forEach(e => {
       // If query matches entity name or type
-      if (q === '' || e.label.toLowerCase().includes(q) || e.type.toLowerCase().includes(q)) {
+      if (q !== '' && (e.label.toLowerCase().includes(q) || e.type.toLowerCase().includes(q))) {
           commands.push({
               id: `dct-${e.id}`,
               label: `DCT ${e.label}`,
