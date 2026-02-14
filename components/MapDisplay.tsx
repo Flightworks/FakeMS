@@ -196,9 +196,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     onZoom(newAppZoom);
   };
 
+  const lastTouchTime = useRef(0);
+
   // --- Interaction Logic ---
 
-  const startInteraction = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
+  const startInteraction = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string, pointerType: 'mouse' | 'touch' | 'pen' = 'mouse') => {
+    // SOTA Ghost Buster:
+    // If this is a mouse event, but we had a touch event < 1000ms ago, it's a ghost. Ignore it.
+    if (pointerType === 'mouse' && Date.now() - lastTouchTime.current < 1000) {
+      return;
+    }
+
     if (indTimer.current) clearTimeout(indTimer.current);
     if (hldTimer.current) clearTimeout(hldTimer.current);
 
@@ -340,10 +348,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   return (
     <div
-      className="absolute inset-0 bg-slate-950 overflow-hidden"
-      onPointerDown={(e) => startInteraction(e.clientX, e.clientY, 'MAP')}
+      className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
+      onPointerDown={(e) => startInteraction(e.clientX, e.clientY, 'MAP', undefined, e.pointerType as any)}
       onPointerMove={(e) => moveInteraction(e.clientX, e.clientY)}
       onPointerUp={(e) => endInteraction(e.clientX, e.clientY)}
+      onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       // PointerCancel needed?
       onPointerCancel={() => setLongPressIndicator(null)}
     >
@@ -380,7 +389,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               const evt = e.originalEvent as any;
               const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
               const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
-              startInteraction(clientX, clientY, 'ENTITY', ownship.id);
+              // Leaflet mousedown is often a mouse event, even from touch. 
+              // We pass 'mouse' here and let the Ghost Buster filter it if needed.
+              startInteraction(clientX, clientY, 'ENTITY', ownship.id, 'mouse');
             }
           }}
         />
@@ -397,7 +408,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 const evt = e.originalEvent as any;
                 const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
                 const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
-                startInteraction(clientX, clientY, 'ENTITY', entity.id);
+                startInteraction(clientX, clientY, 'ENTITY', entity.id, 'mouse');
               }
             }}
           />
