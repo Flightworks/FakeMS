@@ -45,66 +45,80 @@ export interface CommandOption {
 }
 
 const parseCoordinates = (query: string): { width: number, height: number } | null => {
-    // Try converting N4505E00621 format
-    // N dd mm E ddd mm
-    const ddmRegex = /^([NS])(\d{2})(\d{2})([EW])(\d{3})(\d{2})$/i;
-    const ddmMatch = query.replace(/\s/g, '').match(ddmRegex);
+    // Clean query
+    const cleanQuery = query.trim().toUpperCase();
+
+    // 1. Try DDMM Format: N4526E00632 (N dd mm E ddd mm)
+    // Supports separators or no separators
+    const ddmRegex = /^([NS])\s*(\d{2})\s*(\d{2})\s*([EW])\s*(\d{3})\s*(\d{2})$/;
+    const ddmMatch = cleanQuery.replace(/[^NSEW\d]/g, '').match(ddmRegex);
 
     if (ddmMatch) {
         const [_, latDir, latDeg, latMin, lonDir, lonDeg, lonMin] = ddmMatch;
         let lat = parseInt(latDeg) + parseInt(latMin) / 60;
-        if (latDir.toUpperCase() === 'S') lat = -lat;
+        if (latDir === 'S') lat = -lat;
 
         let lon = parseInt(lonDeg) + parseInt(lonMin) / 60;
-        if (lonDir.toUpperCase() === 'W') lon = -lon;
+        if (lonDir === 'W') lon = -lon;
 
-        // Convert to game coordinates (assuming simple Mercator-like projection or direct mapping for now)
-        // This usually needs a projection utility. For now, returning raw lat/lon as x/y placeholder
-        // In a real app, use projection.latLngToPoint.
-        return { width: lon * 1000, height: -lat * 1000 }; // Mock conversion
+        return { width: lon * 1000, height: -lat * 1000 }; 
     }
 
-    // Try Decimal Degrees: 45.5, -6.5
+    // 2. Try Decimal Degrees: 45.5, -6.5
     const ddRegex = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
     const ddMatch = query.match(ddRegex);
     if (ddMatch) {
         const lat = parseFloat(ddMatch[1]);
         const lon = parseFloat(ddMatch[2]);
-        return { width: lon * 1000, height: -lat * 1000 };
+        // Basic validation for lat/lon ranges
+        if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+             return { width: lon * 1000, height: -lat * 1000 };
+        }
     }
 
     return null;
 }
 
 const parseProjection = (query: string, entities: Entity[]): { target: { x: number, y: number }, label: string } | null => {
-    // Format: Entity/Bearing/Range (e.g. "hos1/180/10")
-    const projMatch = query.match(/^(.+)\/(\d+(\.\d+)?)\/(\d+(\.\d+)?)$/);
-    if (projMatch) {
-        const [_, entityName, bearingStr, __, rangeStr] = projMatch;
+    // Format 1: Entity/Bearing/Range (e.g. "hos1/180/10")
+    // Format 2: Entity Bearing Range (e.g. "TK2 180 2")
+    
+    // Normalize spaces and slashes to a common separator for parsing
+    const normalized = query.trim().replace(/\/+/g, ' ').replace(/\s+/g, ' ');
+    const parts = normalized.split(' ');
+
+    if (parts.length === 3) {
+        const [entityName, bearingStr, rangeStr] = parts;
+        
+        // Validation: Bearing and Range must be numbers
+        if (isNaN(parseFloat(bearingStr)) || isNaN(parseFloat(rangeStr))) return null;
+
         const bearing = parseFloat(bearingStr);
         const range = parseFloat(rangeStr);
 
         // Fuzzy find entity
-        const fuse = new Fuse(entities, { keys: ['label'], threshold: 0.4 });
+        const fuse = new Fuse(entities, { keys: ['label', 'id'], threshold: 0.4 });
         const result = fuse.search(entityName);
 
         if (result.length > 0) {
             const ent = result[0].item;
-            // Wait, standard bearing: 0 is North, 90 is East.
-            // Screen coords: x right, y down.
-            // North (0 deg) -> y decreases. East (90 deg) -> x increases.
-            // x = x0 + r * sin(theta)
-            // y = y0 - r * cos(theta)
-
+            
             // range is in NM? Let's assume input is NM and map unit is meters (approx 1852m per NM)
             const distMeters = range * 1852;
 
+            // Calculate new position
+            // Math.sin/cos expect radians. Bearing 0 is North (Up, -y), 90 East (Right, +x)
+            // standard trig: 0 is Right (East), 90 is Up (North).
+            // Navigation bearing: 0 = North, 90 = East, 180 = South, 270 = West
+            // x = x0 + d * sin(bearing)
+            // y = y0 - d * cos(bearing)
+            
             const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
             const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
 
             return {
                 target: { x: newX, y: newY },
-                label: `FOCUS: ${ent.label} + ${range}NM @ ${bearing}°`
+                label: `PROJ: ${ent.label} ${bearing}°/${range}NM`
             };
         }
     }

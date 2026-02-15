@@ -38,6 +38,7 @@ interface MapDisplayProps {
   origin: { lat: number; lon: number };
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  onMapDrop?: (e: React.DragEvent) => void;
 }
 
 const EARTH_RADIUS = 6378137;
@@ -151,7 +152,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onSelectEntity,
   origin,
   gestureSettings,
-  setGestureSettings
+  setGestureSettings,
+  onMapDrop
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -355,6 +357,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       // PointerCancel needed?
       onPointerCancel={() => setLongPressIndicator(null)}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDrop={(e) => { e.preventDefault(); onMapDrop?.(e); }}
     >
       <MapContainer
         center={centerLatLon}
