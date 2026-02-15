@@ -1,7 +1,29 @@
 import { Entity, SystemStatus, MapMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin } from 'lucide-react';
-import { evaluate, format, unit } from 'mathjs';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair } from 'lucide-react';
+import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
+
+// Configure mathjs to use degrees
+const math = create(all);
+
+const degreeScope = {
+    sin: (angle: number | any) => {
+        // Handle check if it's a number (mathjs might pass Unit or BigNumber)
+        const val = typeof angle === 'number' ? angle : parseFloat(angle);
+        return Math.sin(val * Math.PI / 180);
+    },
+    cos: (angle: number | any) => {
+        const val = typeof angle === 'number' ? angle : parseFloat(angle);
+        return Math.cos(val * Math.PI / 180);
+    },
+    tan: (angle: number | any) => {
+        const val = typeof angle === 'number' ? angle : parseFloat(angle);
+        return Math.tan(val * Math.PI / 180);
+    },
+    asin: (val: number | any) => Math.asin(val) * 180 / Math.PI,
+    acos: (val: number | any) => Math.acos(val) * 180 / Math.PI,
+    atan: (val: number | any) => Math.atan(val) * 180 / Math.PI,
+};
 
 export interface CommandContext {
     entities: Entity[];
@@ -54,6 +76,41 @@ const parseCoordinates = (query: string): { width: number, height: number } | nu
     return null;
 }
 
+const parseProjection = (query: string, entities: Entity[]): { target: { x: number, y: number }, label: string } | null => {
+    // Format: Entity/Bearing/Range (e.g. "hos1/180/10")
+    const projMatch = query.match(/^(.+)\/(\d+(\.\d+)?)\/(\d+(\.\d+)?)$/);
+    if (projMatch) {
+        const [_, entityName, bearingStr, __, rangeStr] = projMatch;
+        const bearing = parseFloat(bearingStr);
+        const range = parseFloat(rangeStr);
+
+        // Fuzzy find entity
+        const fuse = new Fuse(entities, { keys: ['label'], threshold: 0.4 });
+        const result = fuse.search(entityName);
+
+        if (result.length > 0) {
+            const ent = result[0].item;
+            // Wait, standard bearing: 0 is North, 90 is East.
+            // Screen coords: x right, y down.
+            // North (0 deg) -> y decreases. East (90 deg) -> x increases.
+            // x = x0 + r * sin(theta)
+            // y = y0 - r * cos(theta)
+
+            // range is in NM? Let's assume input is NM and map unit is meters (approx 1852m per NM)
+            const distMeters = range * 1852;
+
+            const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
+            const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
+
+            return {
+                target: { x: newX, y: newY },
+                label: `FOCUS: ${ent.label} + ${range}NM @ ${bearing}°`
+            };
+        }
+    }
+    return null;
+}
+
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
     const { entities, ownship, systems, setMapMode, toggleSystem, panTo } = context;
@@ -62,14 +119,15 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     // 1. Calculator & Unit Conversion (Power Palette)
     try {
         // Avoid evaluating simple numbers or short strings that look like commands
-        if (q.length > 1 && !/^\d+$/.test(q)) {
-            const result = evaluate(q);
+        // Also ensure it's not a projection query (contains '/')
+        if (q.length > 1 && !/^\d+$/.test(q) && !q.includes('/')) {
+            const result = math.evaluate(q, degreeScope);
             if (typeof result === 'number' || (typeof result === 'object' && result.type === 'Unit')) {
                 let label = '';
                 let subLabel = 'Calculation';
 
                 if (typeof result === 'number') {
-                    label = format(result, { precision: 14 }); // High precision
+                    label = math.format(result, { precision: 14 }); // High precision
                 } else {
                     label = result.toString();
                     subLabel = 'Unit Conversion';
@@ -100,6 +158,20 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             icon: MapPin,
             action: () => panTo(coords.width, coords.height), // Using standard x/y
             keywords: ['fly', 'goto', 'coord'],
+            isPreview: true
+        });
+    }
+
+    // 3. Entity Projection (Bearing/Range)
+    const proj = parseProjection(q, entities);
+    if (proj) {
+        commands.push({
+            id: 'proj-focus',
+            label: proj.label,
+            subLabel: 'Projection Focus',
+            icon: Crosshair,
+            action: () => panTo(proj.target.x - ownship.position.x, proj.target.y - ownship.position.y), // PanTo expects offset?
+            keywords: ['proj', 'bearing', 'range'],
             isPreview: true
         });
     }
