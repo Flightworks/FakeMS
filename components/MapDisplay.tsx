@@ -38,6 +38,7 @@ interface MapDisplayProps {
   origin: { lat: number; lon: number };
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  onMapDrop?: (e: React.DragEvent) => void;
 }
 
 const EARTH_RADIUS = 6378137;
@@ -129,7 +130,11 @@ const MapController: React.FC<{
     },
     click: (e) => {
       // We handle all 'clicks' via our unified Pointer/Gesture system in the parent div.
+<<<<<<< HEAD
       // Therefore, we must swallow Leaflet's generated click events to prevent 
+=======
+      // Therefore, we must swallow Leaflet's generated click events to prevent
+>>>>>>> scratchpad
       // conflicts, ghost clicks, or 'click outside' logic in other components from firing.
       e.originalEvent.stopPropagation();
       // e.originalEvent.preventDefault(); // Don't prevent default if input fields need focus? Map clicks shouldn't need focus.
@@ -151,7 +156,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onSelectEntity,
   origin,
   gestureSettings,
+<<<<<<< HEAD
   setGestureSettings
+=======
+  setGestureSettings,
+  onMapDrop
+>>>>>>> scratchpad
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -355,6 +365,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       // PointerCancel needed?
       onPointerCancel={() => setLongPressIndicator(null)}
+<<<<<<< HEAD
+=======
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDrop={(e) => { e.preventDefault(); onMapDrop?.(e); }}
+>>>>>>> scratchpad
     >
       <MapContainer
         center={centerLatLon}

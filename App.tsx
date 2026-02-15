@@ -3,8 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapDisplay } from './components/MapDisplay';
 import { TopSystemBar } from './components/TopSystemBar';
 import { LeftSidebar } from './components/LeftSidebar';
+import { CommandPalette } from './components/CommandPalette';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
+import { getCommands, CommandContext } from './utils/CommandRegistry';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 
@@ -14,7 +16,7 @@ const INITIAL_OWNSHIP: Entity = {
   position: { x: 0, y: 0 },
   label: 'VIPER 1-1',
   heading: 0,
-  speed: 0,
+  speed: 120, // Default speed in knots for ETA calculations
   altitude: 3428
 };
 
@@ -35,6 +37,7 @@ const App: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState(0.05);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
@@ -62,6 +65,20 @@ const App: React.FC = () => {
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>();
   const panAnimationRef = useRef<number>();
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Toggle on Space, Backslash, or Ctrl+K
+      if ((e.key === ' ' || e.key === '\\' || (e.ctrlKey && e.key === 'k')) && !commandPaletteOpen) {
+        // Don't trigger if user is typing in an input
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [commandPaletteOpen]);
 
   useEffect(() => {
     if ('geolocation' in navigator) {
@@ -124,6 +141,34 @@ const App: React.FC = () => {
     centerOnOwnship();
   }, [mapMode]);
 
+  const handleDropCommand = (e: React.DragEvent) => {
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data && data.type === 'command' && data.query) {
+        // Re-evaluate command to get the action context
+        const context: CommandContext = {
+          entities,
+          ownship,
+          systems,
+          setMapMode,
+          toggleSystem,
+          panTo: (x, y) => handleManualPan({ x, y })
+        };
+
+        const cmds = getCommands(data.query, context);
+        const matched = cmds.find(c => c.id === data.id) || cmds[0];
+
+        if (matched) {
+          matched.action();
+          // Feedback?
+          if (prototypeSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(50);
+        }
+      }
+    } catch (err) {
+      console.error("Drop failed", err);
+    }
+  };
+
   const updateSimulation = (time: number) => {
     if (lastTimeRef.current !== undefined) {
       setEntities(prev => prev.map(e => (e.type === EntityType.ENEMY ? { ...e, position: { x: e.position.x + (Math.cos(((e.heading || 0) - 90) * (Math.PI / 180)) * 0.5), y: e.position.y + (Math.sin(((e.heading || 0) - 90) * (Math.PI / 180)) * 0.5) } } : e)));
@@ -154,6 +199,7 @@ const App: React.FC = () => {
             selectedEntityId={selectedEntityId} onSelectEntity={setSelectedEntityId}
             origin={origin} gestureSettings={prototypeSettings}
             setGestureSettings={setPrototypeSettings}
+            onMapDrop={handleDropCommand}
           />
         )}
       </div>
@@ -163,8 +209,22 @@ const App: React.FC = () => {
           mapMode={mapMode} setMapMode={setMapMode} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
           isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         />
       </div>
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onPan={handleManualPan}
+        entities={entities}
+        systems={systems}
+        toggleSystem={toggleSystem}
+        mapMode={mapMode}
+        setMapMode={setMapMode}
+        ownship={ownship}
+        origin={origin || DEFAULT_ORIGIN}
+      />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
         <TopSystemBar systems={systems} />

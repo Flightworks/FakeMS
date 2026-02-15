@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos } from '../types';
-import { 
-  Menu, Navigation, Map as MapIcon, Layers, 
+import {
+  Menu, Navigation, Map as MapIcon, Layers,
   ScanLine, Wrench, Search, Compass, X, Globe, Video, Eye, Target,
   Fingerprint, Timer, Move, MousePointer2, Maximize, Palette, Zap, Smartphone,
   BookOpen, Layout, MoreHorizontal, MapPin, TrendingUp
@@ -17,6 +17,7 @@ interface LeftSidebarProps {
   onToggle: () => void;
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  onOpenCommandPalette: () => void;
 }
 
 interface QakOption {
@@ -38,19 +39,19 @@ interface SidebarButtonProps {
   onClick: () => void;
 }
 
-const SidebarButton: React.FC<SidebarButtonProps> = ({ 
-  label, 
-  subLabel, 
-  icon: Icon, 
-  active = false, 
-  onClick 
+const SidebarButton: React.FC<SidebarButtonProps> = ({
+  label,
+  subLabel,
+  icon: Icon,
+  active = false,
+  onClick
 }) => (
   <button
     onClick={onClick}
     className={`
       w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto
-      ${active 
-        ? 'bg-emerald-900 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+      ${active
+        ? 'bg-emerald-900 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
         : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'
       }
     `}
@@ -90,9 +91,9 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
   );
 };
 
-export const LeftSidebar: React.FC<LeftSidebarProps> = ({ 
+export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings
+  gestureSettings, setGestureSettings, onOpenCommandPalette
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const lastTopRef = useRef(0);
@@ -103,14 +104,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   const handleCategoryClick = (item: QakOption) => {
     if (activeCategoryId === item.id) {
-       setActiveCategoryId(null); 
+      setActiveCategoryId(null);
     } else {
-       setActiveCategoryId(item.id);
+      setActiveCategoryId(item.id);
     }
     if (!item.children && item.action) item.action();
   };
 
-  const vib = (pattern: number | number[]) => { if(gestureSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(pattern); };
+  const vib = (pattern: number | number[]) => { if (gestureSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(pattern); };
 
   const cycleTap = () => {
     const vals = [150, 250, 300, 400, 500];
@@ -205,9 +206,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, icon: Move, action: cycleHudPos, description: "Change the anchor position of the Ownship Infobox." },
         { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, icon: Maximize, action: cycleHudScale, description: "Scale the Ownship Infobox for readability." },
         { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, icon: Eye, action: cycleHudAlpha, description: "Adjust the transparency of the HUD elements." },
-        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', icon: TrendingUp, active: gestureSettings.showSpeedVectors, action: () => setGestureSettings(s => ({...s, showSpeedVectors: !s.showSpeedVectors})), description: "Toggle velocity leaders (speed vectors) for all tracked entities." },
-        { id: 'hgeo', label: 'GEO', subLabel: gestureSettings.ownshipShowCoords ? 'ON' : 'OFF', icon: MapPin, active: gestureSettings.ownshipShowCoords, action: () => setGestureSettings(s => ({...s, ownshipShowCoords: !s.ownshipShowCoords})), description: "Toggle coordinate display in the ownship header." },
-        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', icon: MoreHorizontal, active: gestureSettings.ownshipShowDetails, action: () => setGestureSettings(s => ({...s, ownshipShowDetails: !s.ownshipShowDetails})), description: "Declutter toggle: Hide or show telemetry details (Speed, Alt, etc.)." }
+        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', icon: TrendingUp, active: gestureSettings.showSpeedVectors, action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })), description: "Toggle velocity leaders (speed vectors) for all tracked entities." },
+        { id: 'hgeo', label: 'GEO', subLabel: gestureSettings.ownshipShowCoords ? 'ON' : 'OFF', icon: MapPin, active: gestureSettings.ownshipShowCoords, action: () => setGestureSettings(s => ({ ...s, ownshipShowCoords: !s.ownshipShowCoords })), description: "Toggle coordinate display in the ownship header." },
+        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', icon: MoreHorizontal, active: gestureSettings.ownshipShowDetails, action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })), description: "Declutter toggle: Hide or show telemetry details (Speed, Alt, etc.)." }
       ]
     },
     {
@@ -220,7 +221,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, icon: MousePointer2, action: cycleTap, description: "Threshold to distinguish a 'Click' from a 'Hold' action." },
         { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, icon: Timer, action: cycleInd, description: "Delay before the emerald visual progress ring appears." },
         { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, icon: Fingerprint, action: cycleHld, description: "Total duration required to trigger the Contextual Pie Menu." },
-        { id: 'phap', label: 'HAP', subLabel: gestureSettings.hapticEnabled ? 'ON' : 'OFF', icon: Smartphone, active: gestureSettings.hapticEnabled, action: () => setGestureSettings(s => ({...s, hapticEnabled: !s.hapticEnabled})), description: "Master toggle for tactile vibration feedback signals." }
+        { id: 'phap', label: 'HAP', subLabel: gestureSettings.hapticEnabled ? 'ON' : 'OFF', icon: Smartphone, active: gestureSettings.hapticEnabled, action: () => setGestureSettings(s => ({ ...s, hapticEnabled: !s.hapticEnabled })), description: "Master toggle for tactile vibration feedback signals." }
       ]
     },
     {
@@ -231,16 +232,24 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       active: activeCategoryId === 'vis',
       children: [
         { id: 'vscl', label: 'SCL', subLabel: `${gestureSettings.uiScale}X`, icon: Maximize, action: cycleScl, description: "Resizes all UI elements to test ergonomic fit for various hardware." },
-        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity*100)}%`, icon: Zap, action: cycleGlo, description: "Adjusts the bloom intensity for HUD-style light effects." },
+        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, icon: Zap, action: cycleGlo, description: "Adjusts the bloom intensity for HUD-style light effects." },
         { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, icon: Move, action: cycleAni, description: "Duration for system transitions like map centering." },
-        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim*100)}%`, icon: Eye, action: cycleDim, description: "Luminosity filter for the map layer to enhance data focus." }
+        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, icon: Eye, action: cycleDim, description: "Luminosity filter for the map layer to enhance data focus." }
       ]
+    },
+    {
+      id: 'search',
+      label: 'FIND',
+      subLabel: 'CMD',
+      icon: Search,
+      action: onOpenCommandPalette,
+      active: activeCategoryId === 'search'
     }
   ];
 
   const activeCategory = menuConfig.find(c => c.id === activeCategoryId);
   let currentTopRem = lastTopRef.current;
-  
+
   if (activeCategory) {
     const idx = menuConfig.findIndex(c => c.id === activeCategory.id);
     const childCount = activeCategory.children?.length || 0;
@@ -254,14 +263,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         <SidebarButton label="" icon={isOpen ? X : Menu} onClick={onToggle} active={isOpen} />
         <div className="relative flex flex-row items-start gap-2">
           <div className={`flex flex-col gap-2 p-1 bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-800/50 transition-all duration-300 ease-in-out origin-top-left ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}>
-              {menuConfig.map(item => (
-                <SidebarButton key={item.id} label={item.label} subLabel={item.subLabel} icon={item.icon} active={item.active} onClick={() => handleCategoryClick(item)} />
-              ))}
+            {menuConfig.map(item => (
+              <SidebarButton key={item.id} label={item.label} subLabel={item.subLabel} icon={item.icon} active={item.active} onClick={() => handleCategoryClick(item)} />
+            ))}
           </div>
           <div className={`absolute left-[calc(100%+0.5rem)] flex flex-col gap-2 p-1 bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-700/50 shadow-2xl transition-all duration-200 ease-out origin-left ${activeCategory ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 -translate-x-4 scale-95 pointer-events-none'}`} style={{ top: `${currentTopRem}rem` }}>
-              {(activeCategory?.children || menuConfig.find(c => c.id === activeCategoryId)?.children)?.map(sub => (
-                <SidebarButton key={sub.id} label={sub.label} subLabel={sub.subLabel} icon={sub.icon} active={sub.active} onClick={sub.action || (() => {})} />
-              ))}
+            {(activeCategory?.children || menuConfig.find(c => c.id === activeCategoryId)?.children)?.map(sub => (
+              <SidebarButton key={sub.id} label={sub.label} subLabel={sub.subLabel} icon={sub.icon} active={sub.active} onClick={sub.action || (() => { })} />
+            ))}
           </div>
         </div>
       </div>

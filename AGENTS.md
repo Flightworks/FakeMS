@@ -28,7 +28,7 @@ The Pie Menu is the primary interaction layer for mission tasking, optimized for
 
 ### Activation Mechanics
 - **Entity Context Menu (Short Press)**: Triggered by a quick tap (below `tapThreshold`) directly on a track/entity icon. This avoids the delay of a long-press for immediate track tasking.
-- **Map Context Menu (Long Press)**: Triggered by holding anywhere on the map background. 
+- **Map Context Menu (Long Press)**: Triggered by holding anywhere on the map background.
 - **Visual Feedback**: An emerald "Progress Ring" appears after `indicatorDelay` during a hold to signal the transition to a menu request.
 - **Selection Paradigm**: Uses "Pointer-Release". The user slides their finger/cursor to highlight a sector and releases to execute. Crossing the inner/outer radius boundaries or angular sectors triggers haptic "ticks".
 
@@ -41,13 +41,13 @@ The Pie Menu is the primary interaction layer for mission tasking, optimized for
 ## Developer & Agent Implementation Notes
 
 ### Layout & Overlap Safeguards
-- **Infobox Positioning**: The `OwnshipPanel` (infobox) must Sit flush with the screen margin (1rem) when in the `BL` (Bottom Left) position. 
+- **Infobox Positioning**: The `OwnshipPanel` (infobox) must Sit flush with the screen margin (1rem) when in the `BL` (Bottom Left) position.
 - **HUD Safe Zones**: When positioned in `TL` or `TR`, the panel must include a vertical offset (approx 5.5rem) to avoid overlapping the `TopSystemBar`. When in `TL`, it must also include a horizontal offset to clear the `LeftSidebar` trigger area.
 - **Stacking Logic**: If the `OwnshipPanel` is set to `BR`, it should stack vertically above the `TargetPanel` to ensure neither is obscured.
 
 ### Coordinate Systems & Mapping
-- **Projection**: The app uses a Mercator-based projection for tile mapping. 
-- **Local Space**: Entities are tracked in a local coordinate system (Meters North/East from a central origin). 
+- **Projection**: The app uses a Mercator-based projection for tile mapping.
+- **Local Space**: Entities are tracked in a local coordinate system (Meters North/East from a central origin).
 - **Map Math**: `MapDisplay` handles the conversion between World (Meters) -> Mercator -> Screen (Pixels), accounting for both `zoomLevel` and the `rotation` applied by Heading-Up mode.
 
 ### Performance & Tactile Feel
@@ -56,7 +56,7 @@ The Pie Menu is the primary interaction layer for mission tasking, optimized for
 - **Animation**: System transitions (e.g., centering the map) use cubic-bezier easing for a "fly-to" feel, controlled by `animationSpeed` in settings.
 
 ### Simulation Logic
-- **Track Movement**: A simple frame-based simulation moves "Enemy" tracks based on their heading and speed. 
+- **Track Movement**: A simple frame-based simulation moves "Enemy" tracks based on their heading and speed.
 - **State**: Centralized `PrototypeSettings` allows live manipulation of all gesture and visual variables without app reloads.
 
 ### Interaction Logic & Mobile Compatibility (Ghost Buster)
