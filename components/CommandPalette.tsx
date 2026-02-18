@@ -64,10 +64,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       systems,
       setMapMode,
       toggleSystem,
-      panTo: (x, y) => onPan({ x, y })
+      panTo: (x, y) => onPan({ x, y }),
+      history // Pass history to registry
     };
     return getCommands(query, context);
-  }, [query, entities, ownship, systems, mapMode]);
+  }, [query, entities, ownship, systems, mapMode, history]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -201,7 +202,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                      px-4 py-3 flex items-center gap-3 cursor-pointer relative
                      ${isSelected ? 'bg-emerald-900/20 border-l-2 border-emerald-500' : 'border-l-2 border-transparent hover:bg-slate-800/50'}
                    `}
-                    onClick={() => { addToHistory(query); cmd.action(); onClose(); }}
+                    onClick={() => {
+                      if (cmd.isHistory) {
+                        setQuery(cmd.label);
+                        inputRef.current?.focus();
+                      } else {
+                        addToHistory(query);
+                        cmd.action();
+                        onClose();
+                      }
+                    }}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
                   >
