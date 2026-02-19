@@ -1,66 +1,50 @@
-# Fake MS (Mission System) - Technical & Functional Specification
+# Fake MS - HMI Design & Prototyping Engine
 
-Fake MS is a high-fidelity, tactile-first Mission System interface designed for helicopter tactical operations. It prioritizes rapid spatial awareness and data manipulation through a "Heads-Down Display" (HDD) metaphor.
-
-## Core Functionalities
-
-### 1. Tactical Moving Map
-- **Stabilization Modes**: Supports `NORTH-UP` (Static map orientation) and `HEADING-UP` (Map rotates based on ownship heading).
-- **Symbology**: Employs simplified APP-6 military symbology.
-  - **Ownship**: Cyan rectangle frame (Friendly) with rotary-wing icon.
-  - **Hostile**: Red diamond frame with "ENY" identifier.
-  - **Waypoint/Control Measures**: Amber circles/points.
-- **Speed Vectors**: Optional velocity leaders for all tracked entities, indicating projected path. Calculated as a projection of current ground speed and track heading.
-- **Tile Management**: Dynamic loading and caching of dark-mode geographic tiles (OpenStreetMap/CartoDB) for offline mission resilience via Service Worker.
-- use state of the art tactile control laws for touch screens.
-### 2. HUD & Telemetry (Ownship Infobox)
-- **Dynamic Positioning**: Users can prototype the interface by anchoring the infobox to any of the four corners (`TL`, `TR`, `BL`, `BR`).
-- **Declutter Logic**: Features a `DET` (Detail) toggle to switch between a full telemetry suite (HDG, HGT, TAS, ALT) and a minimized "Telemetry Only" header.
-- **Visual Customization**: Real-time adjustment of panel scale, opacity (Alpha), and UI glow intensity.
-
-### 3. System Status & Management
-- **Top System Bar**: Displays Zulu time (Z) and critical system health for Radar (RDR), Electronic Warfare (EWS), ADS-B/AIS integration, and Electro-Optical Sensors (EOS). those are called permanent widget keys (or PW)
-- **Sidebar (QAK)**: Quick Access Keys for stabilization, HUD prototyping, and gesture calibration.
-
-## The Pie Menu System (Contextual Radial Interface)
-
-The Pie Menu is the primary interaction layer for mission tasking, optimized for spatial memory.
-
-### Activation Mechanics
-- **Entity Context Menu (Short Press)**: Triggered by a quick tap (below `tapThreshold`) directly on a track/entity icon. This avoids the delay of a long-press for immediate track tasking.
-- **Map Context Menu (Long Press)**: Triggered by holding anywhere on the map background.
-- **Visual Feedback**: An emerald "Progress Ring" appears after `indicatorDelay` during a hold to signal the transition to a menu request.
-- **Selection Paradigm**: Uses "Pointer-Release". The user slides their finger/cursor to highlight a sector and releases to execute. Crossing the inner/outer radius boundaries or angular sectors triggers haptic "ticks".
-
-### Contextual Logic
-- **Map Menu**: Actions like `DROP` (WPT/TGT/LZ), `TRACKS` (VEC/CLR), `TOOLS` (RULER), and `VIEW` (NVG/THERM).
-- **Entity Menu**: Specific tasking like `NAV` (Direct To), `ENGAGE` (Weapons Auth), `COMMS` (Handoff), and `SENSORS` (Slew to Target).
+Fake MS is a high-fidelity, tactile-first interface designed for **Human-Machine Interface (HMI) thought experiments**. It prioritizes rapid spatial awareness, gesture-driven interaction, and real-time design manipulation through a "Heads-Down Display" (HDD) metaphor.
 
 ---
 
-## Developer & Agent Implementation Notes
+## Technical & Functional Modules
+
+### 1. Experimental Tactical Map
+*   **Stabilization Modes**: Implements `NORTH-UP` and `HEADING-UP` (Map rotates based on simulated ownship heading).
+*   **Symbology**: Employs simplified military-grade symbology (APP-6) as high-contrast visual anchors for tracking experiments.
+*   **Projection & Math**: Uses Mercator-based tile mapping. `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels), dynamically accounting for `zoomLevel` and `rotation`.
+*   **Offline Resilience**: Dynamic loading and caching of dark-mode geographic tiles (CartoDB) via Service Worker for simulation stability.
+
+### 2. Pie Menu System (Radial Interaction Lab)
+The Pie Menu is the primary research tool for testing spatial memory and rapid release tasking.
+*   **Activation Delay**: Uses an emerald "Progress Ring" with `indicatorDelay` to signal menu opening.
+*   **Contextual Logic**: Distinguishes between Map-level (Long Press) and Entity-level (Short Tap) tasking.
+*   **Interaction Paradigm**: Uses a "Pointer-Release" selection system. Highlighting sectors triggers haptic "ticks" via `navigator.vibrate` for tactile feedback.
+*   **Ghost Buster Logic**: Prevents mobile browser "double-trigger" issues by ignoring mouse events that occur within 1000ms of a touch event, ensuring cross-platform stability.
+
+### 3. Smart Command Bar (NLP & Math Parser)
+An experiment in combining command-line speed with visual interfaces.
+*   **Fuzzy Search**: Implements generalized fuzzy search for finding commands.
+*   **Math Engine**: Supports math functions (e.g., `sqrt`, `cos`, `sin`) with flexible input rules (optional parentheses, e.g., `cos45` -> `cos(45)`).
+*   **History & Suggestions**: Provides intelligent suggestions based on partial input (e.g., `sqr` suggests `sqrt(`).
+
+### 4. HUD & Telemetry Panels
+*   **Dynamic Anchoring**: Panels can be repositioned to any corner (`TL`, `TR`, `BL`, `BR`) to test layout efficiency.
+*   **Declutter (DET)**: A boolean toggle that switches between full telemetry (HDG, HGT, TAS, ALT) and a "Telemetry Only" header.
+*   **Visual Tokens**: Real-time manipulation of `scale`, `opacity` (Alpha), and `glow` via `PrototypeSettings`.
+
+---
+
+## Agent & Developer Implementation Notes
 
 ### Layout & Overlap Safeguards
-- **Infobox Positioning**: The `OwnshipPanel` (infobox) must Sit flush with the screen margin (1rem) when in the `BL` (Bottom Left) position.
-- **HUD Safe Zones**: When positioned in `TL` or `TR`, the panel must include a vertical offset (approx 5.5rem) to avoid overlapping the `TopSystemBar`. When in `TL`, it must also include a horizontal offset to clear the `LeftSidebar` trigger area.
-- **Stacking Logic**: If the `OwnshipPanel` is set to `BR`, it should stack vertically above the `TargetPanel` to ensure neither is obscured.
-
-### Coordinate Systems & Mapping
-- **Projection**: The app uses a Mercator-based projection for tile mapping.
-- **Local Space**: Entities are tracked in a local coordinate system (Meters North/East from a central origin).
-- **Map Math**: `MapDisplay` handles the conversion between World (Meters) -> Mercator -> Screen (Pixels), accounting for both `zoomLevel` and the `rotation` applied by Heading-Up mode.
+*   **Panel Margins**: `OwnshipPanel` must maintain a 1rem margin when in `BL`.
+*   **Safe Zones**: `TL` and `TR` positions require a vertical offset (~5.5rem) to clear the `TopSystemBar`. `TL` also requires horizontal clearance for the `LeftSidebar`.
+*   **Stacking Priority**: In the `BR` corner, the `OwnshipPanel` must stack *vertically above* the `TargetPanel` to prevent occlusion.
 
 ### Performance & Tactile Feel
-- **Memoization**: Panels (`OwnshipPanel`, `TargetPanel`) and individual map layers are memoized to ensure high frame rates during high-speed panning or rotation.
-- **Haptics**: Use `navigator.vibrate` with distinct patterns for hover (short 5ms) vs. selection (20ms) vs. authorization (50ms).
-- **Animation**: System transitions (e.g., centering the map) use cubic-bezier easing for a "fly-to" feel, controlled by `animationSpeed` in settings.
+*   **Memoization**: All map layers and status panels are memoized to maintain 60fps during high-speed rotation or panning.
+*   **Simulation Logic**: Track movement is frame-based, moving entities according to their heading and speed in the local coordinate system (Meters North/East).
+*   **Animation**: System transitions use cubic-bezier easing ("fly-to" feel) governed by `animationSpeed`.
 
-### Simulation Logic
-- **Track Movement**: A simple frame-based simulation moves "Enemy" tracks based on their heading and speed.
-- **State**: Centralized `PrototypeSettings` allows live manipulation of all gesture and visual variables without app reloads.
-
-### Interaction Logic & Mobile Compatibility (Ghost Buster)
-- **Problem**: Mobile browsers emulate mouse events ~300ms after touch events. This caused a "Double Trigger" where a short press opened the menu (via touch) but the subsequent emulated mouse down triggered the long-press timer.
-- **Solution (Ghost Buster)**: implemented a `lastTouchTime` reference to track global touch activity. The `startInteraction` function now ignores any `mouse` events that occur within 1000ms of a `touchstart`.
-- **Leaflet Specifics**: Leaflet consumes touch events on markers and fires a compatibility `mousedown`. To ensure markers work on mobile, the marker event handlers explicitly pass `'touch'` as the pointer type to `startInteraction`, bypassing the ghost check.
-- **Pie Menu Closing**: Logic updated to distinguish between "Tap to Close" (valid if menu open > 400ms) and "Long Press Release" (ignored if menu open < 400ms).
+### Codebase Structure
+*   `components/`: Core HMI elements (Map, PieMenu, Sidebar, InfoPanels).
+*   `utils/CommandRegistry.ts`: Central registry for Smart Command Bar logic.
+*   `types.ts`: Shared interfaces for entity states and interface settings.
