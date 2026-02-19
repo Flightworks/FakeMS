@@ -5,14 +5,14 @@ interface TopSystemBarProps {
   systems: SystemStatus;
 }
 
-const StatusBlock = ({ 
-  label, 
-  value, 
-  status = 'default' 
-}: { 
-  label: string; 
-  value?: string; 
-  status?: 'default' | 'active' | 'warning' 
+const StatusBlock = ({
+  label,
+  value,
+  status = 'default'
+}: {
+  label: string;
+  value?: string;
+  status?: 'default' | 'active' | 'warning'
 }) => (
   <div className={`
     h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
@@ -45,7 +45,7 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({ systems }) => {
 
   return (
     <div className="absolute top-0 left-0 right-0 z-40 h-20 flex items-center px-4 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
-      <div 
+      <div
         className="flex items-start pt-2 pl-4 pointer-events-auto overflow-x-auto no-scrollbar pb-1"
         onPointerDown={stopProp}
         onMouseDown={stopProp}
@@ -55,27 +55,27 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({ systems }) => {
 
         <div className="flex space-x-1">
           <StatusBlock label="FILTER" value="1" />
-          
-          <StatusBlock 
-            label="RDR" 
-            value="MRMS" 
-            status={systems.radar ? 'active' : 'default'} 
+
+          <StatusBlock
+            label="RDR"
+            value="NAV3D"
+            status={systems.radar ? 'active' : 'default'}
           />
-          
-          <StatusBlock 
-            label="EWS" 
-            value="RLM" 
+
+          <StatusBlock
+            label="EWS"
+            value="RLM"
             status={systems.eots ? 'warning' : 'default'}
           />
-          
-          <StatusBlock 
-            label="ADBS-IN" 
-            value={systems.adsb ? 'AIS' : 'OFF'} 
+
+          <StatusBlock
+            label="ADBS-IN"
+            value={systems.adsb ? 'AIS' : 'OFF'}
             status={systems.adsb ? 'active' : 'default'}
           />
-          
-          <StatusBlock 
-            label="EOS" 
+
+          <StatusBlock
+            label="EOS"
             value={systems.eots ? 'ON' : 'STBY'}
             status={systems.eots ? 'active' : 'default'}
           />

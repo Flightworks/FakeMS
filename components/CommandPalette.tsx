@@ -167,10 +167,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* Suggestion / Tip Area */}
         <div className="px-4 py-2 bg-slate-900/30 border-b border-slate-800 text-[10px] text-emerald-500/70 font-mono flex justify-between">
           <span>
-            {query === '' && "TYPE TO SEARCH COMMANDS OR ENTITIES"}
-            {query.length > 0 && !query.includes('/') && !query.match(/^\d/) && "TRY: '12*5', '10km to nm', 'TK2 180 5'"}
-            {query.match(/^\d/) && "CALCULATOR MODE ACTIVE"}
-            {query.includes('/') && "BEARING/RANGE PROJECTION MODE"}
+            {commands.length > 0 && (commands[0].id === 'coord-suggestion' || commands[0].id === 'calc-hint') ? (
+              <span className="text-emerald-400 font-bold animate-pulse">{commands[0].label}</span>
+            ) : (
+              <>
+                {query === '' && "TYPE TO SEARCH COMMANDS OR ENTITIES"}
+                {query.length > 0 && !query.includes('/') && !query.match(/^\d/) && !query.match(/^[a-z]/i) && "TRY: '12*5', '10km to nm', 'TK2 180 5'"}
+                {(query.match(/^\d/) || (query.length > 0 && commands.some(c => c.id === 'calc-result'))) && "CALCULATOR MODE ACTIVE"}
+                {query.includes('/') && "BEARING/RANGE PROJECTION MODE"}
+              </>
+            )}
           </span>
           {historyIndex > -1 && <span className="flex items-center gap-1 text-slate-400"><History size={10} /> HISTORY ({historyIndex + 1})</span>}
         </div>

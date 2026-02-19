@@ -38,18 +38,22 @@ export interface CommandOption {
 }
 
 // Improved Fuzzy Coordinate Parser
-const parseCoordinates = (query: string): { width: number, height: number } | null => {
+const parseCoordinates = (query: string): { width: number, height: number, isPartial?: boolean, suggestion?: string } | null => {
     const cleanQuery = query.trim().toUpperCase().replace(/\s+/g, '');
+
+    // 0. Partial/Suggestion Logic
+    // Detect "N45" or "N4530" patterns that are incomplete
+    const partialLatRegex = /^([NS])(\d{1,4})$/; // N + 1-4 digits
+    if (partialLatRegex.test(cleanQuery)) {
+        return { width: 0, height: 0, isPartial: true, suggestion: 'Complete format: NddmmEdddmm (e.g. N4500E00600)' };
+    }
+    const partialFullRegex = /^([NS])(\d{4})([EW])(\d{0,4})$/; // NddmmE...
+    if (partialFullRegex.test(cleanQuery)) {
+        return { width: 0, height: 0, isPartial: true, suggestion: 'Complete longitude: Edddmm (e.g. E00600)' };
+    }
 
     // 1. Loose DDMM Format: N45(00)E006(00)
     // Supports: N45, N4530, N45E006, N4530E00630
-    // Regex explanation:
-    // ([NS])       -> dir 1
-    // (\d{1,3})    -> degrees (1-3 digits)
-    // (\d{0,2})    -> minutes (optional 0-2 digits)
-    // ([EW])       -> dir 2
-    // (\d{1,3})    -> degrees (1-3 digits)
-    // (\d{0,2})    -> minutes (optional 0-2 digits)
     const looseDdmRegex = /^([NS])(\d{1,3})(\d{0,2})([EW])(\d{1,3})(\d{0,2})$/;
     const ddmMatch = cleanQuery.match(looseDdmRegex);
 
@@ -57,7 +61,7 @@ const parseCoordinates = (query: string): { width: number, height: number } | nu
         const [_, latDir, latDegStr, latMinStr, lonDir, lonDegStr, lonMinStr] = ddmMatch;
 
         const latDeg = parseInt(latDegStr);
-        const latMin = latMinStr ? parseInt(latMinStr.padEnd(2, '0')) : 0; // "3" -> 30, "" -> 00
+        const latMin = latMinStr ? parseInt(latMinStr.padEnd(2, '0')) : 0;
         const lonDeg = parseInt(lonDegStr);
         const lonMin = lonMinStr ? parseInt(lonMinStr.padEnd(2, '0')) : 0;
 
@@ -67,13 +71,12 @@ const parseCoordinates = (query: string): { width: number, height: number } | nu
         let lon = lonDeg + lonMin / 60;
         if (lonDir === 'W') lon = -lon;
 
-        // Validation
         if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
 
         return { width: lon * 1000, height: -lat * 1000 };
     }
 
-    // 2. Decimal Degrees (unchanged mostly, but ensure robustness)
+    // 2. Decimal Degrees
     const ddRegex = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
     const ddMatch = query.match(ddRegex);
     if (ddMatch) {
@@ -147,8 +150,39 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
     // 1. Calculator & Unit Conversion
     try {
-        if (q.length > 1 && !/^\d+$/.test(q) && !q.includes('/')) {
-            const result = math.evaluate(q, degreeScope);
+        const MATH_FUNCS = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sqrt', 'log', 'abs', 'exp'];
+
+        // Parentheses Auto-Injection for "funcNumber" pattern
+        // Regex: (func)(\d) -> $1($2)
+        // e.g. "cos45" -> "cos(45)"
+        let evalQ = q;
+        const funcMatch = q.match(new RegExp(`^(${MATH_FUNCS.join('|')})\\s*(-?\\d+\\.?\\d*)$`, 'i'));
+        if (funcMatch) {
+            evalQ = `${funcMatch[1]}(${funcMatch[2]})`;
+        }
+
+        // Suggestion for function start
+        // If query is "sq" suggestive "sqrt("
+        if (q.length >= 2 && !q.match(/^\d/)) {
+            const funcHint = MATH_FUNCS.find(f => f.startsWith(q.toLowerCase()) && f !== q.toLowerCase());
+            if (funcHint) {
+                commands.push({
+                    id: 'calc-hint',
+                    label: `${funcHint}(`,
+                    subLabel: 'Math Function',
+                    icon: Calculator,
+                    action: () => { /* maybe autocomplete? */ },
+                    keywords: ['math', funcHint],
+                    isPreview: true
+                });
+            }
+        }
+
+        if (evalQ.length > 1 && !evalQ.includes('/')) {
+            // Check if it's a pure number or just a function name before evaluating
+            // to avoid "sin" erroring or "12" being boring.
+            // But "cos(45)" is good.
+            const result = math.evaluate(evalQ, degreeScope);
             if (typeof result === 'number' || (typeof result === 'object' && result.type === 'Unit')) {
                 let label = '';
                 let subLabel = 'Calculation';
@@ -162,7 +196,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
                 commands.push({
                     id: 'calc-result',
-                    label: `= ${label}`,
+                    label: `${evalQ} = ${label}`,
                     subLabel: subLabel,
                     icon: Calculator,
                     action: () => { navigator.clipboard.writeText(label); },
@@ -173,18 +207,30 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         }
     } catch (e) { }
 
-    // 2. Coordinate Parsing (Fuzzy)
+    // 2. Coordinate Parsing (Fuzzy + Suggestions)
     const coords = parseCoordinates(q);
     if (coords) {
-        commands.push({
-            id: 'fly-to-coords',
-            label: `FLY TO: ${q.toUpperCase()}`,
-            subLabel: 'Coordinate Navigation',
-            icon: MapPin,
-            action: () => panTo(coords.width, coords.height),
-            keywords: ['fly', 'goto', 'coord'],
-            isPreview: true
-        });
+        if (coords.isPartial && coords.suggestion) {
+            commands.push({
+                id: 'coord-suggestion',
+                label: coords.suggestion,
+                subLabel: 'Format Hint',
+                icon: MapPin,
+                action: () => { /* maybe focus input? */ },
+                keywords: ['hint'],
+                isPreview: true
+            });
+        } else {
+            commands.push({
+                id: 'fly-to-coords',
+                label: `FLY TO: ${q.toUpperCase()}`,
+                subLabel: 'Coordinate Navigation',
+                icon: MapPin,
+                action: () => panTo(coords.width, coords.height),
+                keywords: ['fly', 'goto', 'coord'],
+                isPreview: true
+            });
+        }
     }
 
     // 3. Entity Projection
