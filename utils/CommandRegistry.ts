@@ -4,22 +4,13 @@ import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
 
 // Configure mathjs to use degrees
+// Configure mathjs to use degrees
 const math = create(all);
 
 const degreeScope = {
-    sin: (angle: number | any) => {
-        // Handle check if it's a number (mathjs might pass Unit or BigNumber)
-        const val = typeof angle === 'number' ? angle : parseFloat(angle);
-        return Math.sin(val * Math.PI / 180);
-    },
-    cos: (angle: number | any) => {
-        const val = typeof angle === 'number' ? angle : parseFloat(angle);
-        return Math.cos(val * Math.PI / 180);
-    },
-    tan: (angle: number | any) => {
-        const val = typeof angle === 'number' ? angle : parseFloat(angle);
-        return Math.tan(val * Math.PI / 180);
-    },
+    sin: (angle: number | any) => Math.sin((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
+    cos: (angle: number | any) => Math.cos((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
+    tan: (angle: number | any) => Math.tan((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
     asin: (val: number | any) => Math.asin(val) * 180 / Math.PI,
     acos: (val: number | any) => Math.acos(val) * 180 / Math.PI,
     atan: (val: number | any) => Math.atan(val) * 180 / Math.PI,
@@ -32,6 +23,7 @@ export interface CommandContext {
     setMapMode: (mode: MapMode) => void;
     toggleSystem: (sys: keyof SystemStatus) => void;
     panTo: (x: number, y: number) => void;
+    history: string[]; // Added History to Context
 }
 
 export interface CommandOption {
@@ -42,37 +34,57 @@ export interface CommandOption {
     action: () => void;
     keywords: string[];
     isPreview?: boolean;
+    isHistory?: boolean;
+    autocompleteValue?: string;
 }
 
-const parseCoordinates = (query: string): { width: number, height: number } | null => {
-    // Clean query
-    const cleanQuery = query.trim().toUpperCase();
+// Improved Fuzzy Coordinate Parser
+const parseCoordinates = (query: string): { width: number, height: number, isPartial?: boolean, suggestion?: string } | null => {
+    const cleanQuery = query.trim().toUpperCase().replace(/\s+/g, '');
 
-    // 1. Try DDMM Format: N4526E00632 (N dd mm E ddd mm)
-    // Supports separators or no separators
-    const ddmRegex = /^([NS])\s*(\d{2})\s*(\d{2})\s*([EW])\s*(\d{3})\s*(\d{2})$/;
-    const ddmMatch = cleanQuery.replace(/[^NSEW\d]/g, '').match(ddmRegex);
-
-    if (ddmMatch) {
-        const [_, latDir, latDeg, latMin, lonDir, lonDeg, lonMin] = ddmMatch;
-        let lat = parseInt(latDeg) + parseInt(latMin) / 60;
-        if (latDir === 'S') lat = -lat;
-
-        let lon = parseInt(lonDeg) + parseInt(lonMin) / 60;
-        if (lonDir === 'W') lon = -lon;
-
-        return { width: lon * 1000, height: -lat * 1000 }; 
+    // 0. Partial/Suggestion Logic
+    // Detect "N45" or "N4530" patterns that are incomplete
+    const partialLatRegex = /^([NS])(\d{1,4})$/; // N + 1-4 digits
+    if (partialLatRegex.test(cleanQuery)) {
+        return { width: 0, height: 0, isPartial: true, suggestion: 'Complete format: NddmmEdddmm (e.g. N4500E00600)' };
+    }
+    const partialFullRegex = /^([NS])(\d{4})([EW])(\d{0,4})$/; // NddmmE...
+    if (partialFullRegex.test(cleanQuery)) {
+        return { width: 0, height: 0, isPartial: true, suggestion: 'Complete longitude: Edddmm (e.g. E00600)' };
     }
 
-    // 2. Try Decimal Degrees: 45.5, -6.5
+    // 1. Loose DDMM Format: N45(00)E006(00)
+    // Supports: N45, N4530, N45E006, N4530E00630
+    const looseDdmRegex = /^([NS])(\d{1,3})(\d{0,2})([EW])(\d{1,3})(\d{0,2})$/;
+    const ddmMatch = cleanQuery.match(looseDdmRegex);
+
+    if (ddmMatch) {
+        const [_, latDir, latDegStr, latMinStr, lonDir, lonDegStr, lonMinStr] = ddmMatch;
+
+        const latDeg = parseInt(latDegStr);
+        const latMin = latMinStr ? parseInt(latMinStr.padEnd(2, '0')) : 0;
+        const lonDeg = parseInt(lonDegStr);
+        const lonMin = lonMinStr ? parseInt(lonMinStr.padEnd(2, '0')) : 0;
+
+        let lat = latDeg + latMin / 60;
+        if (latDir === 'S') lat = -lat;
+
+        let lon = lonDeg + lonMin / 60;
+        if (lonDir === 'W') lon = -lon;
+
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+
+        return { width: lon * 1000, height: -lat * 1000 };
+    }
+
+    // 2. Decimal Degrees
     const ddRegex = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
     const ddMatch = query.match(ddRegex);
     if (ddMatch) {
         const lat = parseFloat(ddMatch[1]);
         const lon = parseFloat(ddMatch[2]);
-        // Basic validation for lat/lon ranges
         if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
-             return { width: lon * 1000, height: -lat * 1000 };
+            return { width: lon * 1000, height: -lat * 1000 };
         }
     }
 
@@ -80,68 +92,117 @@ const parseCoordinates = (query: string): { width: number, height: number } | nu
 }
 
 const parseProjection = (query: string, entities: Entity[]): { target: { x: number, y: number }, label: string } | null => {
-    // Format 1: Entity/Bearing/Range (e.g. "hos1/180/10")
-    // Format 2: Entity Bearing Range (e.g. "TK2 180 2")
-    
-    // Normalize spaces and slashes to a common separator for parsing
-    const normalized = query.trim().replace(/\/+/g, ' ').replace(/\s+/g, ' ');
-    const parts = normalized.split(' ');
+    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE]
+    // Supports spaces or slashes as delimiters.
+    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2"
 
-    if (parts.length === 3) {
-        const [entityName, bearingStr, rangeStr] = parts;
-        
-        // Validation: Bearing and Range must be numbers
-        if (isNaN(parseFloat(bearingStr)) || isNaN(parseFloat(rangeStr))) return null;
+    const parts = query.trim().split(/[\s/]+/).filter(Boolean);
 
-        const bearing = parseFloat(bearingStr);
-        const range = parseFloat(rangeStr);
+    // We need at least 3 parts (Entity, Bearing, Range)
+    if (parts.length < 3) return null;
 
-        // Fuzzy find entity
-        const fuse = new Fuse(entities, { keys: ['label', 'id'], threshold: 0.4 });
-        const result = fuse.search(entityName);
+    const rangeStr = parts[parts.length - 1];
+    const bearingStr = parts[parts.length - 2];
+    const entityNameOrId = parts.slice(0, parts.length - 2).join(' ');
 
-        if (result.length > 0) {
-            const ent = result[0].item;
-            
-            // range is in NM? Let's assume input is NM and map unit is meters (approx 1852m per NM)
-            const distMeters = range * 1852;
+    const bearing = parseFloat(bearingStr);
+    const range = parseFloat(rangeStr);
 
-            // Calculate new position
-            // Math.sin/cos expect radians. Bearing 0 is North (Up, -y), 90 East (Right, +x)
-            // standard trig: 0 is Right (East), 90 is Up (North).
-            // Navigation bearing: 0 = North, 90 = East, 180 = South, 270 = West
-            // x = x0 + d * sin(bearing)
-            // y = y0 - d * cos(bearing)
-            
-            const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
-            const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
+    if (isNaN(bearing) || isNaN(range)) return null;
 
-            return {
-                target: { x: newX, y: newY },
-                label: `PROJ: ${ent.label} ${bearing}°/${range}NM`
-            };
-        }
+    // Fuzzy find the entity
+    const fuse = new Fuse(entities, {
+        keys: ['label', 'id'],
+        threshold: 0.4,
+        distance: 10 // Favor exact/prefix matches for track names
+    });
+    const result = fuse.search(entityNameOrId);
+
+    if (result.length > 0) {
+        const ent = result[0].item;
+        const distMeters = range * 1852;
+
+        // Bearing is typically from entity, so we use math logic
+        const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
+        const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
+
+        return {
+            target: { x: newX, y: newY },
+            label: `PROJ: ${ent.label} BRG ${bearing}°/RNG ${range}NM`
+        };
     }
+
     return null;
 }
 
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, panTo } = context;
+    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history } = context;
     const commands: CommandOption[] = [];
 
-    // 1. Calculator & Unit Conversion (Power Palette)
+    // --- 0. HISTORY INJECTION (When query is empty) ---
+    if (q === '') {
+        // Show recent history first
+        if (history && history.length > 0) {
+            history.slice(0, 5).forEach((cmdStr, idx) => {
+                commands.push({
+                    id: `hist-${idx}`,
+                    label: cmdStr,
+                    subLabel: 'Recent History',
+                    icon: History,
+                    action: () => { /* No-op, UI handles selection acting as typing? Or execute immediately? execute immediately usually */ },
+                    // To handle execute vs paste, usually history selection executes.
+                    // But if it's a calculator value, maybe paste?
+                    // Let's assume execute for now as per "History Stack repopulated".
+                    keywords: ['history'],
+                    isHistory: true
+                });
+            });
+        }
+    }
+
+    // 1. Calculator & Unit Conversion
     try {
-        // Avoid evaluating simple numbers or short strings that look like commands
-        // Also ensure it's not a projection query (contains '/')
-        if (q.length > 1 && !/^\d+$/.test(q) && !q.includes('/')) {
-            const result = math.evaluate(q, degreeScope);
+        const MATH_FUNCS = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sqrt', 'log', 'abs', 'exp'];
+
+        // Parentheses Auto-Injection for "funcNumber" pattern
+        // Regex: (func)(\d) -> $1($2)
+        // e.g. "cos45" -> "cos(45)"
+        let evalQ = q;
+        const funcMatch = q.match(new RegExp(`^(${MATH_FUNCS.join('|')})\\s*(-?\\d+\\.?\\d*)$`, 'i'));
+        if (funcMatch) {
+            evalQ = `${funcMatch[1]}(${funcMatch[2]})`;
+        }
+
+        // Suggestion for function start
+        // If query is "sq" suggestive "sqrt("
+        if (q.length >= 2 && !q.match(/^\d/)) {
+            const funcHint = MATH_FUNCS.find(f => f.startsWith(q.toLowerCase()) && f !== q.toLowerCase());
+            if (funcHint) {
+                commands.push({
+                    id: 'calc-hint',
+                    label: `${funcHint}(`,
+                    subLabel: 'Math Function',
+                    icon: Calculator,
+                    action: () => { /* maybe autocomplete? */ },
+                    keywords: ['math', funcHint],
+                    isPreview: true,
+                    autocompleteValue: `${funcHint}(`
+                });
+            }
+        }
+
+        if (evalQ.length > 1 && !evalQ.includes('/')) {
+            // Check if it's a pure number or just a function name before evaluating
+            // to avoid "sin" erroring or "12" being boring.
+            // But "cos(45)" is good.
+            const result = math.evaluate(evalQ, degreeScope);
             if (typeof result === 'number' || (typeof result === 'object' && result.type === 'Unit')) {
                 let label = '';
                 let subLabel = 'Calculation';
 
                 if (typeof result === 'number') {
-                    label = math.format(result, { precision: 14 }); // High precision
+                    label = math.format(result, { precision: 14 });
                 } else {
                     label = result.toString();
                     subLabel = 'Unit Conversion';
@@ -149,7 +210,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
                 commands.push({
                     id: 'calc-result',
-                    label: `= ${label}`,
+                    label: `${evalQ} = ${label}`,
                     subLabel: subLabel,
                     icon: Calculator,
                     action: () => { navigator.clipboard.writeText(label); },
@@ -158,25 +219,35 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 });
             }
         }
-    } catch (e) {
-        // Ignore evaluation errors
-    }
+    } catch (e) { }
 
-    // 2. Coordinate Parsing
+    // 2. Coordinate Parsing (Fuzzy + Suggestions)
     const coords = parseCoordinates(q);
     if (coords) {
-        commands.push({
-            id: 'fly-to-coords',
-            label: `FLY TO: ${q.toUpperCase()}`,
-            subLabel: 'Coordinate Navigation',
-            icon: MapPin,
-            action: () => panTo(coords.width, coords.height), // Using standard x/y
-            keywords: ['fly', 'goto', 'coord'],
-            isPreview: true
-        });
+        if (coords.isPartial && coords.suggestion) {
+            commands.push({
+                id: 'coord-suggestion',
+                label: coords.suggestion,
+                subLabel: 'Format Hint',
+                icon: MapPin,
+                action: () => { /* maybe focus input? */ },
+                keywords: ['hint'],
+                isPreview: true
+            });
+        } else {
+            commands.push({
+                id: 'fly-to-coords',
+                label: `FLY TO: ${q.toUpperCase()}`,
+                subLabel: 'Coordinate Navigation',
+                icon: MapPin,
+                action: () => panTo(coords.width, coords.height),
+                keywords: ['fly', 'goto', 'coord'],
+                isPreview: true
+            });
+        }
     }
 
-    // 3. Entity Projection (Bearing/Range)
+    // 3. Entity Projection
     const proj = parseProjection(q, entities);
     if (proj) {
         commands.push({
@@ -184,15 +255,14 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             label: proj.label,
             subLabel: 'Projection Focus',
             icon: Crosshair,
-            action: () => panTo(proj.target.x - ownship.position.x, proj.target.y - ownship.position.y), // PanTo expects offset?
-            keywords: ['proj', 'bearing', 'range'],
+            action: () => panTo(proj.target.x - ownship.position.x, proj.target.y - ownship.position.y),
+            keywords: ['proj'],
             isPreview: true
         });
     }
 
-    // Define Static System Commands for Fuse search
+    // Define Static System Commands
     const systemCommands: CommandOption[] = [];
-
     const addSystem = (key: keyof SystemStatus, label: string, icon: any, keywords: string[]) => {
         systemCommands.push({
             id: `sys-${key}`,
@@ -209,14 +279,13 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     addSystem('ais', 'AIS', Anchor, ['ais', 'ship', 'marine']);
     addSystem('eots', 'EOTS', Eye, ['eots', 'camera', 'visual']);
 
-    // Map Modes
     systemCommands.push({
         id: 'mode-nup',
         label: 'North Up',
         subLabel: 'Map Mode',
         icon: Navigation,
         action: () => setMapMode(MapMode.NORTH_UP),
-        keywords: ['north', 'nup', 'map', 'orientation']
+        keywords: ['north', 'nup', 'map']
     });
 
     systemCommands.push({
@@ -225,27 +294,41 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         subLabel: 'Map Mode',
         icon: Compass,
         action: () => setMapMode(MapMode.HEADING_UP),
-        keywords: ['heading', 'hup', 'map', 'orientation']
+        keywords: ['heading', 'hup', 'map']
     });
 
-    // 3. Fuzzy Search (Fuse.js)
+    // 3. Fuzzy Search
     if (q.length > 0) {
-        // Combine System Commands and Entities for search
         const searchableItems = [
             ...systemCommands.map(c => ({ ...c, type: 'command' })),
-            ...entities.map(e => ({
-                id: `dct-${e.id}`,
-                label: `DCT ${e.label}`,
-                subLabel: e.type,
-                icon: Target,
-                action: () => {
-                    const offsetX = e.position.x - ownship.position.x;
-                    const offsetY = e.position.y - ownship.position.y;
-                    panTo(offsetX, offsetY);
+            ...entities.flatMap(e => [
+                // 1. Selector Item (for Autocomplete)
+                {
+                    id: `sel-${e.id}`,
+                    label: e.label,
+                    subLabel: 'Select Track',
+                    icon: Crosshair,
+                    action: () => { /* Select/Focus logic handled by autocomplete */ },
+                    keywords: [e.label, e.type, 'track'],
+                    type: 'entity',
+                    autocompleteValue: e.label + ' '
                 },
-                keywords: ['dct', 'goto', e.label, e.type],
-                type: 'entity'
-            }))
+                // 2. Direct To Item (for Execution)
+                {
+                    id: `dct-${e.id}`,
+                    label: `DCT ${e.label}`,
+                    subLabel: 'Direct To',
+                    icon: Target,
+                    action: () => {
+                        const offsetX = e.position.x - ownship.position.x;
+                        const offsetY = e.position.y - ownship.position.y;
+                        panTo(offsetX, offsetY);
+                    },
+                    keywords: ['dct', 'goto', 'direct', e.label],
+                    type: 'command'
+                    // No autocompleteValue -> Click executes immediately
+                }
+            ])
         ];
 
         const fuse = new Fuse(searchableItems, {
@@ -285,11 +368,14 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 });
             }
         }
-
     } else {
-        // Default view if query is empty
+        // If empty, append system commands after history
         commands.push(...systemCommands);
     }
 
     return commands;
 };
+
+// Re-export Lucide icons if needed by other components, but CommandPalette imports them directly usually.
+// Just ensuring History is imported for the icon.
+import { History } from 'lucide-react';
