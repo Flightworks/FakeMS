@@ -35,6 +35,7 @@ export interface CommandOption {
     keywords: string[];
     isPreview?: boolean;
     isHistory?: boolean;
+    autocompleteValue?: string;
 }
 
 // Improved Fuzzy Coordinate Parser
@@ -91,34 +92,46 @@ const parseCoordinates = (query: string): { width: number, height: number, isPar
 }
 
 const parseProjection = (query: string, entities: Entity[]): { target: { x: number, y: number }, label: string } | null => {
-    // Fuzzy Projection: ID <space/slash> Bearing <space/slash> Range
-    const normalized = query.trim().replace(/\/+/g, ' ').replace(/\s+/g, ' ');
-    const parts = normalized.split(' ');
+    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE]
+    // Supports spaces or slashes as delimiters.
+    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2"
 
-    if (parts.length >= 2) { // Allow partial "ID Bearing" (defaults range?) no, strict 3 parts is safer but let's try 3
-        if (parts.length === 3) {
-            const [entityName, bearingStr, rangeStr] = parts;
-            if (isNaN(parseFloat(bearingStr)) || isNaN(parseFloat(rangeStr))) return null;
+    const parts = query.trim().split(/[\s/]+/).filter(Boolean);
 
-            const bearing = parseFloat(bearingStr);
-            const range = parseFloat(rangeStr);
+    // We need at least 3 parts (Entity, Bearing, Range)
+    if (parts.length < 3) return null;
 
-            const fuse = new Fuse(entities, { keys: ['label', 'id'], threshold: 0.4 });
-            const result = fuse.search(entityName);
+    const rangeStr = parts[parts.length - 1];
+    const bearingStr = parts[parts.length - 2];
+    const entityNameOrId = parts.slice(0, parts.length - 2).join(' ');
 
-            if (result.length > 0) {
-                const ent = result[0].item;
-                const distMeters = range * 1852;
-                const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
-                const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
+    const bearing = parseFloat(bearingStr);
+    const range = parseFloat(rangeStr);
 
-                return {
-                    target: { x: newX, y: newY },
-                    label: `PROJ: ${ent.label} ${bearing}°/${range}NM`
-                };
-            }
-        }
+    if (isNaN(bearing) || isNaN(range)) return null;
+
+    // Fuzzy find the entity
+    const fuse = new Fuse(entities, {
+        keys: ['label', 'id'],
+        threshold: 0.4,
+        distance: 10 // Favor exact/prefix matches for track names
+    });
+    const result = fuse.search(entityNameOrId);
+
+    if (result.length > 0) {
+        const ent = result[0].item;
+        const distMeters = range * 1852;
+
+        // Bearing is typically from entity, so we use math logic
+        const newX = ent.position.x + distMeters * Math.sin(bearing * Math.PI / 180);
+        const newY = ent.position.y - distMeters * Math.cos(bearing * Math.PI / 180);
+
+        return {
+            target: { x: newX, y: newY },
+            label: `PROJ: ${ent.label} BRG ${bearing}°/RNG ${range}NM`
+        };
     }
+
     return null;
 }
 
@@ -173,7 +186,8 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     icon: Calculator,
                     action: () => { /* maybe autocomplete? */ },
                     keywords: ['math', funcHint],
-                    isPreview: true
+                    isPreview: true,
+                    autocompleteValue: `${funcHint}(`
                 });
             }
         }
@@ -287,19 +301,34 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     if (q.length > 0) {
         const searchableItems = [
             ...systemCommands.map(c => ({ ...c, type: 'command' })),
-            ...entities.map(e => ({
-                id: `dct-${e.id}`,
-                label: `DCT ${e.label}`,
-                subLabel: e.type,
-                icon: Target,
-                action: () => {
-                    const offsetX = e.position.x - ownship.position.x;
-                    const offsetY = e.position.y - ownship.position.y;
-                    panTo(offsetX, offsetY);
+            ...entities.flatMap(e => [
+                // 1. Selector Item (for Autocomplete)
+                {
+                    id: `sel-${e.id}`,
+                    label: e.label,
+                    subLabel: 'Select Track',
+                    icon: Crosshair,
+                    action: () => { /* Select/Focus logic handled by autocomplete */ },
+                    keywords: [e.label, e.type, 'track'],
+                    type: 'entity',
+                    autocompleteValue: e.label + ' '
                 },
-                keywords: ['dct', 'goto', e.label, e.type],
-                type: 'entity'
-            }))
+                // 2. Direct To Item (for Execution)
+                {
+                    id: `dct-${e.id}`,
+                    label: `DCT ${e.label}`,
+                    subLabel: 'Direct To',
+                    icon: Target,
+                    action: () => {
+                        const offsetX = e.position.x - ownship.position.x;
+                        const offsetY = e.position.y - ownship.position.y;
+                        panTo(offsetX, offsetY);
+                    },
+                    keywords: ['dct', 'goto', 'direct', e.label],
+                    type: 'command'
+                    // No autocompleteValue -> Click executes immediately
+                }
+            ])
         ];
 
         const fuse = new Fuse(searchableItems, {

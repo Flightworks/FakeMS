@@ -212,6 +212,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       if (cmd.isHistory) {
                         setQuery(cmd.label);
                         inputRef.current?.focus();
+                      } else if (cmd.autocompleteValue) {
+                        setQuery(cmd.autocompleteValue);
+                        inputRef.current?.focus();
                       } else {
                         addToHistory(query);
                         cmd.action();
