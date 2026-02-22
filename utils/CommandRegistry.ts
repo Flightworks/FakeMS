@@ -91,15 +91,32 @@ const parseCoordinates = (query: string): { lat: number, lon: number, isPartial?
     return null;
 }
 
-const parseProjection = (query: string, entities: Entity[]): { target: { lat: number, lon: number }, label: string } | null => {
-    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE]
+const parseProjection = (query: string, entities: Entity[], ownship: Entity): { target: { lat: number, lon: number }, label: string } | null => {
+    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE] OR [BEARING] [RANGE] from ownship
     // Supports spaces or slashes as delimiters.
-    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2"
+    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2", "180/5"
 
     const parts = query.trim().split(/[\s/]+/).filter(Boolean);
 
-    // We need at least 3 parts (Entity, Bearing, Range)
-    if (parts.length < 3) return null;
+    // We need at least 2 parts (Bearing, Range)
+    if (parts.length < 2) return null;
+
+    if (parts.length === 2) {
+        const bearingStr = parts[0];
+        const rangeStr = parts[1];
+        const bearing = parseFloat(bearingStr);
+        const range = parseFloat(rangeStr);
+
+        if (isNaN(bearing) || isNaN(range)) return null;
+
+        const distMeters = range * 1852;
+        const dest = getDestinationPoint(ownship.position.lat, ownship.position.lon, distMeters, bearing);
+
+        return {
+            target: { lat: dest.lat, lon: dest.lon },
+            label: `PROJ: OWNSHIP BRG ${bearing}°/RNG ${range}NM`
+        };
+    }
 
     const rangeStr = parts[parts.length - 1];
     const bearingStr = parts[parts.length - 2];
@@ -247,7 +264,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     }
 
     // 3. Entity Projection
-    const proj = parseProjection(q, entities);
+    const proj = parseProjection(q, entities, ownship);
     if (proj) {
         commands.push({
             id: 'proj-focus',

@@ -86,12 +86,20 @@ const App: React.FC = () => {
   useEffect(() => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => setOrigin({ lat: position.coords.latitude, lon: position.coords.longitude }),
-        () => setOrigin(DEFAULT_ORIGIN),
+        (position) => {
+          const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
+          setOrigin(loc);
+          setOwnship(prev => ({ ...prev, position: loc }));
+        },
+        () => {
+          setOrigin(DEFAULT_ORIGIN);
+          setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
+        },
         { enableHighAccuracy: true }
       );
     } else {
       setOrigin(DEFAULT_ORIGIN);
+      setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
     }
   }, []);
 
@@ -229,7 +237,7 @@ const App: React.FC = () => {
       </div>
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-0 right-0 pointer-events-none">
-        <TargetPanel entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
+        <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
       </div>
 
       {(Math.abs(panOffset.x) > 5 || Math.abs(panOffset.y) > 5) && (
