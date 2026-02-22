@@ -12,39 +12,45 @@ Fake MS is a high-fidelity, tactile-first interface designed for **Human-Machine
 *   **Projection & Math**: Uses Mercator-based tile mapping. `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels), dynamically accounting for `zoomLevel` and `rotation`.
 *   **Offline Resilience**: Dynamic loading and caching of dark-mode geographic tiles (CartoDB) via Service Worker for simulation stability.
 
-### 2. Pie Menu System (Radial Interaction Lab)
+### 2. Radial Interaction Lab (Pie Menu)
 The Pie Menu is the primary research tool for testing spatial memory and rapid release tasking.
 *   **Activation Delay**: Uses an emerald "Progress Ring" with `indicatorDelay` to signal menu opening.
-*   **Contextual Logic**: Distinguishes between Map-level (Long Press) and Entity-level (Short Tap) tasking.
 *   **Interaction Paradigm**: Uses a "Pointer-Release" selection system. Highlighting sectors triggers haptic "ticks" via `navigator.vibrate` for tactile feedback.
-*   **Ghost Buster Logic**: Prevents mobile browser "double-trigger" issues by ignoring mouse events that occur within 1000ms of a touch event, ensuring cross-platform stability.
+*   **Safety (Ghost Buster)**: Prevents mobile "double-trigger" issues by ignoring emulated mouse events that follow touch events. **Crucial**: Always prioritize `PointerEvents` and use CSS `touch-action: none` on interactive canvases.
 
-### 3. Smart Command Bar (NLP & Math Parser)
-An experiment in combining command-line speed with visual interfaces.
-*   **Fuzzy Search**: Implements generalized fuzzy search for finding commands.
-*   **Math Engine**: Supports math functions (e.g., `sqrt`, `cos`, `sin`) with flexible input rules (optional parentheses, e.g., `cos45` -> `cos(45)`).
-*   **History & Suggestions**: Provides intelligent suggestions based on partial input (e.g., `sqr` suggests `sqrt(`).
+### 3. Smart Command Bar (Tactical Scratchpad)
+Combines NLP-style input with navigation projection tools.
+*   **Swipe-to-Execute**: High-list items in the palette support a "Swipe Right" gesture (using Framer Motion `drag`) to trigger actions instantly without the primary button.
+*   **Drag-to-Map**: Command results (like coordinates or entities) can be dragged directly onto the map as `application/json` payloads, where `MapDisplay` resolves the drop into tactical actions.
+*   **Math & Trig**: Native support for degrees (e.g., `cos45`). Math parser is resilient to missing parentheses for common trig functions.
+*   **Fuzzy Search**: Implements generalized fuzzy search (via `fuse.js`) for finding entities and registry commands.
 
-### 4. HUD & Telemetry Panels
-*   **Dynamic Anchoring**: Panels can be repositioned to any corner (`TL`, `TR`, `BL`, `BR`) to test layout efficiency.
-*   **Declutter (DET)**: A boolean toggle that switches between full telemetry (HDG, HGT, TAS, ALT) and a "Telemetry Only" header.
-*   **Visual Tokens**: Real-time manipulation of `scale`, `opacity` (Alpha), and `glow` via `PrototypeSettings`.
+### 4. Info Panels & Telemetry
+*   **Dynamic Anchoring**: Panels can be repositioned to any corner (`TL`, `TR`, `BL`, `BR`). 
+*   **Stacking Guard**: In the `BR` corner, `OwnshipPanel` must stack vertically above the `TargetPanel`.
+*   **Declutter (DET)**: A boolean state that toggles between full telemetry and "high-importance only" views.
 
 ---
 
-## Agent & Developer Implementation Notes
+## Agent & Developer Workflow
 
-### Layout & Overlap Safeguards
-*   **Panel Margins**: `OwnshipPanel` must maintain a 1rem margin when in `BL`.
-*   **Safe Zones**: `TL` and `TR` positions require a vertical offset (~5.5rem) to clear the `TopSystemBar`. `TL` also requires horizontal clearance for the `LeftSidebar`.
-*   **Stacking Priority**: In the `BR` corner, the `OwnshipPanel` must stack *vertically above* the `TargetPanel` to prevent occlusion.
+### 🚀 Parallel Branching (Git Worktree)
+This codebase supports working on multiple branches simultaneously via **Git Worktrees**.
+*   **Benefit**: Allows an agent to have `main` and a feature branch (e.g., `scratchpad`) checked out in separate directories.
+*   **Workflow**: Use `git worktree add ../FakeMS-fix branch-name` to create a parallel workspace. This avoids the need to stash/commit when context switching.
 
-### Performance & Tactile Feel
-*   **Memoization**: All map layers and status panels are memoized to maintain 60fps during high-speed rotation or panning.
-*   **Simulation Logic**: Track movement is frame-based, moving entities according to their heading and speed in the local coordinate system (Meters North/East).
-*   **Animation**: System transitions use cubic-bezier easing ("fly-to" feel) governed by `animationSpeed`.
+### 🏗️ Build & CI/CD Awareness
+*   **Dependency Management**: Always run `npm install` after a merge/pull. The project relies on `framer-motion` and `mathjs`, which can cause CI/CD failures if the lockfile or environment is out of sync.
+*   **Deployment**: Merges to `main` trigger a GitHub Pages build. Bump the version in `package.json` to force a re-deploy if CI fails due to environmental issues.
 
-### Codebase Structure
+### 🛡️ Code Consistency Rules
+*   **Pointer Events**: Never use `mousedown/mouseup` alone. Use `PointerEvent` to ensure cross-platform compatibility (Touch + Mouse).
+*   **Memoization**: Map layers must be memoized. A frame drop during a 360-degree rotation breaks the HMI "feel."
+*   **Z-Index**: Keep `CommandPalette` at the highest level (`z-[100]`), followed by `Sidebars/TopBars` (`z-50`).
+
+---
+
+## Codebase Structure
 *   `components/`: Core HMI elements (Map, PieMenu, Sidebar, InfoPanels).
 *   `utils/CommandRegistry.ts`: Central registry for Smart Command Bar logic.
 *   `types.ts`: Shared interfaces for entity states and interface settings.
