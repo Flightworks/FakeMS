@@ -88,8 +88,16 @@ const App: React.FC = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
+          const dLat = loc.lat - DEFAULT_ORIGIN.lat;
+          const dLon = loc.lon - DEFAULT_ORIGIN.lon;
+
           setOrigin(loc);
           setOwnship(prev => ({ ...prev, position: loc }));
+          setEntities(prev => prev.map(e => ({
+            ...e,
+            position: { lat: e.position.lat + dLat, lon: e.position.lon + dLon },
+            waypoints: e.waypoints?.map(wp => ({ lat: wp.lat + dLat, lon: wp.lon + dLon }))
+          })));
         },
         () => {
           setOrigin(DEFAULT_ORIGIN);

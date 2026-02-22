@@ -1,0 +1,93 @@
+﻿commit 86e99bf03551fb4602f1cf50d99e2c8cd0eb6c1d
+Author: Flightworks <your.email@example.com>
+Date:   Sun Feb 22 12:26:11 2026 +0100
+
+    Fix target panel ownship propagation and support ownship-relative projection in command palette
+
+diff --git a/App.tsx b/App.tsx
+index 8346e49..f0fd6f3 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -86,12 +86,20 @@ const App: React.FC = () => {
+   useEffect(() => {
+     if ('geolocation' in navigator) {
+       navigator.geolocation.getCurrentPosition(
+-        (position) => setOrigin({ lat: position.coords.latitude, lon: position.coords.longitude }),
+-        () => setOrigin(DEFAULT_ORIGIN),
++        (position) => {
++          const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
++          setOrigin(loc);
++          setOwnship(prev => ({ ...prev, position: loc }));
++        },
++        () => {
++          setOrigin(DEFAULT_ORIGIN);
++          setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
++        },
+         { enableHighAccuracy: true }
+       );
+     } else {
+       setOrigin(DEFAULT_ORIGIN);
++      setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
+     }
+   }, []);
+ 
+@@ -229,7 +237,7 @@ const App: React.FC = () => {
+       </div>
+ 
+       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-0 right-0 pointer-events-none">
+-        <TargetPanel entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
++        <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
+       </div>
+ 
+       {(Math.abs(panOffset.x) > 5 || Math.abs(panOffset.y) > 5) && (
+diff --git a/utils/CommandRegistry.ts b/utils/CommandRegistry.ts
+index cb7e025..6251d47 100644
+--- a/utils/CommandRegistry.ts
++++ b/utils/CommandRegistry.ts
+@@ -91,15 +91,32 @@ const parseCoordinates = (query: string): { lat: number, lon: number, isPartial?
+     return null;
+ }
+ 
+-const parseProjection = (query: string, entities: Entity[]): { target: { lat: number, lon: number }, label: string } | null => {
+-    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE]
++const parseProjection = (query: string, entities: Entity[], ownship: Entity): { target: { lat: number, lon: number }, label: string } | null => {
++    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE] OR [BEARING] [RANGE] from ownship
+     // Supports spaces or slashes as delimiters.
+-    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2"
++    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2", "180/5"
+ 
+     const parts = query.trim().split(/[\s/]+/).filter(Boolean);
+ 
+-    // We need at least 3 parts (Entity, Bearing, Range)
+-    if (parts.length < 3) return null;
++    // We need at least 2 parts (Bearing, Range)
++    if (parts.length < 2) return null;
++
++    if (parts.length === 2) {
++        const bearingStr = parts[0];
++        const rangeStr = parts[1];
++        const bearing = parseFloat(bearingStr);
++        const range = parseFloat(rangeStr);
++
++        if (isNaN(bearing) || isNaN(range)) return null;
++
++        const distMeters = range * 1852;
++        const dest = getDestinationPoint(ownship.position.lat, ownship.position.lon, distMeters, bearing);
++
++        return {
++            target: { lat: dest.lat, lon: dest.lon },
++            label: `PROJ: OWNSHIP BRG ${bearing}┬░/RNG ${range}NM`
++        };
++    }
+ 
+     const rangeStr = parts[parts.length - 1];
+     const bearingStr = parts[parts.length - 2];
+@@ -247,7 +264,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
+     }
+ 
+     // 3. Entity Projection
+-    const proj = parseProjection(q, entities);
++    const proj = parseProjection(q, entities, ownship);
+     if (proj) {
+         commands.push({
+             id: 'proj-focus',
