@@ -9,7 +9,7 @@ Fake MS is a high-fidelity, tactile-first interface designed for **Human-Machine
 ### 1. Experimental Tactical Map
 *   **Stabilization Modes**: Implements `NORTH-UP` and `HEADING-UP` (Map rotates based on simulated ownship heading).
 *   **Symbology**: Employs simplified military-grade symbology (APP-6) as high-contrast visual anchors for tracking experiments.
-*   **Projection & Math**: Uses Mercator-based tile mapping. `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels), dynamically accounting for `zoomLevel` and `rotation`.
+*   **Projection & Math**: Uses Mercator-based tile mapping with **WGS84 Geodesic math** for distance and bearing calculations (`utils/geo.ts`). `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels).
 *   **Offline Resilience**: Dynamic loading and caching of dark-mode geographic tiles (CartoDB) via Service Worker for simulation stability.
 
 ### 2. Radial Interaction Lab (Pie Menu)
@@ -22,7 +22,7 @@ The Pie Menu is the primary research tool for testing spatial memory and rapid r
 Combines NLP-style input with navigation projection tools.
 *   **Swipe-to-Execute**: High-list items in the palette support a "Swipe Right" gesture (using Framer Motion `drag`) to trigger actions instantly without the primary button.
 *   **Drag-to-Map**: Command results (like coordinates or entities) can be dragged directly onto the map as `application/json` payloads, where `MapDisplay` resolves the drop into tactical actions.
-*   **Math & Trig**: Native support for degrees (e.g., `cos45`). Math parser is resilient to missing parentheses for common trig functions.
+*   **Math & Trig**: Native support for degrees (e.g., `cos45`). Math parser is resilient to missing parentheses and integrates **WGS84 Earth Radius** for accurate unit conversions.
 *   **Fuzzy Search**: Implements generalized fuzzy search (via `fuse.js`) for finding entities and registry commands.
 
 ### 4. Info Panels & Telemetry
