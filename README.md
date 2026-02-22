@@ -29,21 +29,22 @@
 ### 🗺️ Advanced Tactical Map
 Built on Leaflet and customized for mission-aware navigation:
 - **Stabilization Modes**: Seamlessly toggle between `NORTH-UP` and `HEADING-UP` (Map-Centric vs. Ego-Centric).
-- **Tactical Symbology**: Custom MIL-STD-style icons for Ownship, Hostiles, and Waypoints.
+- **WGS84 Precision**: All distance and bearing calculations use high-fidelity geodesic and spherical math.
+- **Tactical Symbology**: Custom MIL-STD-style icons for Ownship, Hostiles, and Waypoints with velocity leaders.
 - **Gesture Control**: Precision panning and zooming with support for pinch-to-zoom and long-press interaction.
 
 ### 🔘 Radial Interaction (Pie Menu)
 Optimized for high-stress environments where tiny buttons fail:
 - **Context-Aware**: Different menus for map, ownship, and target entities.
 - **Flick-to-Select**: Fast, muscle-memory driven workflows with tactile/haptic feedback.
-- **Long-Press Activation**: Reduces accidental triggers and provides a dedicated "safe" interaction space.
+- **Ghost Buster**: Prevents accidental triggers on touch devices via advanced pointer filtering.
 
 ### ⌨️ Smart Command Bar (Scratchpad)
 A powerful HUD tool combining natural language commands with a navigation computer:
-- **Math Engine**: Native support for degrees in trig (e.g., `cos45`) and complex expressions.
+- **Math Engine**: Native support for degrees in trig and complex expressions (e.g., `cos45`).
 - **Coordinate Projection**: Project points using bearing/range shorthand (e.g., `HOSTILE1 180/5`).
+- **Interactive Workspace**: Support for "Swipe Right to Execute" and "Drag-to-Map" workflows.
 - **Fuzzy Search**: Instantly find entities or system commands (RADAR, EOTS, DCT).
-- **Command History**: Quick access to recent tactical queries.
 
 ---
 
