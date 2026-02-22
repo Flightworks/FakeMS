@@ -12,8 +12,8 @@ export enum EntityType {
 }
 
 export interface Position {
-  x: number; // Meters East
-  y: number; // Meters North
+  lat: number;
+  lon: number;
 }
 
 export interface Entity {
@@ -21,9 +21,20 @@ export interface Entity {
   type: EntityType;
   position: Position;
   label: string;
-  heading?: number; // Degrees
-  speed?: number; // Knots
-  altitude?: number; // Feet
+
+  // Kinematics
+  heading?: number;      // Current Heading (Degrees True)
+  targetHeading?: number;// Desired Heading (Degrees True)
+  turnRate?: number;     // Degrees per second
+  speed?: number;        // Current Speed (Knots)
+  targetSpeed?: number;  // Desired Speed (Knots)
+  acceleration?: number; // Knots per second
+
+  altitude?: number;     // Current Altitude (Feet)
+
+  // Navigation
+  waypoints?: Position[]; // List of coordinates to follow
+
   metadata?: Record<string, string | number>;
 }
 

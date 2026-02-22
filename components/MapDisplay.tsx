@@ -14,7 +14,9 @@ import {
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix Leaflet's default icon path issues
+// @ts-ignore
 import icon from 'leaflet/dist/images/marker-icon.png';
+// @ts-ignore
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
 let DefaultIcon = L.icon({
@@ -43,20 +45,9 @@ interface MapDisplayProps {
 
 const EARTH_RADIUS = 6378137;
 
-// --- Helper Functions ---
-const metersToLatLon = (origin: { lat: number, lon: number }, x: number, y: number): [number, number] => {
-  const dLat = (y / EARTH_RADIUS) * (180 / Math.PI);
-  const dLon = (x / (EARTH_RADIUS * Math.cos(Math.PI * origin.lat / 180))) * (180 / Math.PI);
-  return [origin.lat + dLat, origin.lon + dLon];
-};
-
-const latLonToMeters = (origin: { lat: number, lon: number }, lat: number, lon: number) => {
-  const dLat = lat - origin.lat;
-  const dLon = lon - origin.lon;
-  const y = dLat * (Math.PI / 180) * EARTH_RADIUS;
-  const x = dLon * (Math.PI / 180) * (EARTH_RADIUS * Math.cos(Math.PI * origin.lat / 180));
-  return { x, y };
-};
+// Deprecated projection helpers. We now use native lat/lon. Validate if still needed elsewhere.
+// const metersToLatLon = ...
+// const latLonToMeters = ...
 
 // --- Custom Components ---
 
@@ -177,19 +168,23 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const mapRotation = mapMode === MapMode.HEADING_UP ? -(ownship.heading || 0) : 0;
 
   // Coordinates
-  const centerMetersX = ownship.position.x + panOffset.x;
-  const centerMetersY = ownship.position.y + panOffset.y;
-
-  const centerLatLon = useMemo(() =>
-    metersToLatLon(origin, centerMetersX, centerMetersY),
-    [origin, centerMetersX, centerMetersY]);
+  // Note: panOffset is still kept in meters for smooth relative UI panning.
+  // We compute the centerLatLon by offsetting the ownship's true lat/lon by panOffset meters.
+  const centerLatLon = useMemo(() => {
+    // A quick spherical offset for panning
+    const dLat = (panOffset.y / EARTH_RADIUS) * (180 / Math.PI);
+    const dLon = (panOffset.x / (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180))) * (180 / Math.PI);
+    return [ownship.position.lat + dLat, ownship.position.lon + dLon] as [number, number];
+  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y]);
 
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
   const handleMapMove = (newCenter: L.LatLng) => {
-    const newCenterMeters = latLonToMeters(origin, newCenter.lat, newCenter.lng);
-    const newPanX = newCenterMeters.x - ownship.position.x;
-    const newPanY = newCenterMeters.y - ownship.position.y;
+    // Calculate new pan offset in meters relative to ownship
+    const dLat = newCenter.lat - ownship.position.lat;
+    const dLon = newCenter.lng - ownship.position.lon;
+    const newPanY = dLat * (Math.PI / 180) * EARTH_RADIUS;
+    const newPanX = dLon * (Math.PI / 180) * (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180));
     onPan({ x: newPanX, y: newPanY });
   };
 
@@ -385,7 +380,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
         {/* Ownship */}
         <Marker
-          position={metersToLatLon(origin, ownship.position.x, ownship.position.y)}
+          position={[ownship.position.lat, ownship.position.lon]}
           icon={createEntityIcon(ownship, mapRotation, selectedEntityId === ownship.id)}
           eventHandlers={{
             mousedown: (e) => {
@@ -411,7 +406,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         {entities.map(entity => (
           <Marker
             key={entity.id}
-            position={metersToLatLon(origin, entity.position.x, entity.position.y)}
+            position={[entity.position.lat, entity.position.lon]}
             icon={createEntityIcon(entity, mapRotation, selectedEntityId === entity.id)}
             eventHandlers={{
               mousedown: (e) => {

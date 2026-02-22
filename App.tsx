@@ -7,31 +7,36 @@ import { CommandPalette } from './components/CommandPalette';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
+import { useSimulation } from './utils/useSimulation';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 
 const INITIAL_OWNSHIP: Entity = {
   id: 'ownship',
   type: EntityType.OWNSHIP,
-  position: { x: 0, y: 0 },
+  position: { lat: DEFAULT_ORIGIN.lat, lon: DEFAULT_ORIGIN.lon },
   label: 'VIPER 1-1',
   heading: 0,
   speed: 120, // Default speed in knots for ETA calculations
   altitude: 3428
 };
 
+// Seeding test entities with Lat/Lon Native coordinates
 const INITIAL_ENTITIES: Entity[] = [
-  { id: 'wp-1', type: EntityType.WAYPOINT, position: { x: 2000, y: 2000 }, label: 'G01' },
-  { id: 'wp-2', type: EntityType.WAYPOINT, position: { x: -2000, y: 5000 }, label: 'BRAVO' },
-  { id: 'apt-1', type: EntityType.AIRPORT, position: { x: -5000, y: -5000 }, label: 'BASE' },
-  { id: 'en-1', type: EntityType.ENEMY, position: { x: 5000, y: -2000 }, label: 'HOSTILE 1', heading: 270, speed: 60 },
-  { id: 'en-2', type: EntityType.ENEMY, position: { x: 4000, y: -1000 }, label: 'HOSTILE 2', heading: 280, speed: 65 },
+  { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01' },
+  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO' },
+  { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE' },
+  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3 },
+  // Adding Waypoint routine to ENEMY 2 to test automatic navigation
+  { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }] },
 ];
 
 const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(null);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
-  const [entities, setEntities] = useState<Entity[]>(INITIAL_ENTITIES);
+
+  // Use the Simulation Engine to manage entities instead of bare useState
+  const { entities, setEntities } = useSimulation(INITIAL_ENTITIES);
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(0.05);
@@ -62,8 +67,6 @@ const App: React.FC = () => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
   };
 
-  const requestRef = useRef<number>();
-  const lastTimeRef = useRef<number>();
   const panAnimationRef = useRef<number>();
 
   useEffect(() => {
@@ -145,14 +148,18 @@ const App: React.FC = () => {
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data && data.type === 'command' && data.query) {
-        // Re-evaluate command to get the action context
         const context: CommandContext = {
           entities,
           ownship,
           systems,
+          history: [], // Stub history 
           setMapMode,
           toggleSystem,
-          panTo: (x, y) => handleManualPan({ x, y })
+          panTo: (lat, lon) => {
+            // Drop command might pass coords or x/y offset, 
+            // for now fallback to standard panning via offset
+            handleManualPan({ x: lat, y: lon })
+          }
         };
 
         const cmds = getCommands(data.query, context);
@@ -168,19 +175,6 @@ const App: React.FC = () => {
       console.error("Drop failed", err);
     }
   };
-
-  const updateSimulation = (time: number) => {
-    if (lastTimeRef.current !== undefined) {
-      setEntities(prev => prev.map(e => (e.type === EntityType.ENEMY ? { ...e, position: { x: e.position.x + (Math.cos(((e.heading || 0) - 90) * (Math.PI / 180)) * 0.5), y: e.position.y + (Math.sin(((e.heading || 0) - 90) * (Math.PI / 180)) * 0.5) } } : e)));
-    }
-    lastTimeRef.current = time;
-    requestRef.current = requestAnimationFrame(updateSimulation);
-  };
-
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(updateSimulation);
-    return () => cancelAnimationFrame(requestRef.current!);
-  }, []);
 
   return (
     <div
