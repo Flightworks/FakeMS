@@ -1,5 +1,5 @@
 import { Entity, SystemStatus, MapMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair } from 'lucide-react';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
 import { getDestinationPoint } from './geo';
@@ -387,6 +387,18 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 });
             }
         }
+
+        // Add plain text fallback ALWAYS at the bottom so we can save anything
+        commands.push({
+            id: 'save-text-note',
+            label: `SAVE: "${q}"`,
+            subLabel: 'Save text to history',
+            icon: FileText,
+            action: () => { },
+            keywords: [],
+            isHistory: false
+        });
+
     } else {
         // If empty, append system commands after history
         commands.push(...systemCommands);
@@ -394,7 +406,3 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
     return commands;
 };
-
-// Re-export Lucide icons if needed by other components, but CommandPalette imports them directly usually.
-// Just ensuring History is imported for the icon.
-import { History } from 'lucide-react';
