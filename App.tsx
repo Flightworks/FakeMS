@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
+  const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
     tapThreshold: 300,
@@ -89,19 +90,19 @@ const App: React.FC = () => {
         (position) => {
           const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
           setOrigin(loc);
-          setOwnship(prev => {
-            const actualDLat = loc.lat - prev.position.lat;
-            const actualDLon = loc.lon - prev.position.lon;
+          setOwnship(prev => ({ ...prev, position: loc }));
 
-            if (Math.abs(actualDLat) > 0.000001 || Math.abs(actualDLon) > 0.000001) {
-              setEntities(entitiesPrev => entitiesPrev.map(e => ({
-                ...e,
-                position: { lat: e.position.lat + actualDLat, lon: e.position.lon + actualDLon },
-                waypoints: e.waypoints?.map(wp => ({ lat: wp.lat + actualDLat, lon: wp.lon + actualDLon }))
-              })));
-            }
-            return { ...prev, position: loc };
-          });
+          const actualDLat = loc.lat - lastOriginRef.current.lat;
+          const actualDLon = loc.lon - lastOriginRef.current.lon;
+
+          if (Math.abs(actualDLat) > 0.000001 || Math.abs(actualDLon) > 0.000001) {
+            setEntities(entitiesPrev => entitiesPrev.map(e => ({
+              ...e,
+              position: { lat: e.position.lat + actualDLat, lon: e.position.lon + actualDLon },
+              waypoints: e.waypoints?.map(wp => ({ lat: wp.lat + actualDLat, lon: wp.lon + actualDLon }))
+            })));
+            lastOriginRef.current = loc;
+          }
         },
         () => {
           setOrigin(DEFAULT_ORIGIN);

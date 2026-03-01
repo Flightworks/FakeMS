@@ -37,7 +37,9 @@ export const useSimulation = (initialEntities: Entity[]) => {
 
         const tick = () => {
             const now = Date.now();
-            const dtSeconds = (now - lastTickRef.current) / 1000.0;
+            // Cap delta time to 0.1s to prevent entities from flying off screen 
+            // when the browser tab is backgrounded for a long time (throttle/sleep).
+            const dtSeconds = Math.min((now - lastTickRef.current) / 1000.0, 0.1);
             lastTickRef.current = now;
 
             if (dtSeconds <= 0) return;

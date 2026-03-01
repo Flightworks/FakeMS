@@ -47,6 +47,7 @@ This codebase supports working on multiple branches simultaneously via **Git Wor
 *   **Pointer Events**: Never use `mousedown/mouseup` alone. Use `PointerEvent` to ensure cross-platform compatibility (Touch + Mouse).
 *   **Memoization**: Map layers must be memoized. A frame drop during a 360-degree rotation breaks the HMI "feel."
 *   **Z-Index**: Keep `CommandPalette` at the highest level (`z-[100]`), followed by `Sidebars/TopBars` (`z-50`).
+*   **React Strict Mode / State Closures**: When deriving geographic coordinate shifts (or any mathematical delta) inside a `useEffect`, do not chain multiple specific `setState` calls inside a hook closure like `setOwnship(prev => { ... setEntities(...) })`. React 18 tests pure functions by firing them twice, causing compounding math shifts. Decouple your state updates, and use a `useRef` (like `lastOriginRef`) to construct idempotent deltas.
 
 ---
 
