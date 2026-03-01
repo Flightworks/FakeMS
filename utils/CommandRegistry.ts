@@ -1,5 +1,5 @@
-import { Entity, SystemStatus, MapMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText } from 'lucide-react';
+import { Entity, SystemStatus, MapMode, HistoryEntry } from '../types';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
 import { getDestinationPoint } from './geo';
@@ -23,7 +23,7 @@ export interface CommandContext {
     setMapMode: (mode: MapMode) => void;
     toggleSystem: (sys: keyof SystemStatus) => void;
     panTo: (x: number, y: number) => void;
-    history: string[]; // Added History to Context
+    history: HistoryEntry[]; // Added History to Context
 }
 
 export interface CommandOption {
@@ -36,6 +36,7 @@ export interface CommandOption {
     isPreview?: boolean;
     isHistory?: boolean;
     autocompleteValue?: string;
+    historyValue?: string;
 }
 
 // Improved Fuzzy Coordinate Parser
@@ -160,18 +161,21 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     if (q === '') {
         // Show recent history first
         if (history && history.length > 0) {
-            history.slice(0, 5).forEach((cmdStr, idx) => {
+            history.slice(0, 5).forEach((entry, idx) => {
+                const date = new Date(entry.timestamp);
+                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 commands.push({
                     id: `hist-${idx}`,
-                    label: cmdStr,
-                    subLabel: 'Recent History',
+                    label: entry.original,
+                    subLabel: timeStr,
                     icon: History,
                     action: () => { /* No-op, UI handles selection acting as typing? Or execute immediately? execute immediately usually */ },
                     // To handle execute vs paste, usually history selection executes.
                     // But if it's a calculator value, maybe paste?
                     // Let's assume execute for now as per "History Stack repopulated".
                     keywords: ['history'],
-                    isHistory: true
+                    isHistory: true,
+                    autocompleteValue: entry.original
                 });
             });
         }
@@ -251,6 +255,27 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 isPreview: true
             });
         } else {
+            // Add option to copy coordinates
+            commands.push({
+                id: 'coord-copy-pos',
+                label: `COPY POS: ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`,
+                subLabel: 'Copy Parsed Coordinates',
+                icon: Copy,
+                action: () => { navigator.clipboard.writeText(`${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`); },
+                keywords: ['copy', 'coord', 'pos'],
+                isPreview: false
+            });
+            // Add option to copy original text
+            commands.push({
+                id: 'coord-copy-text',
+                label: `COPY TEXT: "${q}"`,
+                subLabel: 'Copy Original Input',
+                icon: Copy,
+                action: () => { navigator.clipboard.writeText(q); },
+                keywords: ['copy', 'text'],
+                isPreview: false
+            });
+
             commands.push({
                 id: 'fly-to-coords',
                 label: `FLY TO: ${q.toUpperCase()}`,
@@ -287,7 +312,8 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             subLabel: systems[key] ? 'ON' : 'OFF',
             icon,
             action: () => toggleSystem(key),
-            keywords
+            keywords,
+            historyValue: label
         });
     };
 
@@ -302,7 +328,8 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         subLabel: 'Map Mode',
         icon: Navigation,
         action: () => setMapMode(MapMode.NORTH_UP),
-        keywords: ['north', 'nup', 'map']
+        keywords: ['north', 'nup', 'map'],
+        historyValue: 'North Up'
     });
 
     systemCommands.push({
@@ -311,7 +338,8 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         subLabel: 'Map Mode',
         icon: Compass,
         action: () => setMapMode(MapMode.HEADING_UP),
-        keywords: ['heading', 'hup', 'map']
+        keywords: ['heading', 'hup', 'map'],
+        historyValue: 'Heading Up'
     });
 
     // 3. Fuzzy Search
@@ -340,7 +368,8 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                         panTo(e.position.lat, e.position.lon);
                     },
                     keywords: ['dct', 'goto', 'direct', e.label],
-                    type: 'command'
+                    type: 'command',
+                    historyValue: `DCT ${e.label}`
                     // No autocompleteValue -> Click executes immediately
                 }
             ])
@@ -403,6 +432,6 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         // If empty, append system commands after history
         commands.push(...systemCommands);
     }
-
+    console.log("getCommands output for query: ", query, commands);
     return commands;
 };

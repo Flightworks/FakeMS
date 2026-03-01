@@ -45,6 +45,11 @@ export interface SystemStatus {
   eots: boolean; // Electro-Optical Targeting System
 }
 
+export interface HistoryEntry {
+  original: string;
+  timestamp: number;
+}
+
 export type OwnshipPanelPos = 'BL' | 'TL' | 'BR' | 'TR';
 
 export interface PrototypeSettings {

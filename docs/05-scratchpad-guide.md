@@ -25,6 +25,7 @@ Quickly jump to any location on the map using various coordinate formats. All ma
 *   **Standard DDMM**: `N45E006` or `S2330W04515`
 *   **Decimal Degrees**: `45.5, 6.5` or `-23.5, -45.25`
 *   **Format Hints**: If you start typing `N45`, the system will show you a hint for the full `NddmmEdddmm` format.
+*   **Coordinate Copying**: Once a valid coordinate is recognized, the palette will offer actions to either copy the processed coordinates or the original text input directly.
 
 ---
 
@@ -60,13 +61,20 @@ Control your helicopter's systems using simple text commands.
 ### Swipe Right to Execute
 In the result list, swipe any item to the right (using a mouse or finger) to immediately trigger its primary action without needing to click.
 
+### Copy & Paste Functionality
+The command palette is designed for rapid data extraction. You can securely interact with your clipboard via the following features:
+*   **Active Input**: Click the `Copy` icon next to the `ESC` key to copy the raw text you are currently typing.
+*   **Calculations**: Clicking any computation result in the suggestion list (e.g., `12 * 5 = 60`) will instantly copy the raw numerical result (`60`) to your clipboard.
+*   **Coordinates Options**: When typing a geographic coordinate, the system generates dedicated "COPY" actions. Selecting `COPY POS` will add the normalized decimal degrees to your clipboard (e.g. `45.50000, 6.25000`), whereas selecting `COPY TEXT` will copy the original typed string.
+*   **History Extraction**: Hover over any past request in your `History` feed to reveal a `Copy` icon on the far right. Clicking it extracts the item to your clipboard without re-executing it.
+
 ### Drag-to-Map
 Any item in the command palette can be **dragged and dropped** directly onto the tactical map. This allows you to "drop" coordinates or targets onto specific spatial locations.
 
 ### History & Navigation
 *   **Up/Down Arrows**: Navigate through your previous commands.
 *   **Suggestions**: Typing `sqr` will suggest `sqrt(` for you.
-*   **Persistent History**: Your command history is saved locally and remains available between sessions.
+*   **Smart Logging**: Your command history is saved locally and remains available between sessions. It features time-stamped execution (`HH:MM`) and accurately logs your executed context rather than incomplete typings.
 
 ---
 [Back to Interface Guide](./03-interface-guide.md) | [Back to Home](../README.md)

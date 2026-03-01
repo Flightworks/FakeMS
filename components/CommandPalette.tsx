@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Entity, SystemStatus, MapMode } from '../types';
-import { Search, ChevronRight, History, MoveRight, CornerDownLeft } from 'lucide-react';
+import { Entity, SystemStatus, MapMode, HistoryEntry } from '../types';
+import { Search, ChevronRight, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 
@@ -35,9 +35,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const listRef = useRef<HTMLUListElement>(null);
 
   // History State
-  const [history, setHistory] = useState<string[]>(() => {
+  const [history, setHistory] = useState<HistoryEntry[]>(() => {
     const saved = localStorage.getItem('cmd_history');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      // Migrate old string arrays to objects
+      return parsed.map((item: any) => {
+        if (typeof item === 'string') return { original: item, timestamp: Date.now() };
+        return item;
+      });
+    } catch { return []; }
   });
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
 
@@ -60,7 +68,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const addToHistory = (cmd: string) => {
     if (!cmd.trim()) return;
-    const newHistory = [cmd, ...history.filter(h => h !== cmd)].slice(0, 50);
+    const newEntry: HistoryEntry = { original: cmd, timestamp: Date.now() };
+    const previousFiltered = history.filter(h => h.original !== cmd);
+    const newHistory = [newEntry, ...previousFiltered].slice(0, 50);
     setHistory(newHistory);
     localStorage.setItem('cmd_history', JSON.stringify(newHistory));
   };
@@ -94,7 +104,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         if (historyIndex > -1) {
           const newIndex = historyIndex - 1;
           setHistoryIndex(newIndex);
-          setQuery(newIndex === -1 ? '' : history[newIndex]);
+          setQuery(newIndex === -1 ? '' : history[newIndex].original);
         }
       }
     } else if (e.key === 'ArrowUp') {
@@ -109,14 +119,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         const newIndex = historyIndex + 1;
         if (newIndex < history.length) {
           setHistoryIndex(newIndex);
-          setQuery(history[newIndex]);
+          setQuery(history[newIndex].original);
         }
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (commands[selectedIndex]) {
-        addToHistory(query);
-        commands[selectedIndex].action();
+        const cmd = commands[selectedIndex];
+        addToHistory(cmd.historyValue || query);
+        cmd.action();
         onClose();
       }
     } else if (e.key === 'Escape') {
@@ -142,7 +153,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         navigator.vibrate(50); // Haptic feedback on swipe execution
       }
       // Trigger Action
-      addToHistory(query);
+      addToHistory(cmd.historyValue || query);
       cmd.action();
       onClose();
     }
@@ -170,8 +181,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             onKeyDown={handleKeyDown}
             autoFocus
           />
-          <div className="flex gap-1" onClick={onClose} style={{ cursor: 'pointer' }}>
-            <kbd className="px-2 py-1 flex items-center justify-center rounded bg-slate-800 text-slate-400 text-[10px] font-mono border border-slate-700 hover:bg-slate-700 active:bg-slate-600 transition-colors min-h-[30px] min-w-[40px]">ESC</kbd>
+          <div className="flex gap-2 items-center text-slate-400">
+            {query && (
+              <div
+                onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(query); }}
+                className="cursor-pointer hover:text-emerald-400 transition-colors p-1"
+                title="Copy Input"
+              >
+                <Copy size={16} />
+              </div>
+            )}
+            <kbd onClick={onClose} className="px-2 py-1 flex items-center justify-center rounded bg-slate-800 text-[10px] font-mono border border-slate-700 hover:bg-slate-700 active:bg-slate-600 transition-colors cursor-pointer min-h-[30px] min-w-[40px]">ESC</kbd>
           </div>
         </div>
 
@@ -218,7 +238,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     draggable="true"
                     onDragStart={(e: any) => handleDragStart(e, cmd)}
                     className={`
-                     px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
+                     group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
                      ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
                    `}
                     onClick={() => {
@@ -229,7 +249,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         setQuery(cmd.autocompleteValue);
                         inputRef.current?.focus();
                       } else {
-                        addToHistory(query);
+                        addToHistory(cmd.historyValue || query);
                         cmd.action();
                         onClose();
                       }
@@ -265,7 +285,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         </div>
                       )}
                     </div>
-                    {isSelected && <CornerDownLeft size={16} className="text-emerald-500" />}
+                    {cmd.isHistory && (
+                      <div
+                        className="ml-2 text-slate-500 hover:text-emerald-400 cursor-pointer p-2 z-10 relative opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(cmd.label);
+                        }}
+                        title="Copy History Item"
+                      >
+                        <Copy size={16} />
+                      </div>
+                    )}
+                    {isSelected && <CornerDownLeft size={16} className={`text-emerald-500 ${cmd.isHistory ? 'ml-1' : 'ml-2'}`} />}
                   </motion.li>
                 );
               })}
