@@ -4,6 +4,7 @@ import { MapDisplay } from './components/MapDisplay';
 import { TopSystemBar } from './components/TopSystemBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
+import { DocumentViewer } from './components/DocumentViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
@@ -43,6 +44,7 @@ const App: React.FC = () => {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
 
@@ -180,7 +182,8 @@ const App: React.FC = () => {
             // Drop command might pass coords or x/y offset, 
             // for now fallback to standard panning via offset
             handleManualPan({ x: lat, y: lon })
-          }
+          },
+          openDocument: setOpenDoc
         };
 
         const cmds = getCommands(data.query, context);
@@ -239,6 +242,7 @@ const App: React.FC = () => {
         setMapMode={setMapMode}
         ownship={ownship}
         origin={origin || DEFAULT_ORIGIN}
+        openDocument={setOpenDoc}
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
@@ -262,6 +266,11 @@ const App: React.FC = () => {
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" fill="currentColor" /><line x1="12" y1="2" x2="12" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /></svg>
         </button>
       )}
+
+      {openDoc && (
+        <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
+      )}
+
       <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.9)] z-40"></div>
     </div>
   );

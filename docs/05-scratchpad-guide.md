@@ -56,6 +56,16 @@ Control your helicopter's systems using simple text commands.
 
 ---
 
+## 📄 Document Viewer
+Quickly search and read important mission files and documentation without leaving the map.
+
+*   **Fuzzy Search**: Type the name of a document (e.g., `optask`, `readme`) to find and open it.
+*   **Modal Reading**: The selected document securely opens in a high-contrast modal overlapping the UI.
+*   **Dual View**: Use the toggle button in the header to switch between the raw text (Code mode) and the rendered Markdown representation.
+*   **Keyboard Shortcuts**: Press `ESC` or click outside the toolbox to close the reader and return immediately to the map.
+
+---
+
 ## 🖱️ Advanced Interactivity
 
 ### Swipe Right to Execute

@@ -15,6 +15,7 @@ interface CommandPaletteProps {
   setMapMode: (mode: MapMode) => void;
   ownship: Entity;
   origin: { lat: number, lon: number };
+  openDocument: (filename: string) => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -27,7 +28,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   mapMode,
   setMapMode,
   ownship,
-  origin
+  origin,
+  openDocument
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -83,7 +85,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       setMapMode,
       toggleSystem,
       panTo: (x, y) => onPan({ x, y }),
-      history // Pass history to registry
+      history, // Pass history to registry
+      openDocument
     };
     return getCommands(query, context);
   }, [query, entities, ownship, systems, mapMode, history]);

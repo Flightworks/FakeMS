@@ -24,6 +24,7 @@ export interface CommandContext {
     toggleSystem: (sys: keyof SystemStatus) => void;
     panTo: (x: number, y: number) => void;
     history: HistoryEntry[]; // Added History to Context
+    openDocument: (filename: string) => void;
 }
 
 export interface CommandOption {
@@ -154,7 +155,7 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history } = context;
+    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history, openDocument } = context;
     const commands: CommandOption[] = [];
 
     // --- 0. HISTORY INJECTION (When query is empty) ---
@@ -344,7 +345,22 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
     // 3. Fuzzy Search
     if (q.length > 0) {
+        // Define file commands
+        const knownFiles = ['optask.md', 'README.md', 'CHANGELOG.md'];
+        const fileCommands = knownFiles.map(file => ({
+            id: `open-file-${file}`,
+            label: `Open: ${file}`,
+            subLabel: 'Scratchpad Document',
+            icon: FileText,
+            action: () => openDocument(file),
+            keywords: ['open', 'file', 'read', 'doc', 'scratchpad', file, file.replace('.md', '')],
+            isHistory: false,
+            historyValue: `OPEN ${file}`,
+            type: 'command'
+        }));
+
         const searchableItems = [
+            ...fileCommands,
             ...systemCommands.map(c => ({ ...c, type: 'command' })),
             ...entities.flatMap(e => [
                 // 1. Selector Item (for Autocomplete)

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos } from '../types';
+import packageData from '../package.json';
+import changelogRaw from '../CHANGELOG.md?raw';
 import {
   Menu, Navigation, Map as MapIcon, Layers,
   ScanLine, Wrench, Search, Compass, X, Globe, Video, Eye, Target,
   Fingerprint, Timer, Move, MousePointer2, Maximize, Palette, Zap, Smartphone,
-  BookOpen, Layout, MoreHorizontal, MapPin, TrendingUp
+  BookOpen, Layout, MoreHorizontal, MapPin, TrendingUp, Info
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -96,6 +98,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   gestureSettings, setGestureSettings, onOpenCommandPalette
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
   const lastTopRef = useRef(0);
 
   useEffect(() => {
@@ -238,6 +241,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       ]
     },
     {
+      id: 'version',
+      label: 'VER',
+      subLabel: `v${packageData.version}`,
+      icon: Info,
+      action: () => setShowChangelog(true),
+      active: showChangelog
+    },
+    {
       id: 'search',
       label: 'FIND',
       subLabel: 'CMD',
@@ -267,7 +278,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <SidebarButton key={item.id} label={item.label} subLabel={item.subLabel} icon={item.icon} active={item.active} onClick={() => handleCategoryClick(item)} />
             ))}
           </div>
-          <div className={`absolute left-[calc(100%+0.5rem)] flex flex-col gap-2 p-1 bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-700/50 shadow-2xl transition-all duration-200 ease-out origin-left ${activeCategory ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 -translate-x-4 scale-95 pointer-events-none'}`} style={{ top: `${currentTopRem}rem` }}>
+          <div className={`absolute left-[calc(100%+0.5rem)] flex flex-col gap-2 p-1 bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-700/50 shadow-2xl transition-all duration-200 ease-out origin-left ${activeCategory && !activeCategory.action ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 -translate-x-4 scale-95 pointer-events-none'}`} style={{ top: `${currentTopRem}rem` }}>
             {(activeCategory?.children || menuConfig.find(c => c.id === activeCategoryId)?.children)?.map(sub => (
               <SidebarButton key={sub.id} label={sub.label} subLabel={sub.subLabel} icon={sub.icon} active={sub.active} onClick={sub.action || (() => { })} />
             ))}
@@ -275,6 +286,33 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </div>
       </div>
       <ParameterHelper activeCategory={activeCategory} />
+
+      {/* Changelog Modal */}
+      {showChangelog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto" onClick={() => setShowChangelog(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl w-[600px] max-w-[90vw] h-[70vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50">
+              <div className="flex items-center gap-2">
+                <Info className="text-emerald-400" size={20} />
+                <h2 className="text-emerald-400 font-bold uppercase tracking-widest text-sm">Changelog</h2>
+              </div>
+              <button
+                onClick={() => setShowChangelog(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap flex-1 scrollbar-thin scrollbar-thumb-emerald-900 scrollbar-track-transparent">
+              {changelogRaw}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
