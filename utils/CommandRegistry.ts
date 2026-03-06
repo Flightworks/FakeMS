@@ -24,6 +24,7 @@ export interface CommandContext {
     toggleSystem: (sys: keyof SystemStatus) => void;
     panTo: (x: number, y: number) => void;
     history: HistoryEntry[]; // Added History to Context
+    openFile?: (filename: string) => void;
 }
 
 export interface CommandOption {
@@ -303,6 +304,11 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         });
     }
 
+    // Available Files
+    const files = [
+        { name: 'optask.md', description: 'Operational Tasking' }
+    ];
+
     // Define Static System Commands
     const systemCommands: CommandOption[] = [];
     const addSystem = (key: keyof SystemStatus, label: string, icon: any, keywords: string[]) => {
@@ -341,6 +347,20 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         keywords: ['heading', 'hup', 'map'],
         historyValue: 'Heading Up'
     });
+
+    if (context.openFile) {
+        files.forEach(file => {
+            systemCommands.push({
+                id: `file-${file.name}`,
+                label: `OPEN ${file.name.toUpperCase()}`,
+                subLabel: file.description,
+                icon: FileText,
+                action: () => context.openFile!(file.name),
+                keywords: ['open', 'file', 'read', 'document', ...file.name.split('.'), file.description.toLowerCase()],
+                historyValue: `OPEN ${file.name}`
+            });
+        });
+    }
 
     // 3. Fuzzy Search
     if (q.length > 0) {

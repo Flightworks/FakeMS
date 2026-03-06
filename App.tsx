@@ -4,6 +4,7 @@ import { MapDisplay } from './components/MapDisplay';
 import { TopSystemBar } from './components/TopSystemBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
+import { MarkdownViewer } from './components/MarkdownViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
@@ -45,6 +46,8 @@ const App: React.FC = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
+
+  const [openedFile, setOpenedFile] = useState<string | null>(null);
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
     tapThreshold: 300,
@@ -180,7 +183,8 @@ const App: React.FC = () => {
             // Drop command might pass coords or x/y offset, 
             // for now fallback to standard panning via offset
             handleManualPan({ x: lat, y: lon })
-          }
+          },
+          openFile: (filename) => setOpenedFile(filename)
         };
 
         const cmds = getCommands(data.query, context);
@@ -239,7 +243,14 @@ const App: React.FC = () => {
         setMapMode={setMapMode}
         ownship={ownship}
         origin={origin || DEFAULT_ORIGIN}
+        openFile={(filename) => setOpenedFile(filename)}
       />
+
+      {openedFile && (
+        <div className="absolute inset-0 pointer-events-auto z-[150] flex items-center justify-center bg-black/50">
+          <MarkdownViewer filename={openedFile} onClose={() => setOpenedFile(null)} />
+        </div>
+      )}
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
         <TopSystemBar systems={systems} />
