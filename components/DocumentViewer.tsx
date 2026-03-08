@@ -65,16 +65,14 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
     }, [onClose]);
 
     return (
-        <div
-            className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6 pointer-events-none"
-            style={{ transform: `scale(${uiScale})`, transformOrigin: 'center center' }}
-        >
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
             {/* Removed the backdrop-blur and darkened semi-transparent background as requested */}
-            <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
+            <div className="absolute inset-0 cursor-pointer" onClick={onClose} />
 
             <div
-                className="relative bg-[#0b1121] border border-emerald-500/30 rounded-xl shadow-2xl shadow-black/80 w-full max-w-4xl max-h-[90vh] flex flex-col pointer-events-auto animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
+                className="relative bg-[#0b1121] border border-emerald-500/30 rounded-xl shadow-2xl shadow-black/80 w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
+                style={{ transform: `scale(${uiScale})`, transformOrigin: 'center center' }}
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-emerald-900/50 bg-[#0f172a]">
@@ -87,20 +85,20 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
                         {/* Toggle Raw/Rendered */}
                         <button
                             onClick={() => setIsRaw(!isRaw)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${isRaw
+                            className={`flex items-center gap-2 px-4 py-2 min-h-[44px] cursor-pointer rounded-md text-sm font-medium transition-colors border ${isRaw
                                 ? 'bg-slate-800 border-slate-700 text-slate-300'
                                 : 'bg-emerald-950 border-emerald-800 text-emerald-400'
                                 }`}
                         >
-                            <Code size={14} />
+                            <Code size={16} />
                             {isRaw ? 'Raw View' : 'Rendered'}
                         </button>
 
                         <button
                             onClick={onClose}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-red-900/50 rounded-md transition-colors"
+                            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-white hover:bg-red-900/50 rounded-md transition-colors"
                         >
-                            <X size={18} />
+                            <X size={20} />
                         </button>
                     </div>
                 </div>
