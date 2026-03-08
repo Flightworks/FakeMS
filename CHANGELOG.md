@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-03-08
+
+### Added
+- **Document Viewer Overlay**: Introduced a dedicated documentation reader component to view Markdown files directly within the application.
+- **Fuzzy Search for Documentation**: The command palette now supports fuzzy searching and opening documentation files (e.g., `README.md`, `CHANGELOG.md`, `optask.md`).
+- **Sidebar Version Info & Changelog**: The left sidebar now displays the current application version and provides a direct link to view the changelog.
+- **OPTASK Manual**: Added a new `optask.md` operational tasking report with structured mission data.
+- **Automatic Changelog Rule**: Added a new agent rule to ensure version bumps always trigger changelog updates.
+
+### Changed
+- **UI Scaling Support**: Enhanced various components to respect global UI scaling settings for better accessibility.
+- **Refined Document Rendering**: Improved Markdown presentation with syntax highlighting, GFM support, and "Raw" vs "Rendered" view toggles.
+
+### Fixed
+- **Sidebar Interaction**: Fixed an issue where sidebar category tooltips or submenus might persist incorrectly.
+
 ## [1.0.2] - 2026-03-01
 
 ### Added
