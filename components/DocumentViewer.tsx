@@ -24,7 +24,13 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
                 const docImports: Record<string, () => Promise<any>> = {
                     'README.md': () => import('../README.md?raw'),
                     'CHANGELOG.md': () => import('../CHANGELOG.md?raw'),
-                    'optask.md': () => import('../optask.md?raw')
+                    'optask.md': () => import('../optask.md?raw'),
+                    'docs/01-introduction.md': () => import('../docs/01-introduction.md?raw'),
+                    'docs/02-getting-started.md': () => import('../docs/02-getting-started.md?raw'),
+                    'docs/03-interface-guide.md': () => import('../docs/03-interface-guide.md?raw'),
+                    'docs/04-configuration.md': () => import('../docs/04-configuration.md?raw'),
+                    'docs/05-scratchpad-guide.md': () => import('../docs/05-scratchpad-guide.md?raw'),
+                    'docs/README.md': () => import('../docs/README.md?raw')
                 };
 
                 if (docImports[filename]) {
