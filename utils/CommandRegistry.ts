@@ -346,7 +346,17 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
     // 3. Fuzzy Search
     if (q.length > 0) {
         // Define file commands
-        const knownFiles = ['optask.md', 'README.md', 'CHANGELOG.md'];
+        const knownFiles = [
+            'optask.md',
+            'README.md',
+            'CHANGELOG.md',
+            'docs/01-introduction.md',
+            'docs/02-getting-started.md',
+            'docs/03-interface-guide.md',
+            'docs/04-configuration.md',
+            'docs/05-scratchpad-guide.md',
+            'docs/README.md'
+        ];
         const fileCommands = knownFiles.map(file => ({
             id: `open-file-${file}`,
             label: `Open: ${file}`,
