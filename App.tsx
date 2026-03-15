@@ -70,7 +70,7 @@ const App: React.FC = () => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
   };
 
-  const panAnimationRef = useRef<number>();
+  const panAnimationRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -211,7 +211,7 @@ const App: React.FC = () => {
       >
         {origin && (
           <MapDisplay
-            ownship={ownship} entities={entities} mapMode={mapMode} zoomLevel={zoomLevel}
+            ownship={ownship} entities={entities} systems={systems} mapMode={mapMode} zoomLevel={zoomLevel}
             onZoom={(val) => setZoomLevel(Math.min(Math.max(val, 0.0001), 5))}
             panOffset={panOffset} onPan={handleManualPan}
             selectedEntityId={selectedEntityId} onSelectEntity={setSelectedEntityId}

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Entity, EntityType, MapMode, PrototypeSettings } from '../types';
+import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus } from '../types';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
 import {
@@ -30,6 +30,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 interface MapDisplayProps {
   ownship: Entity;
   entities: Entity[];
+  systems: SystemStatus;
   mapMode: MapMode;
   zoomLevel: number;
   onZoom: (z: number) => void;
@@ -42,6 +43,7 @@ interface MapDisplayProps {
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onMapDrop?: (e: React.DragEvent) => void;
 }
+
 
 const EARTH_RADIUS = 6378137;
 
@@ -134,6 +136,7 @@ const MapController: React.FC<{
 export const MapDisplay: React.FC<MapDisplayProps> = ({
   ownship,
   entities,
+  systems,
   mapMode,
   zoomLevel,
   onZoom,
@@ -155,7 +158,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     startX: number,
     startY: number,
     type: 'MAP' | 'ENTITY',
-    entityId?: string
+    entityId?: string,
+    autoTriggered: boolean
   } | null>(null);
 
   const isDraggingRef = useRef(false);
@@ -325,13 +329,23 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const displayRotation = heading + rotation;
 
     const svgString = renderToStaticMarkup(
-      <div style={{
-        width: '48px', height: '48px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transform: `rotate(${displayRotation}deg)`,
-        transition: 'transform 0.1s linear'
-      }}>
+      <div 
+        className="entity-marker-container relative"
+        data-entity-id={entity.id}
+        style={{
+          width: '48px', height: '48px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transform: `rotate(${displayRotation}deg)`,
+          transition: 'transform 0.1s linear'
+        }}
+      >
         <div style={{ width: '100%', height: '100%' }}>{IconComponent}</div>
+        <div 
+          className="absolute -bottom-2 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap pointer-events-none"
+          style={{ transform: `rotate(${-displayRotation}deg)` }} // Keep text upright
+        >
+          {entity.label}
+        </div>
       </div>
     );
 
@@ -403,29 +417,37 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         />
 
         {/* Entities */}
-        {entities.map(entity => (
-          <Marker
-            key={entity.id}
-            position={[entity.position.lat, entity.position.lon]}
-            icon={createEntityIcon(entity, mapRotation, selectedEntityId === entity.id)}
-            eventHandlers={{
-              mousedown: (e) => {
-                L.DomEvent.stopPropagation(e as any);
-                const evt = e.originalEvent as any;
-                const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
-                const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
-                startInteraction(clientX, clientY, 'ENTITY', entity.id, 'touch');
-              },
-              mouseup: (e) => {
-                L.DomEvent.stopPropagation(e as any);
-                const evt = e.originalEvent as any;
-                const clientX = evt.clientX || (evt.changedTouches ? evt.changedTouches[0].clientX : 0);
-                const clientY = evt.clientY || (evt.changedTouches ? evt.changedTouches[0].clientY : 0);
-                endInteraction(clientX, clientY);
-              }
-            }}
-          />
-        ))}
+        {entities
+          .filter(entity => {
+            if (entity.type === EntityType.ENEMY) return systems.radar;
+            if (entity.type === EntityType.FRIENDLY) return systems.adsb;
+            if (entity.type === EntityType.AIRPORT) return true; // Always visible
+            if (entity.type === EntityType.WAYPOINT) return true; // Always visible
+            return true;
+          })
+          .map(entity => (
+            <Marker
+              key={entity.id}
+              position={[entity.position.lat, entity.position.lon]}
+              icon={createEntityIcon(entity, mapRotation, selectedEntityId === entity.id)}
+              eventHandlers={{
+                mousedown: (e) => {
+                  L.DomEvent.stopPropagation(e as any);
+                  const evt = e.originalEvent as any;
+                  const clientX = evt.clientX || (evt.touches ? evt.touches[0].clientX : 0);
+                  const clientY = evt.clientY || (evt.touches ? evt.touches[0].clientY : 0);
+                  startInteraction(clientX, clientY, 'ENTITY', entity.id, 'touch');
+                },
+                mouseup: (e) => {
+                  L.DomEvent.stopPropagation(e as any);
+                  const evt = e.originalEvent as any;
+                  const clientX = evt.clientX || (evt.changedTouches ? evt.changedTouches[0].clientX : 0);
+                  const clientY = evt.clientY || (evt.changedTouches ? evt.changedTouches[0].clientY : 0);
+                  endInteraction(clientX, clientY);
+                }
+              }}
+            />
+          ))}
 
       </MapContainer>
 

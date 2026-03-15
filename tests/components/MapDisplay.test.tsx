@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapDisplay } from '../../components/MapDisplay';
-import { Entity, PrototypeSettings, MapMode, SystemStatus } from '../../types';
+import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
 
 // Mock Framer motion completely since useGesture and react-spring have complex internal physics
 vi.mock('@use-gesture/react', () => ({
@@ -25,68 +25,66 @@ describe('MapDisplay Component', () => {
   const mockOwnship: Entity = {
     id: 'ownship',
     label: 'OWNSHIP',
-    type: 'FRIENDLY',
+    type: EntityType.OWNSHIP,
     position: { lat: 35.0, lon: -120.0 },
     heading: 0,
     speed: 250,
-    status: 'ACTIVE'
   };
 
   const mockEntities: Entity[] = [
     {
       id: 'target1',
       label: 'HOSTILE-1',
-      type: 'HOSTILE',
+      type: EntityType.ENEMY,
       position: { lat: 35.1, lon: -120.1 },
       heading: 90,
       speed: 400,
-      status: 'ACTIVE'
     },
     {
       id: 'friendly1',
       label: 'FRIEND-1',
-      type: 'FRIENDLY',
+      type: EntityType.FRIENDLY,
       position: { lat: 34.9, lon: -119.9 },
       heading: 180,
       speed: 300,
-      status: 'ACTIVE'
     }
   ];
 
   const defaultSettings: PrototypeSettings = {
-    physicsFriction: 0.9,
-    physicsTension: 170,
-    physicsMass: 1,
-    indicatorDelay: 200,
-    hapticStrength: 50,
-    visualFeedbackColor: '#10b981',
+    tapThreshold: 300,
+    indicatorDelay: 250,
+    longPressDuration: 1000,
+    jitterTolerance: 20,
+    uiScale: 1.0,
+    glowIntensity: 1.0,
     animationSpeed: 300,
-    theme: 'dark',
+    mapDim: 1.0,
+    hapticEnabled: true,
     ownshipPanelPos: 'BL',
-    ownshipPanelScale: 1,
-    ownshipPanelOpacity: 1,
+    ownshipPanelScale: 1.0,
+    ownshipPanelOpacity: 0.95,
     ownshipShowCoords: true,
-    ownshipShowDetails: true
+    ownshipShowDetails: true,
+    showSpeedVectors: true
   };
 
   const defaultProps = {
     entities: mockEntities,
     ownship: mockOwnship,
     mapMode: MapMode.NORTH_UP,
-    onEntitySelect: vi.fn(),
-    onEntityLongPress: vi.fn(),
+    onSelectEntity: vi.fn(),
     onMapDrop: vi.fn(),
-    onMapPan: vi.fn(),
-    onOpenCommandPalette: vi.fn(),
-    prototypeSettings: defaultSettings,
+    onPan: vi.fn(),
+    onZoom: vi.fn(),
+    gestureSettings: defaultSettings,
+    setGestureSettings: vi.fn(),
     selectedEntityId: null,
+    origin: { lat: 35, lon: -120 },
     systems: {
         radar: true,
         adsb: true,
         ais: true,
-        eots: true,
-        camera: false,
-        acoustic: false
+        eots: true
     } as SystemStatus,
     panOffset: { x: 0, y: 0 },
     zoomLevel: 1
@@ -135,5 +133,9 @@ describe('MapDisplay Component', () => {
     // Actually, looking at MapDisplay, "FRIENDLY" uses ADSB, "HOSTILE" uses RADAR
     expect(screen.queryByText('HOSTILE-1')).not.toBeInTheDocument();
     expect(screen.queryByText('FRIEND-1')).not.toBeInTheDocument();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 });
