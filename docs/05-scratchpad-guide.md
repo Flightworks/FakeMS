@@ -1,90 +1,134 @@
-# Smart Command Bar (Scratchpad)
+# 🧠 The Scratchpad (Smart Command Bar)
 
-The Smart Command Bar is a powerful "Heads-Down" tool that combines a calculator, a navigation computer, and a system controller into a single input field.
-
-## 🚀 How to Open
-*   **Keyboard**: Press `Ctrl + K`, `Space`, or `\`.
-*   **Touch**: Tap the Command icon in the interface.
+The **Scratchpad** is your primary "Heads-Down" interface. It is a unified command line, mission calculator, navigation computer, system controller, and document reader all rolled into a single, lightning-fast input field.
 
 ---
 
-## 🔢 Math & Calculations
-The command bar uses a robust math engine that understands degrees by default for trigonometric functions and uses **WGS84 spherical approximations** for all geographic calculations.
+## 🚀 Quick Access
 
-*   **Basic Math**: `10 * (2 + 3) / 5`
-*   **Shorthand Trig**: `cos45`, `sin30`, `tan10` (no parentheses needed!)
-*   **Full Functions**: `sqrt(144)`, `abs(-50)`, `log(100)`
-*   **Unit Conversions**: `100 knots to km/h`, `5000 ft to meters`, `20 degC to degF`
-*   **Copy Result**: Clicking a calculation result copies the value directly to your clipboard.
+| Method | Action |
+| :--- | :--- |
+| **Keyboard** | Press `Ctrl + K`, `Space`, or `\` |
+| **Touch** | Tap the **⌘** icon in the left sidebar |
+| **Dismiss** | Press `ESC` or click anywhere outside the bar |
 
 ---
 
-## 📍 Navigation & Coordinates
-Quickly jump to any location on the map using various coordinate formats. All mapping is performed using accurate Mercator projections.
+## 🔢 Calculator & Conversions
 
-*   **Standard DDMM**: `N45E006` or `S2330W04515`
-*   **Decimal Degrees**: `45.5, 6.5` or `-23.5, -45.25`
-*   **Format Hints**: If you start typing `N45`, the system will show you a hint for the full `NddmmEdddmm` format.
-*   **Coordinate Copying**: Once a valid coordinate is recognized, the palette will offer actions to either copy the processed coordinates or the original text input directly.
+The Scratchpad includes a robust math engine that operates in **degrees** by default and understands complex trigonometry and unit conversions.
+
+> **💡 Pro Tip:** Click any calculation result in the list to instantly copy the raw value to your clipboard.
+
+### Math Examples
+*No parentheses are required for basic trigonometry!*
+*   `10 * (2 + 3) / 5` ➔ **10**
+*   `cos45` ➔ **0.70710678** 
+*   `sin30` ➔ **0.5**
+*   `sqrt(144)` ➔ **12**
+*   `abs(-50)` ➔ **50**
+*   `log(100)` ➔ **2**
+
+### Unit Conversions
+Convert metrics on the fly using natural language:
+*   `100 knots to km/h` ➔ **185.2 km/h**
+*   `5000 ft to meters` ➔ **1524 m**
+*   `20 degC to degF` ➔ **68 °F**
+
+---
+
+## 📍 Coordinates & Navigation
+
+Jump to any exact location on the map. The system supports two major formats and provides raw data extraction options.
+
+| Format | Example | Result |
+| :--- | :--- | :--- |
+| **DDMM (Military)** | `N45E006` <br> `N4530E00630` <br> `S2330W04515` | 45°N, 6°E <br> 45°30'N, 6°30'E <br> 23°30'S, 45°15'W |
+| **Decimal Degrees** | `45.5, 6.5` <br> `-23.5, -45.25` | 45.5°N, 6.5°E <br> 23.5°S, 45.25°W |
+
+When a coordinate is recognized, you get three instant actions:
+1. **🚀 FLY TO** — Instantly centers the map on the coordinates.
+2. **📋 COPY POS** — Copies the normalized decimal degrees (e.g., `45.50000, 6.50000`).
+3. **📝 COPY TEXT** — Copies precisely what you typed.
+
+*(Typing incomplete coordinates like `N45` or `N4530E` will show helpful format hints!)*
 
 ---
 
 ## 🎯 Tactical Tools
-Perform complex tactical calculations and navigation tasks instantly.
 
-### Entity Projection
-Calculate a position relative to an existing track using geodesic math.
-*   **Format**: `[ENTITY_NAME] [BEARING]/[RANGE]`
-*   **Example**: `HOSTILE1 180/5` (Finds the spot 5 Nautical Miles South of HOSTILE1)
+Execute complex navigation and projection tasks against live map entities. 
+
+*(Note: Entity names are fuzzy-matched, so typing `hostle` or `h1` will usually match `HOSTILE 1`!)*
 
 ### Direct-To (DCT)
-Instantly center the map on a specific target or waypoint.
-*   **Example**: `DCT TGT 1` or `DCT BASE`
+Instantly lock the map onto a tracked entity or waypoint.
+*   `DCT HOSTILE 1`
+*   `DCT BRAVO`
+*   `DCT BASE`
 
-### ETA Calculations
-Calculate estimated time of arrival based on your current ground speed and destination.
-*   **Example**: `ETA ALPHA` (Shows the time and distance to reaching point ALPHA)
+### Entity Projection (Bearing & Range)
+Calculate an exact physical position relative to any entity.
+*   `HOSTILE 1 180/5` ➔ Point 5 NM directly South of HOSTILE 1.
+*   `G01 090/10` ➔ Point 10 NM directly East of G01.
+*   `180/5` ➔ Point 5 NM South of your **Ownship**.
+
+### Estimated Time of Arrival (ETA)
+Estimate your arrival time based on the distance to the target and your current speed.
+*   `ETA ALPHA`
+*   `ETA HOSTILE 2`
+
+*(The result will display your Estimated Time En Route (ETE) in minutes, along with the slant range in kilometers.)*
 
 ---
 
 ## 🕹️ System Controls
-Control your helicopter's systems using simple text commands.
 
-*   **Sensors**: `RADAR`, `ADSB`, `AIS`, `EOTS` (Electro-Optical Targeting System)
-*   **Map Modes**: `North Up`, `Heading Up`
-*   **Fuzzy Search**: Just start typing "Rad" to find the "RADAR" command – the parser is resilient to typos.
+Toggle your vehicle's sensors and map orientations instantly without hunting for buttons.
+
+| System | Command | Fuzzy Keywords to try |
+| :--- | :--- | :--- |
+| **Radar** | `RADAR` | `rdr`, `radar`, `sensor` |
+| **ADS-B** | `ADSB` | `adsb`, `transponder`, `ident` |
+| **AIS** | `AIS` | `ais`, `ship`, `marine` |
+| **Visual/Camera** | `EOTS` | `eots`, `camera`, `visual` |
+| **Map Mode** | `North Up` | `north`, `nup` |
+| **Map Mode** | `Heading Up` | `heading`, `hup` |
 
 ---
 
 ## 📄 Document Viewer
-Quickly search and read important mission files and documentation without leaving the map.
 
-*   **Fuzzy Search**: Type the name of a document (e.g., `optask`, `readme`) to find and open it.
-*   **Modal Reading**: The selected document securely opens in a high-contrast modal overlapping the UI.
-*   **Dual View**: Use the toggle button in the header to switch between the raw text (Code mode) and the rendered Markdown representation.
-*   **Keyboard Shortcuts**: Press `ESC` or click outside the toolbox to close the reader and return immediately to the map.
+Access critical mission documents directly over the tactical map.
+
+*   `optask` ➔ Opens **optask.md**
+*   `readme` ➔ Opens **README.md**
+*   `changelog` ➔ Opens **CHANGELOG.md**
+
+**Viewer Features:**
+*   Toggle between **Rendered Text** and **Raw Codeview** using the top-right button.
+*   Hit `ESC` or click the `✕` to immediately dismiss the document and return to the map.
 
 ---
 
-## 🖱️ Advanced Interactivity
+## 📝 Quick Notes
 
-### Swipe Right to Execute
-In the result list, swipe any item to the right (using a mouse or finger) to immediately trigger its primary action without needing to click.
+Any text entered that does not match a specific command is caught by the **SAVE** function. 
+*   **Try typing:** `Bridge damaged in sector B` 
+*   **Result:** `SAVE: "Bridge damaged in sector B"`
 
-### Copy & Paste Functionality
-The command palette is designed for rapid data extraction. You can securely interact with your clipboard via the following features:
-*   **Active Input**: Click the `Copy` icon next to the `ESC` key to copy the raw text you are currently typing.
-*   **Calculations**: Clicking any computation result in the suggestion list (e.g., `12 * 5 = 60`) will instantly copy the raw numerical result (`60`) to your clipboard.
-*   **Coordinates Options**: When typing a geographic coordinate, the system generates dedicated "COPY" actions. Selecting `COPY POS` will add the normalized decimal degrees to your clipboard (e.g. `45.50000, 6.25000`), whereas selecting `COPY TEXT` will copy the original typed string.
-*   **History Extraction**: Hover over any past request in your `History` feed to reveal a `Copy` icon on the far right. Clicking it extracts the item to your clipboard without re-executing it.
+Executing this will log the text into your local Scratchpad history.
 
-### Drag-to-Map
-Any item in the command palette can be **dragged and dropped** directly onto the tactical map. This allows you to "drop" coordinates or targets onto specific spatial locations.
+---
 
-### History & Navigation
-*   **Up/Down Arrows**: Navigate through your previous commands.
-*   **Suggestions**: Typing `sqr` will suggest `sqrt(` for you.
-*   **Smart Logging**: Your command history is saved locally and remains available between sessions. It features time-stamped execution (`HH:MM`) and accurately logs your executed context rather than incomplete typings.
+## ⚡ Advanced Interactivity
+
+*   **Autocompletion:** Typing an entity name (e.g., `HOSTILE`) suggests an autocomplete track. Selecting it adds `HOSTILE 1 ` to the input, allowing you to quickly append projection coordinates (`090/5`).
+*   **Swipe to Execute:** On touch devices (or using a mouse), swipe any result row to the **right** to immediately execute its primary action without tapping.
+*   **Drag-to-Map:** You can drag any result (like a coordinate or an entity) out of the Scratchpad and **drop it directly onto the tactical map**.
+*   **Persistent History:** Your command history is saved securely on your local device. 
+    *   Use the **Up/Down arrow keys** to cycle through past commands. 
+    *   Hover over any history item and click the **Copy icon** to extract it without running it again.
 
 ---
 [Back to Interface Guide](./03-interface-guide.md) | [Back to Home](../README.md)
