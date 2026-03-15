@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-15
+
+### Added
+- **Tactical Visibility Filtering**: Implemented context-aware entity filtering. Entities now automatically toggle visibility based on their sensor requirements (e.g., Enemy targets require Radar, Friendly targets require ADSB).
+- **Map Symbology Labels**: Added persistent high-contrast alphanumeric labels (e.g., "HOSTILE-1", "BASE") to tactical symbols. Labels use fixed rotation to remain upright during map maneuvers.
+- **Robust Test Infrastructure**: Integrated a complete Vitest and React Testing Library suite covering MapDisplay, CommandPalette, InfoPanels, and geographic utilities.
+- **Global UI Scaling System**: Established a consistent scale transformation across all tactical panels.
+
+### Changed
+- **Enhanced Map Component**: Refactored `MapDisplay` to support deep integration with the system status registry and improve interaction handling for touch devices.
+
+### Fixed
+- **State Closure Issues**: Resolved several minor mathematical drift issues in origin recalculation and panel positioning.
+- **TypeScript Compliance**: Fixed several latent type errors and initialized refs for better structural safety.
+
 ## [1.0.3] - 2026-03-08
 
 ### Added
