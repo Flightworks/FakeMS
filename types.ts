@@ -38,11 +38,14 @@ export interface Entity {
   metadata?: Record<string, string | number>;
 }
 
+export type NavaidFilterState = 'ON' | 'OFF' | 'GHOST';
+
 export interface SystemStatus {
   radar: boolean;
   adsb: boolean;
   ais: boolean;
   eots: boolean; // Electro-Optical Targeting System
+  navaid: NavaidFilterState;
 }
 
 export interface HistoryEntry {

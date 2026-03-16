@@ -328,15 +328,25 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const heading = entity.heading || 0;
     const displayRotation = heading + rotation;
 
+    // Apply ghosting to navaids if active
+    const isNavaid = entity.type === EntityType.AIRPORT || entity.type === EntityType.WAYPOINT;
+    const isGhosted = isNavaid && systems.navaid === 'GHOST';
+
+    const ghostStyle = isGhosted ? {
+      opacity: 0.3,
+      filter: 'grayscale(100%) brightness(1.5)'
+    } : {};
+
     const svgString = renderToStaticMarkup(
       <div 
-        className="entity-marker-container relative"
+        className={`entity-marker-container relative ${isGhosted ? 'transition-opacity duration-300' : ''}`}
         data-entity-id={entity.id}
         style={{
           width: '48px', height: '48px',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transform: `rotate(${displayRotation}deg)`,
-          transition: 'transform 0.1s linear'
+          transition: 'transform 0.1s linear',
+          ...ghostStyle
         }}
       >
         <div style={{ width: '100%', height: '100%' }}>{IconComponent}</div>
@@ -421,8 +431,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           .filter(entity => {
             if (entity.type === EntityType.ENEMY) return systems.radar;
             if (entity.type === EntityType.FRIENDLY) return systems.adsb;
-            if (entity.type === EntityType.AIRPORT) return true; // Always visible
-            if (entity.type === EntityType.WAYPOINT) return true; // Always visible
+            if (entity.type === EntityType.AIRPORT) return systems.navaid !== 'OFF';
+            if (entity.type === EntityType.WAYPOINT) return systems.navaid !== 'OFF';
             return true;
           })
           .map(entity => (

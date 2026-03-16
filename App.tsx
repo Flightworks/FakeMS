@@ -45,7 +45,7 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
-  const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
+  const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true, navaid: 'ON' });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
@@ -68,6 +68,16 @@ const App: React.FC = () => {
 
   const toggleSystem = (sys: keyof SystemStatus) => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
+  };
+
+  const cycleNavaidFilter = () => {
+    setSystems(prev => {
+      let nextState: 'ON' | 'OFF' | 'GHOST' = 'ON';
+      if (prev.navaid === 'ON') nextState = 'OFF';
+      else if (prev.navaid === 'OFF') nextState = 'GHOST';
+      else nextState = 'ON';
+      return { ...prev, navaid: nextState };
+    });
   };
 
   const panAnimationRef = useRef<number | undefined>(undefined);
@@ -246,7 +256,7 @@ const App: React.FC = () => {
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
-        <TopSystemBar systems={systems} />
+        <TopSystemBar systems={systems} cycleNavaidFilter={cycleNavaidFilter} />
       </div>
 
       <div style={{ transformOrigin: 'bottom left' }} className="absolute inset-0 pointer-events-none">
