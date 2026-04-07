@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos } from '../types';
+import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos, Entity } from '../types';
 import packageData from '../package.json';
 import changelogRaw from '../CHANGELOG.md?raw';
 import {
@@ -20,6 +20,7 @@ interface LeftSidebarProps {
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onOpenCommandPalette: () => void;
+  ownship: Entity;
 }
 
 interface QakOption {
@@ -95,7 +96,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings, onOpenCommandPalette
+  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -268,10 +269,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     lastTopRef.current = currentTopRem;
   }
 
+  const compassRotation = mapMode === MapMode.NORTH_UP ? 0 : -(ownship.heading || 0);
+
   return (
     <>
       <div className="absolute z-30 left-2 flex flex-col gap-2 items-start pointer-events-none" style={{ top: 'calc(5rem + env(safe-area-inset-top))' }}>
-        <SidebarButton label="" icon={isOpen ? X : Menu} onClick={onToggle} active={isOpen} />
+        <div className="flex flex-row gap-2">
+          <SidebarButton label="" icon={isOpen ? X : Menu} onClick={onToggle} active={isOpen} />
+          <button
+            onClick={() => setMapMode(mapMode === MapMode.NORTH_UP ? MapMode.HEADING_UP : MapMode.NORTH_UP)}
+            className="w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700"
+          >
+            <Navigation
+              size={24}
+              className="mb-0.5 text-slate-400"
+              style={{ transform: `rotate(${compassRotation}deg)`, transition: 'transform 0.3s ease-out' }}
+            />
+            <span className="text-[10px] font-bold uppercase leading-none mt-1">
+              {mapMode === MapMode.NORTH_UP ? 'NUP' : 'HUP'}
+            </span>
+          </button>
+        </div>
         <div className="relative flex flex-row items-start gap-2">
           <div className={`flex flex-col gap-2 p-1 bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-800/50 transition-all duration-300 ease-in-out origin-top-left ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}>
             {menuConfig.map(item => (

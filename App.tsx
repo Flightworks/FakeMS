@@ -228,6 +228,7 @@ const App: React.FC = () => {
           isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          ownship={ownship}
         />
       </div>
 
