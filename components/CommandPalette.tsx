@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Entity, SystemStatus, MapMode, HistoryEntry } from '../types';
+import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
 import { Search, ChevronRight, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
@@ -16,6 +16,8 @@ interface CommandPaletteProps {
   ownship: Entity;
   origin: { lat: number, lon: number };
   openDocument: (filename: string) => void;
+  ownshipNavMode: NavMode;
+  setOwnshipNavMode: (mode: NavMode) => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -29,7 +31,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   setMapMode,
   ownship,
   origin,
-  openDocument
+  openDocument,
+  ownshipNavMode,
+  setOwnshipNavMode
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -86,7 +90,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       toggleSystem,
       panTo: (x, y) => onPan({ x, y }),
       history, // Pass history to registry
-      openDocument
+      openDocument,
+      ownshipNavMode,
+      toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context);
   }, [query, entities, ownship, systems, mapMode, history]);

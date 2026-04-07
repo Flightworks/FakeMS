@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus } from '../types';
+import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
 import {
   MapPin, Crosshair, Navigation, Info, Trash2, CircleDashed,
   Zap, Shield, FileText, Scan, Eye, Slash, Target, Settings, Router,
   Lock, Anchor, Flag, Video, Wifi, Globe, Thermometer, Activity,
-  ArrowLeftRight, CornerUpRight, Flame, TrendingUp
+  ArrowLeftRight, CornerUpRight, Flame, TrendingUp, ChevronUp
 } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -35,13 +35,20 @@ interface MapDisplayProps {
   zoomLevel: number;
   onZoom: (z: number) => void;
   panOffset: { x: number, y: number };
-  onPan: (offset: { x: number, y: number }) => void;
+  onPan: (offset: { x: number, y: number }, newCenter?: {lat: number, lon: number}) => void;
   selectedEntityId: string | null;
   onSelectEntity: (id: string | null) => void;
   origin: { lat: number; lon: number };
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onMapDrop?: (e: React.DragEvent) => void;
+  stabMode: StabMode;
+  setStabMode: (m: StabMode) => void;
+  frozenHeading: number | null;
+  setFrozenHeading: (h: number | null) => void;
+  onResetStab: () => void;
+  setMapMode: (m: MapMode) => void;
+  groundCenter: {lat: number, lon: number} | null;
 }
 
 
@@ -91,10 +98,11 @@ const MapController: React.FC<{
   center: LatLngExpression,
   zoom: number,
   rotation: number,
+  onMapMoveStart: () => void,
   onMapMove: (center: L.LatLng) => void,
   onMapZoom: (zoom: number) => void,
   onMapClickBlockCheck: () => boolean
-}> = ({ center, zoom, rotation, onMapMove, onMapZoom, onMapClickBlockCheck }) => {
+}> = ({ center, zoom, rotation, onMapMoveStart, onMapMove, onMapZoom, onMapClickBlockCheck }) => {
   const map = useMap();
   const mapContainer = map.getContainer();
   const isInteracting = useRef(false);
@@ -113,7 +121,7 @@ const MapController: React.FC<{
   }, [rotation, mapContainer, map]);
 
   useMapEvents({
-    movestart: () => { isInteracting.current = true; },
+    movestart: () => { isInteracting.current = true; onMapMoveStart(); },
     moveend: () => {
       isInteracting.current = false;
       onMapMove(map.getCenter());
@@ -147,10 +155,86 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   origin,
   gestureSettings,
   setGestureSettings,
-  onMapDrop
+  onMapDrop,
+  stabMode,
+  setStabMode,
+  frozenHeading,
+  setFrozenHeading,
+  onResetStab,
+  setMapMode,
+  groundCenter
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
+  const [ghostData, setGhostData] = useState<{x: number, y: number, angle: number} | null>(null);
+
+  // Ghost Tracker inner component
+  const GhostTracker: React.FC = () => {
+    const map = useMap();
+    useEffect(() => {
+      const handler = () => {
+        if (stabMode !== StabMode.GND && (!gestureSettings.flexibleHelicoStab || stabMode !== StabMode.HELICO)) { 
+           setGhostData(null); 
+           return; 
+        }
+        const pt = map.latLngToContainerPoint([ownship.position.lat, ownship.position.lon]);
+        const size = map.getSize();
+        const cx = size.x / 2;
+        const cy = size.y / 2;
+
+        let lx = pt.x - cx;
+        let ly = pt.y - cy;
+
+        const rad = mapRotation * Math.PI / 180;
+        const cosR = Math.cos(rad);
+        const sinR = Math.sin(rad);
+        
+        const sx = lx * cosR - ly * sinR;
+        const sy = lx * sinR + ly * cosR;
+
+        const padding = 30; 
+        const screenHalfW = window.innerWidth / 2 - padding;
+        const screenHalfH = window.innerHeight / 2 - padding;
+
+        const isOutside = Math.abs(sx) > screenHalfW || Math.abs(sy) > screenHalfH;
+
+        if (!isOutside) {
+           setGhostData(null);
+           return;
+        }
+
+        if (stabMode === StabMode.HELICO && gestureSettings.flexibleHelicoStab) {
+            setStabMode(StabMode.GND);
+            const c = map.getCenter();
+            onPan(panOffset, { lat: c.lat, lon: c.lng });
+            if (mapMode === MapMode.HEADING_UP) {
+               setFrozenHeading(ownship.heading || 0);
+            }
+        }
+
+        let rx = sx;
+        let ry = sy;
+        if (Math.abs(sx) * screenHalfH > Math.abs(sy) * screenHalfW) {
+            rx = Math.sign(sx) * screenHalfW;
+            ry = sy * (screenHalfW / Math.abs(sx));
+        } else {
+            ry = Math.sign(sy) * screenHalfH;
+            rx = sx * (screenHalfH / Math.abs(sy));
+        }
+
+        const angleDeg = Math.atan2(sy, sx) * 180 / Math.PI + 90;
+
+        setGhostData({ x: (window.innerWidth / 2) + rx, y: (window.innerHeight / 2) + ry, angle: angleDeg });
+      };
+
+      map.on('move', handler);
+      map.on('zoom', handler);
+      handler();
+
+      return () => { map.off('move', handler); map.off('zoom', handler); };
+    }, [map, ownship.position.lat, ownship.position.lon, stabMode, mapRotation]); // Re-run when these change
+    return null;
+  };
 
   // Interaction State
   const interactionRef = useRef<{
@@ -169,17 +253,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const hldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Rotation
-  const mapRotation = mapMode === MapMode.HEADING_UP ? -(ownship.heading || 0) : 0;
+  const mapRotation = mapMode === MapMode.HEADING_UP 
+    ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : ownship.heading || 0) 
+    : 0;
 
   // Coordinates
-  // Note: panOffset is still kept in meters for smooth relative UI panning.
-  // We compute the centerLatLon by offsetting the ownship's true lat/lon by panOffset meters.
   const centerLatLon = useMemo(() => {
+    if (stabMode === StabMode.GND && groundCenter) {
+      return [groundCenter.lat, groundCenter.lon] as [number, number];
+    }
     // A quick spherical offset for panning
     const dLat = (panOffset.y / EARTH_RADIUS) * (180 / Math.PI);
     const dLon = (panOffset.x / (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180))) * (180 / Math.PI);
     return [ownship.position.lat + dLat, ownship.position.lon + dLon] as [number, number];
-  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y]);
+  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y, stabMode, groundCenter]);
 
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
@@ -189,7 +276,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const dLon = newCenter.lng - ownship.position.lon;
     const newPanY = dLat * (Math.PI / 180) * EARTH_RADIUS;
     const newPanX = dLon * (Math.PI / 180) * (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180));
-    onPan({ x: newPanX, y: newPanY });
+    onPan({ x: newPanX, y: newPanY }, { lat: newCenter.lat, lon: newCenter.lng });
   };
 
   const handleMapZoom = (newZoom: number) => {
@@ -372,7 +459,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       <MapContainer
         center={centerLatLon}
         zoom={leafletZoom}
-        className="h-full w-full z-0"
+        className="absolute -inset-[75%] z-0"
         zoomControl={false}
         attributionControl={false}
         zoomAnimation={true}
@@ -387,10 +474,23 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           center={centerLatLon}
           zoom={leafletZoom}
           rotation={mapRotation}
+          onMapMoveStart={() => {
+            if (stabMode === StabMode.HELICO && gestureSettings.flexibleHelicoStab) {
+               return; // Skip GND force, allow panning while in HELICO!
+            }
+            if (stabMode !== StabMode.GND) {
+              setStabMode(StabMode.GND);
+              if (mapMode === MapMode.HEADING_UP) {
+                setFrozenHeading(ownship.heading || 0);
+              }
+            }
+          }}
           onMapMove={handleMapMove}
           onMapZoom={handleMapZoom}
           onMapClickBlockCheck={checkMapClickBlock}
         />
+
+        <GhostTracker />
 
         {/* Ownship */}
         <Marker
@@ -450,6 +550,24 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           ))}
 
       </MapContainer>
+
+      {/* Map orientation and stab are now controlled via the Left Sidebar */}
+
+      {ghostData && (
+        <div 
+          className="absolute z-20 pointer-events-none"
+          style={{ 
+            left: ghostData.x, 
+            top: ghostData.y,
+            transform: `translate(-50%, -50%) rotate(${ghostData.angle}deg)`, 
+            transition: 'all 0.1s linear'
+          }}
+        >
+          <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/50 backdrop-blur-sm">
+             <ChevronUp size={24} className="text-amber-400" />
+          </div>
+        </div>
+      )}
 
       {/* Overlays */}
       {longPressIndicator && <LongPressRing x={longPressIndicator.x} y={longPressIndicator.y} duration={gestureSettings.longPressDuration - gestureSettings.indicatorDelay} />}

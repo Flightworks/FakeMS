@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { OwnshipPanel, TargetPanel } from '../../components/InfoPanels';
-import { Entity, PrototypeSettings } from '../../types';
+import { Entity, PrototypeSettings, EntityType } from '../../types';
 
 // Mock Lucide icons
 vi.mock('lucide-react', () => ({
@@ -18,32 +18,32 @@ describe('InfoPanels Components', () => {
   const mockOwnship: Entity = {
     id: 'ownship1',
     label: 'OWNSHIP',
-    type: 'FRIENDLY',
+    type: EntityType.FRIENDLY,
     position: { lat: 35.0, lon: -120.0 },
     heading: 45,
-    speed: 250,
-    status: 'ACTIVE'
+    speed: 250
   };
 
   const mockTarget: Entity = {
     id: 'target1',
     label: 'HOSTILE-1',
-    type: 'HOSTILE',
+    type: EntityType.ENEMY,
     position: { lat: 35.1, lon: -120.1 },
     heading: 180,
-    speed: 400,
-    status: 'ENGAGED'
+    speed: 400
   };
 
   const defaultSettings: PrototypeSettings = {
-    physicsFriction: 0.9,
-    physicsTension: 170,
-    physicsMass: 1,
+    tapThreshold: 300,
     indicatorDelay: 200,
-    hapticStrength: 50,
-    visualFeedbackColor: '#10b981',
+    longPressDuration: 1000,
+    jitterTolerance: 20,
+    uiScale: 1.0,
+    glowIntensity: 1.0,
     animationSpeed: 300,
-    theme: 'dark',
+    mapDim: 1.0,
+    hapticEnabled: true,
+    showSpeedVectors: true,
     ownshipPanelPos: 'BL',
     ownshipPanelScale: 1,
     ownshipPanelOpacity: 1,

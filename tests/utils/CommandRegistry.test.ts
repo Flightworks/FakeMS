@@ -1,16 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getCommands, CommandContext } from '../../utils/CommandRegistry';
-import { Entity, MapMode } from '../../types';
+import { Entity, MapMode, EntityType, NavMode } from '../../types';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
     id: 'ownship',
     label: 'OWNSHIP',
-    type: 'FRIENDLY',
+    type: EntityType.FRIENDLY,
     position: { lat: 0, lon: 0 },
     heading: 0,
-    speed: 100,
-    status: 'ACTIVE'
+    speed: 100
   };
 
   const mockEntities: Entity[] = [
@@ -18,11 +17,10 @@ describe('CommandRegistry', () => {
     {
       id: 'target1',
       label: 'TARGET1',
-      type: 'HOSTILE',
+      type: EntityType.ENEMY,
       position: { lat: 10, lon: 10 },
       heading: 90,
-      speed: 300,
-      status: 'ACTIVE'
+      speed: 300
     }
   ];
 
@@ -33,15 +31,15 @@ describe('CommandRegistry', () => {
       radar: false,
       adsb: false,
       ais: false,
-      eots: false,
-      camera: false,
-      acoustic: false
+      eots: false
     },
     setMapMode: vi.fn(),
     toggleSystem: vi.fn(),
     panTo: vi.fn(),
     history: [],
-    openDocument: vi.fn()
+    openDocument: vi.fn(),
+    ownshipNavMode: NavMode.REAL,
+    toggleNavMode: vi.fn()
   };
 
   describe('getCommands', () => {

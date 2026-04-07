@@ -1,4 +1,4 @@
-import { Entity, SystemStatus, MapMode, HistoryEntry } from '../types';
+import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
@@ -25,6 +25,8 @@ export interface CommandContext {
     panTo: (x: number, y: number) => void;
     history: HistoryEntry[]; // Added History to Context
     openDocument: (filename: string) => void;
+    ownshipNavMode: NavMode;
+    toggleNavMode: () => void;
 }
 
 export interface CommandOption {
@@ -438,6 +440,67 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     icon: Calculator,
                     action: () => { },
                     keywords: ['eta'],
+                    isPreview: true
+                });
+            }
+        }
+
+        // 4. Navigation Mode Toggling
+        const navRealMatch = q.match(/^nav\s+real$/i);
+        if (navRealMatch) {
+            commands.push({
+                id: 'nav-mode-real',
+                label: 'NAV: REAL (GPS)',
+                subLabel: 'Live Ownship Tracking',
+                icon: Navigation,
+                action: () => { if (context.ownshipNavMode !== NavMode.REAL) context.toggleNavMode(); },
+                keywords: ['nav', 'real', 'gps'],
+                historyValue: 'NAV REAL'
+            });
+        }
+        const navSimMatch = q.match(/^nav\s+sim$/i);
+        if (navSimMatch) {
+            commands.push({
+                id: 'nav-mode-sim',
+                label: 'NAV: SIM (DR)',
+                subLabel: 'Simulator / Dead Reckoning',
+                icon: Compass,
+                action: () => { if (context.ownshipNavMode !== NavMode.SIM) context.toggleNavMode(); },
+                keywords: ['nav', 'sim', 'dr', 'simulation'],
+                historyValue: 'NAV SIM'
+            });
+        }
+
+        // 5. Kinematic Controls (HDG/SPD) for SIM Mode
+        const hdgMatch = q.match(/^hdg\s+(\d+)$/i);
+        if (hdgMatch) {
+            const targetHdg = parseInt(hdgMatch[1]);
+            if (!isNaN(targetHdg)) {
+                commands.push({
+                    id: 'set-target-hdg',
+                    label: `SET HDG: ${targetHdg}°`,
+                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
+                    icon: Compass,
+                    action: () => {
+                        // Action handled by event dispatch or specific context updater in further refactor
+                    },
+                    keywords: ['hdg', 'heading', 'steer'],
+                    isPreview: true
+                });
+            }
+        }
+
+        const spdMatch = q.match(/^spd\s+(\d+)$/i);
+        if (spdMatch) {
+            const targetSpd = parseInt(spdMatch[1]);
+            if (!isNaN(targetSpd)) {
+                commands.push({
+                    id: 'set-target-spd',
+                    label: `SET SPD: ${targetSpd} KTS`,
+                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
+                    icon: Zap,
+                    action: () => { },
+                    keywords: ['spd', 'speed', 'throttle'],
                     isPreview: true
                 });
             }

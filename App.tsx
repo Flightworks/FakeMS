@@ -6,7 +6,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
 import { DocumentViewer } from './components/DocumentViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
-import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings } from './types';
+import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
@@ -36,8 +36,13 @@ const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(null);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
 
-  // Use the Simulation Engine to manage entities instead of bare useState
-  const { entities, setEntities } = useSimulation(INITIAL_ENTITIES);
+  const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);
+  const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
+  const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
+  const [groundCenter, setGroundCenter] = useState<{lat: number, lon: number} | null>(null);
+
+  const { entities, setEntities } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
+
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(0.05);
@@ -63,7 +68,8 @@ const App: React.FC = () => {
     ownshipPanelOpacity: 0.95,
     ownshipShowCoords: true,
     ownshipShowDetails: true,
-    showSpeedVectors: true
+    showSpeedVectors: true,
+    flexibleHelicoStab: true
   });
 
   const toggleSystem = (sys: keyof SystemStatus) => {
@@ -86,10 +92,14 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [commandPaletteOpen]);
 
+  const navModeRef = useRef(ownshipNavMode);
+  useEffect(() => { navModeRef.current = ownshipNavMode; }, [ownshipNavMode]);
+
   useEffect(() => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          if (navModeRef.current === NavMode.SIM) return;
           const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
           setOrigin(loc);
           setOwnship(prev => ({ ...prev, position: loc }));
@@ -118,27 +128,43 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleManualPan = React.useCallback((newOffset: { x: number, y: number }) => {
+  const handleManualPan = React.useCallback((newOffset: { x: number, y: number }, newCenterLatLon?: { lat: number, lon: number }) => {
     // console.log('App: handleManualPan', newOffset);
     if (panAnimationRef.current) {
       cancelAnimationFrame(panAnimationRef.current);
       panAnimationRef.current = undefined;
     }
     setPanOffset(newOffset);
+    if (newCenterLatLon) {
+      setGroundCenter(newCenterLatLon);
+    }
   }, []);
 
   const centerOnOwnship = React.useCallback(() => {
     // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
 
-    const start = { ...panOffset };
+    // If we are coming from GND stab, compute the current panOffset based on the fixed groundCenter and current ownship
+    let start = { ...panOffset };
+    if (stabMode === StabMode.GND && groundCenter) {
+      const dLat = groundCenter.lat - ownship.position.lat;
+      const dLon = groundCenter.lon - ownship.position.lon;
+      const panY = dLat * (Math.PI / 180) * 6378137;
+      const panX = dLon * (Math.PI / 180) * (6378137 * Math.cos(ownship.position.lat * Math.PI / 180));
+      start = { x: panX, y: panY };
+    }
+
     const end = { x: 0, y: 0 };
     const duration = prototypeSettings.animationSpeed;
 
     if (duration <= 0 || (Math.abs(start.x) < 0.1 && Math.abs(start.y) < 0.1)) {
       setPanOffset(end);
+      setStabMode(StabMode.HELICO);
       return;
     }
+
+    // Immediately switch to HELICO so the animation runs relative to ownship
+    setStabMode(StabMode.HELICO);
 
     const startTime = performance.now();
     const animate = (time: number) => {
@@ -161,11 +187,16 @@ const App: React.FC = () => {
       }
     };
     panAnimationRef.current = requestAnimationFrame(animate);
-  }, [panOffset, prototypeSettings.animationSpeed]);
+  }, [panOffset, prototypeSettings.animationSpeed, stabMode, groundCenter, ownship.position.lat, ownship.position.lon]);
 
   useEffect(() => {
     centerOnOwnship();
   }, [mapMode]);
+
+  const handleResetStab = React.useCallback(() => {
+    setFrozenHeading(null);
+    centerOnOwnship(); // This now sets stabMode to HELICO and animates
+  }, [centerOnOwnship]);
 
   const handleDropCommand = (e: React.DragEvent) => {
     try {
@@ -183,7 +214,9 @@ const App: React.FC = () => {
             // for now fallback to standard panning via offset
             handleManualPan({ x: lat, y: lon })
           },
-          openDocument: setOpenDoc
+          openDocument: setOpenDoc,
+          ownshipNavMode,
+          toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
         };
 
         const cmds = getCommands(data.query, context);
@@ -218,6 +251,13 @@ const App: React.FC = () => {
             origin={origin} gestureSettings={prototypeSettings}
             setGestureSettings={setPrototypeSettings}
             onMapDrop={handleDropCommand}
+            stabMode={stabMode}
+            setStabMode={setStabMode}
+            frozenHeading={frozenHeading}
+            setFrozenHeading={setFrozenHeading}
+            onResetStab={handleResetStab}
+            setMapMode={setMapMode}
+            groundCenter={groundCenter}
           />
         )}
       </div>
@@ -229,6 +269,9 @@ const App: React.FC = () => {
           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           ownship={ownship}
+          stabMode={stabMode}
+          setStabMode={setStabMode}
+          onResetStab={handleResetStab}
         />
       </div>
 
@@ -244,10 +287,12 @@ const App: React.FC = () => {
         ownship={ownship}
         origin={origin || DEFAULT_ORIGIN}
         openDocument={setOpenDoc}
+        ownshipNavMode={ownshipNavMode}
+        setOwnshipNavMode={setOwnshipNavMode}
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
-        <TopSystemBar systems={systems} />
+        <TopSystemBar systems={systems} navMode={ownshipNavMode} setNavMode={setOwnshipNavMode} ownship={ownship} setOwnship={setOwnship} />
       </div>
 
       <div style={{ transformOrigin: 'bottom left' }} className="absolute inset-0 pointer-events-none">
@@ -258,15 +303,7 @@ const App: React.FC = () => {
         <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
       </div>
 
-      {(Math.abs(panOffset.x) > 5 || Math.abs(panOffset.y) > 5) && (
-        <button
-          onClick={centerOnOwnship}
-          className="absolute bottom-28 right-4 z-30 bg-emerald-900/80 text-emerald-400 border border-emerald-600 p-3 rounded-full shadow-lg backdrop-blur hover:bg-emerald-800 transition-all active:scale-95 pointer-events-auto"
-          style={{ transform: `scale(${prototypeSettings.uiScale})` }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" fill="currentColor" /><line x1="12" y1="2" x2="12" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /></svg>
-        </button>
-      )}
+
 
       {openDoc && (
         <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />

@@ -1,21 +1,23 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TopSystemBar } from '../../components/TopSystemBar';
-import { SystemStatus } from '../../types';
+import { SystemStatus, NavMode } from '../../types';
 
 describe('TopSystemBar Component', () => {
   const mockSystems: SystemStatus = {
     radar: true,
     adsb: false,
     ais: false,
-    eots: false,
-    camera: false,
-    acoustic: false
+    eots: false
   };
 
   const mockProps = {
     systems: mockSystems,
+    navMode: NavMode.REAL,
+    setNavMode: vi.fn(),
+    ownship: { id: 'ownship', label: 'OWNSHIP', position: { lat: 0, lon: 0 }, heading: 0, speed: 0, type: 'FRIENDLY' as any },
+    setOwnship: vi.fn(),
   };
 
   it('renders system statuses correctly', () => {

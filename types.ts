@@ -3,6 +3,16 @@ export enum MapMode {
   HEADING_UP = 'HEADING_UP',
 }
 
+export enum StabMode {
+  HELICO = 'HELICO',
+  GND = 'GND',
+}
+
+export enum NavMode {
+  REAL = 'REAL',
+  SIM = 'SIM',
+}
+
 export enum EntityType {
   OWNSHIP = 'OWNSHIP',
   WAYPOINT = 'WAYPOINT',
@@ -72,6 +82,7 @@ export interface PrototypeSettings {
   ownshipShowDetails: boolean; // Declutter toggle for Speed/Alt/Hdg
   // Track Management
   showSpeedVectors: boolean;   // Velocity leaders for entities
+  flexibleHelicoStab: boolean; // Keep HELICO when panning until ownship leaves view
 }
 
 export interface AppState {

@@ -87,7 +87,13 @@ describe('MapDisplay Component', () => {
         eots: true
     } as SystemStatus,
     panOffset: { x: 0, y: 0 },
-    zoomLevel: 1
+    zoomLevel: 1,
+    stabMode: 'HELICO' as any,
+    setStabMode: vi.fn(),
+    frozenHeading: null,
+    setFrozenHeading: vi.fn(),
+    onResetStab: vi.fn(),
+    setMapMode: vi.fn()
   };
 
   it('renders entities on the map', () => {
@@ -121,9 +127,7 @@ describe('MapDisplay Component', () => {
             radar: false,
             adsb: false,
             ais: false,
-            eots: false,
-            camera: false,
-            acoustic: false
+            eots: false
         }
     };
 

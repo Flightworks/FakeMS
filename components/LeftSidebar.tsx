@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos, Entity } from '../types';
+import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos, Entity, StabMode } from '../types';
 import packageData from '../package.json';
 import changelogRaw from '../CHANGELOG.md?raw';
 import {
-  Menu, Navigation, Map as MapIcon, Layers,
+  Menu, ArrowUp, Map as MapIcon, Layers, Crosshair,
   ScanLine, Wrench, Search, Compass, X, Globe, Video, Eye, Target,
   Fingerprint, Timer, Move, MousePointer2, Maximize, Palette, Zap, Smartphone,
   BookOpen, Layout, MoreHorizontal, MapPin, TrendingUp, Info
@@ -21,6 +21,9 @@ interface LeftSidebarProps {
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onOpenCommandPalette: () => void;
   ownship: Entity;
+  stabMode: StabMode;
+  setStabMode: (m: StabMode) => void;
+  onResetStab: () => void;
 }
 
 interface QakOption {
@@ -96,7 +99,8 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship
+  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
+  stabMode, setStabMode, onResetStab
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -192,12 +196,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     {
       id: 'stab',
       label: 'STAB',
-      subLabel: mapMode === MapMode.NORTH_UP ? 'NUP' : 'HUP',
-      icon: mapMode === MapMode.NORTH_UP ? Navigation : Compass,
-      active: activeCategoryId === 'stab',
+      subLabel: stabMode === StabMode.GND ? 'GND' : 'HELICO',
+      icon: Crosshair,
+      active: activeCategoryId === 'stab' || stabMode === StabMode.GND,
+      action: () => { if (stabMode === StabMode.GND) onResetStab(); },
+      description: "Recenter and anchor the tactical map to the ownship.",
       children: [
-        { id: 'nup', label: 'NUP', subLabel: 'MODE', icon: Navigation, active: mapMode === MapMode.NORTH_UP, action: () => setMapMode(MapMode.NORTH_UP) },
-        { id: 'hup', label: 'HUP', subLabel: 'MODE', icon: Compass, active: mapMode === MapMode.HEADING_UP, action: () => setMapMode(MapMode.HEADING_UP) }
+        { id: 'st-gnd', label: 'GND', icon: MapPin, active: stabMode === StabMode.GND, action: () => { setStabMode(StabMode.GND); onResetStab(); }, description: "Ground stabilized mode. Detaches from ownship." },
+        { id: 'st-heli', label: 'HELICO', icon: Target, active: stabMode === StabMode.HELICO, action: () => { setStabMode(StabMode.HELICO); onResetStab(); }, description: "Anchors to the ownship." },
+        { id: 'st-flex', label: 'FLEX', subLabel: gestureSettings.flexibleHelicoStab ? 'ON' : 'OFF', icon: Move, active: gestureSettings.flexibleHelicoStab, action: () => setGestureSettings(s => ({ ...s, flexibleHelicoStab: !s.flexibleHelicoStab })), description: "If ON, panning maintains HELICO with offset until ownship is out of view." }
       ]
     },
     {
@@ -278,16 +285,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           <SidebarButton label="" icon={isOpen ? X : Menu} onClick={onToggle} active={isOpen} />
           <button
             onClick={() => setMapMode(mapMode === MapMode.NORTH_UP ? MapMode.HEADING_UP : MapMode.NORTH_UP)}
-            className="w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700"
+            className="w-16 h-16 flex items-center justify-center rounded-full border-2 border-slate-600 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto bg-slate-800/90 backdrop-blur-md text-slate-300 hover:bg-slate-700/90"
+            title={`Active: ${mapMode === MapMode.NORTH_UP ? 'NORTH UP' : 'HEADING UP'}`}
           >
-            <Navigation
-              size={24}
-              className="mb-0.5 text-slate-400"
-              style={{ transform: `rotate(${compassRotation}deg)`, transition: 'transform 0.3s ease-out' }}
-            />
-            <span className="text-[10px] font-bold uppercase leading-none mt-1">
-              {mapMode === MapMode.NORTH_UP ? 'NUP' : 'HUP'}
-            </span>
+            <div className="relative flex items-center justify-center w-full h-full">
+              <ArrowUp
+                size={32}
+                className="text-slate-200"
+                style={{ transform: `rotate(${compassRotation}deg)`, transition: 'transform 0.3s ease-out' }}
+              />
+            </div>
           </button>
         </div>
         <div className="relative flex flex-row items-start gap-2">

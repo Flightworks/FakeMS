@@ -2,17 +2,16 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { CommandPalette } from '../../components/CommandPalette';
-import { Entity } from '../../types';
+import { Entity, EntityType, MapMode, NavMode } from '../../types';
 
 describe('CommandPalette Component', () => {
   const mockOwnship: Entity = {
     id: 'ownship',
     label: 'OWNSHIP',
-    type: 'FRIENDLY',
+    type: EntityType.FRIENDLY,
     position: { lat: 0, lon: 0 },
     heading: 0,
-    speed: 0,
-    status: 'ACTIVE'
+    speed: 0
   };
 
   const mockEntities: Entity[] = [
@@ -20,11 +19,10 @@ describe('CommandPalette Component', () => {
     {
       id: 'target1',
       label: 'TARGET1',
-      type: 'HOSTILE',
+      type: EntityType.ENEMY,
       position: { lat: 10, lon: 10 },
       heading: 90,
-      speed: 300,
-      status: 'ACTIVE'
+      speed: 300
     }
   ];
 
@@ -35,16 +33,14 @@ describe('CommandPalette Component', () => {
       radar: false,
       adsb: false,
       ais: false,
-      eots: false,
-      camera: false,
-      acoustic: false
+      eots: false
     },
     setMapMode: vi.fn(),
     toggleSystem: vi.fn(),
     panTo: vi.fn(),
     history: [],
     openDocument: vi.fn(),
-    mapMode: 0
+    mapMode: MapMode.NORTH_UP
   };
 
   const mockProps = {
@@ -58,7 +54,10 @@ describe('CommandPalette Component', () => {
     setMapMode: mockContext.setMapMode,
     ownship: mockContext.ownship,
     origin: { lat: 0, lon: 0 },
-    openDocument: mockContext.openDocument
+    openDocument: mockContext.openDocument,
+    ownshipNavMode: NavMode.REAL,
+    toggleNavMode: vi.fn(),
+    setOwnshipNavMode: vi.fn(),
   };
 
   it('renders input field when open', () => {
