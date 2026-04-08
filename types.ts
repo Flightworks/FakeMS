@@ -82,7 +82,10 @@ export interface PrototypeSettings {
   ownshipShowDetails: boolean; // Declutter toggle for Speed/Alt/Hdg
   // Track Management
   showSpeedVectors: boolean;   // Velocity leaders for entities
-  flexibleHelicoStab: boolean; // Keep HELICO when panning until ownship leaves view
+  stabAutoGndOnPan: boolean;
+  stabFreezeHeadingDrop: boolean;
+  stabSnapRecenter: boolean;
+  stabRecenterOnOrientSwitch: boolean;
 }
 
 export interface AppState {

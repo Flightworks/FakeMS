@@ -173,7 +173,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const map = useMap();
     useEffect(() => {
       const handler = () => {
-        if (stabMode !== StabMode.GND && (!gestureSettings.flexibleHelicoStab || stabMode !== StabMode.HELICO)) { 
+        if (stabMode !== StabMode.GND && (gestureSettings.stabAutoGndOnPan || stabMode !== StabMode.HELICO)) { 
            setGhostData(null); 
            return; 
         }
@@ -203,11 +203,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
            return;
         }
 
-        if (stabMode === StabMode.HELICO && gestureSettings.flexibleHelicoStab) {
+        if (stabMode === StabMode.HELICO && !gestureSettings.stabAutoGndOnPan) {
             setStabMode(StabMode.GND);
             const c = map.getCenter();
             onPan(panOffset, { lat: c.lat, lon: c.lng });
-            if (mapMode === MapMode.HEADING_UP) {
+            if (mapMode === MapMode.HEADING_UP && gestureSettings.stabFreezeHeadingDrop) {
                setFrozenHeading(ownship.heading || 0);
             }
         }
@@ -417,19 +417,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
     const svgString = renderToStaticMarkup(
       <div 
-        className="entity-marker-container relative"
+        className="entity-marker-container relative flex flex-col items-center justify-center pointer-events-none"
         data-entity-id={entity.id}
         style={{
           width: '48px', height: '48px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transform: `rotate(${displayRotation}deg)`,
-          transition: 'transform 0.1s linear'
         }}
       >
-        <div style={{ width: '100%', height: '100%' }}>{IconComponent}</div>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-auto" style={{ 
+          transform: `rotate(${displayRotation}deg)`, 
+          transition: 'transform 0.1s linear'
+        }}>
+          <div style={{ width: '100%', height: '100%' }}>{IconComponent}</div>
+        </div>
         <div 
-          className="absolute -bottom-2 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap pointer-events-none"
-          style={{ transform: `rotate(${-displayRotation}deg)` }} // Keep text upright
+          className="absolute -bottom-4 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap"
         >
           {entity.label}
         </div>
@@ -475,12 +476,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           zoom={leafletZoom}
           rotation={mapRotation}
           onMapMoveStart={() => {
-            if (stabMode === StabMode.HELICO && gestureSettings.flexibleHelicoStab) {
+            if (stabMode === StabMode.HELICO && !gestureSettings.stabAutoGndOnPan) {
                return; // Skip GND force, allow panning while in HELICO!
             }
             if (stabMode !== StabMode.GND) {
               setStabMode(StabMode.GND);
-              if (mapMode === MapMode.HEADING_UP) {
+              if (mapMode === MapMode.HEADING_UP && gestureSettings.stabFreezeHeadingDrop) {
                 setFrozenHeading(ownship.heading || 0);
               }
             }

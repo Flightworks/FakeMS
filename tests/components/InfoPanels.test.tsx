@@ -48,7 +48,11 @@ describe('InfoPanels Components', () => {
     ownshipPanelScale: 1,
     ownshipPanelOpacity: 1,
     ownshipShowCoords: true,
-    ownshipShowDetails: true
+    ownshipShowDetails: true,
+    stabAutoGndOnPan: false,
+    stabFreezeHeadingDrop: true,
+    stabSnapRecenter: false,
+    stabRecenterOnOrientSwitch: true
   };
 
   describe('OwnshipPanel', () => {

@@ -194,57 +194,37 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   const menuConfig: QakOption[] = [
     {
-      id: 'stab',
-      label: 'STAB',
+      id: 'stabln',
+      label: 'STABLN',
       subLabel: stabMode === StabMode.GND ? 'GND' : 'HELICO',
       icon: Crosshair,
-      active: activeCategoryId === 'stab' || stabMode === StabMode.GND,
+      active: activeCategoryId === 'stabln',
       action: () => { if (stabMode === StabMode.GND) onResetStab(); },
-      description: "Recenter and anchor the tactical map to the ownship.",
+      description: "Recenter map or configure stabilization/orientation behavior.",
       children: [
-        { id: 'st-gnd', label: 'GND', icon: MapPin, active: stabMode === StabMode.GND, action: () => { setStabMode(StabMode.GND); onResetStab(); }, description: "Ground stabilized mode. Detaches from ownship." },
-        { id: 'st-heli', label: 'HELICO', icon: Target, active: stabMode === StabMode.HELICO, action: () => { setStabMode(StabMode.HELICO); onResetStab(); }, description: "Anchors to the ownship." },
-        { id: 'st-flex', label: 'FLEX', subLabel: gestureSettings.flexibleHelicoStab ? 'ON' : 'OFF', icon: Move, active: gestureSettings.flexibleHelicoStab, action: () => setGestureSettings(s => ({ ...s, flexibleHelicoStab: !s.flexibleHelicoStab })), description: "If ON, panning maintains HELICO with offset until ownship is out of view." }
+        { id: 'st-gauto', label: 'AUTO', subLabel: gestureSettings.stabAutoGndOnPan ? 'GND' : 'OFF', icon: MapPin, active: gestureSettings.stabAutoGndOnPan, action: () => setGestureSettings(s => ({ ...s, stabAutoGndOnPan: !s.stabAutoGndOnPan })), description: "If ON, immediately switch to GND stabilization when panning." },
+        { id: 'st-frz', label: 'FREEZE', subLabel: gestureSettings.stabFreezeHeadingDrop ? 'HDG' : 'OFF', icon: Compass, active: gestureSettings.stabFreezeHeadingDrop, action: () => setGestureSettings(s => ({ ...s, stabFreezeHeadingDrop: !s.stabFreezeHeadingDrop })), description: "Freeze heading when ownship leaves viewport (drops to GND)." },
+        { id: 'st-snap', label: 'R-CNTR', subLabel: gestureSettings.stabSnapRecenter ? 'SNAP' : 'ANIM', icon: Target, active: gestureSettings.stabSnapRecenter, action: () => setGestureSettings(s => ({ ...s, stabSnapRecenter: !s.stabSnapRecenter })), description: "Snap to ownship instantly vs animate back smoothly." },
+        { id: 'st-rot', label: 'ORTN', subLabel: gestureSettings.stabRecenterOnOrientSwitch ? 'CNTR' : 'OFF', icon: Layers, active: gestureSettings.stabRecenterOnOrientSwitch, action: () => setGestureSettings(s => ({ ...s, stabRecenterOnOrientSwitch: !s.stabRecenterOnOrientSwitch })), description: "Recenter on ownship when switching map orientation." }
       ]
     },
     {
-      id: 'hud',
-      label: 'HUD',
-      subLabel: 'MSN',
+      id: 'hmi',
+      label: 'HMI',
+      subLabel: 'CFG',
       icon: Layout,
-      active: activeCategoryId === 'hud',
+      active: activeCategoryId === 'hmi',
       children: [
         { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, icon: Move, action: cycleHudPos, description: "Change the anchor position of the Ownship Infobox." },
         { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, icon: Maximize, action: cycleHudScale, description: "Scale the Ownship Infobox for readability." },
         { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, icon: Eye, action: cycleHudAlpha, description: "Adjust the transparency of the HUD elements." },
         { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', icon: TrendingUp, active: gestureSettings.showSpeedVectors, action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })), description: "Toggle velocity leaders (speed vectors) for all tracked entities." },
-        { id: 'hgeo', label: 'GEO', subLabel: gestureSettings.ownshipShowCoords ? 'ON' : 'OFF', icon: MapPin, active: gestureSettings.ownshipShowCoords, action: () => setGestureSettings(s => ({ ...s, ownshipShowCoords: !s.ownshipShowCoords })), description: "Toggle coordinate display in the ownship header." },
-        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', icon: MoreHorizontal, active: gestureSettings.ownshipShowDetails, action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })), description: "Declutter toggle: Hide or show telemetry details (Speed, Alt, etc.)." }
-      ]
-    },
-    {
-      id: 'prot',
-      label: 'GEST',
-      subLabel: 'CFG',
-      icon: Fingerprint,
-      active: activeCategoryId === 'prot',
-      children: [
+        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', icon: MoreHorizontal, active: gestureSettings.ownshipShowDetails, action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })), description: "Declutter toggle: Hide or show telemetry details (Speed, Alt, etc.)." },
         { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, icon: MousePointer2, action: cycleTap, description: "Threshold to distinguish a 'Click' from a 'Hold' action." },
         { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, icon: Timer, action: cycleInd, description: "Delay before the emerald visual progress ring appears." },
         { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, icon: Fingerprint, action: cycleHld, description: "Total duration required to trigger the Contextual Pie Menu." },
-        { id: 'phap', label: 'HAP', subLabel: gestureSettings.hapticEnabled ? 'ON' : 'OFF', icon: Smartphone, active: gestureSettings.hapticEnabled, action: () => setGestureSettings(s => ({ ...s, hapticEnabled: !s.hapticEnabled })), description: "Master toggle for tactile vibration feedback signals." }
-      ]
-    },
-    {
-      id: 'vis',
-      label: 'VIS',
-      subLabel: 'UI',
-      icon: Palette,
-      active: activeCategoryId === 'vis',
-      children: [
-        { id: 'vscl', label: 'SCL', subLabel: `${gestureSettings.uiScale}X`, icon: Maximize, action: cycleScl, description: "Resizes all UI elements to test ergonomic fit for various hardware." },
+        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, icon: Maximize, action: cycleScl, description: "Resizes all UI elements to test ergonomic fit for various hardware." },
         { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, icon: Zap, action: cycleGlo, description: "Adjusts the bloom intensity for HUD-style light effects." },
-        { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, icon: Move, action: cycleAni, description: "Duration for system transitions like map centering." },
         { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, icon: Eye, action: cycleDim, description: "Luminosity filter for the map layer to enhance data focus." }
       ]
     },

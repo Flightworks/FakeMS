@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Compass, Crosshair } from 'lucide-react';
 import { MapDisplay } from './components/MapDisplay';
 import { TopSystemBar } from './components/TopSystemBar';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -69,7 +70,10 @@ const App: React.FC = () => {
     ownshipShowCoords: true,
     ownshipShowDetails: true,
     showSpeedVectors: true,
-    flexibleHelicoStab: true
+    stabAutoGndOnPan: false,
+    stabFreezeHeadingDrop: true,
+    stabSnapRecenter: false,
+    stabRecenterOnOrientSwitch: false
   });
 
   const toggleSystem = (sys: keyof SystemStatus) => {
@@ -140,6 +144,16 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleMapModeChange = (newMode: MapMode | ((prev: MapMode) => MapMode)) => {
+    setMapMode(prev => {
+       const nextMode = typeof newMode === 'function' ? newMode(prev) : newMode;
+       if (nextMode !== prev && prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {
+          handleResetStab();
+       }
+       return nextMode;
+    });
+  };
+
   const centerOnOwnship = React.useCallback(() => {
     // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
@@ -155,7 +169,7 @@ const App: React.FC = () => {
     }
 
     const end = { x: 0, y: 0 };
-    const duration = prototypeSettings.animationSpeed;
+    const duration = prototypeSettings.stabSnapRecenter ? 0 : prototypeSettings.animationSpeed;
 
     if (duration <= 0 || (Math.abs(start.x) < 0.1 && Math.abs(start.y) < 0.1)) {
       setPanOffset(end);
@@ -256,7 +270,7 @@ const App: React.FC = () => {
             frozenHeading={frozenHeading}
             setFrozenHeading={setFrozenHeading}
             onResetStab={handleResetStab}
-            setMapMode={setMapMode}
+            setMapMode={handleMapModeChange}
             groundCenter={groundCenter}
           />
         )}
@@ -264,7 +278,7 @@ const App: React.FC = () => {
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
         <LeftSidebar
-          mapMode={mapMode} setMapMode={setMapMode} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
+          mapMode={mapMode} setMapMode={handleMapModeChange} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
           isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
@@ -283,7 +297,7 @@ const App: React.FC = () => {
         systems={systems}
         toggleSystem={toggleSystem}
         mapMode={mapMode}
-        setMapMode={setMapMode}
+        setMapMode={handleMapModeChange}
         ownship={ownship}
         origin={origin || DEFAULT_ORIGIN}
         openDocument={setOpenDoc}
@@ -301,6 +315,34 @@ const App: React.FC = () => {
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-0 right-0 pointer-events-none">
         <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
+      </div>
+
+      <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-[200px] right-6 flex flex-col items-center gap-4 pointer-events-none z-50">
+        <div 
+          className="w-16 h-16 rounded-full bg-slate-900/80 border-2 border-slate-700 shadow-xl flex items-center justify-center pointer-events-auto cursor-pointer active:scale-95 transition-transform"
+          onClick={() => handleMapModeChange(m => m === MapMode.NORTH_UP ? MapMode.HEADING_UP : MapMode.NORTH_UP)}
+        >
+          <div 
+            style={{ 
+              transform: `rotate(${mapMode === MapMode.HEADING_UP ? ((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : ownship.heading || 0) : 0}deg)`,
+              transition: 'transform 0.1s linear'
+            }}
+            className="flex flex-col items-center mt-2"
+          >
+            <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[12px] border-l-transparent border-r-transparent border-b-red-500 mb-1" />
+            <Compass size={24} className="text-slate-400" />
+            <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[12px] border-l-transparent border-r-transparent border-t-white mt-1" />
+          </div>
+        </div>
+
+        {stabMode === StabMode.GND && (
+          <button 
+            onClick={handleResetStab}
+            className="w-12 h-12 rounded-full bg-emerald-900/80 border-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+          >
+            <Crosshair size={24} className="text-emerald-300" />
+          </button>
+        )}
       </div>
 
 

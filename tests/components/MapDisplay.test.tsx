@@ -65,7 +65,11 @@ describe('MapDisplay Component', () => {
     ownshipPanelOpacity: 0.95,
     ownshipShowCoords: true,
     ownshipShowDetails: true,
-    showSpeedVectors: true
+    showSpeedVectors: true,
+    stabAutoGndOnPan: false,
+    stabFreezeHeadingDrop: true,
+    stabSnapRecenter: false,
+    stabRecenterOnOrientSwitch: true
   };
 
   const defaultProps = {
@@ -93,7 +97,8 @@ describe('MapDisplay Component', () => {
     frozenHeading: null,
     setFrozenHeading: vi.fn(),
     onResetStab: vi.fn(),
-    setMapMode: vi.fn()
+    setMapMode: vi.fn(),
+    groundCenter: { lat: 35, lon: -120 }
   };
 
   it('renders entities on the map', () => {
