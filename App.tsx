@@ -283,6 +283,8 @@ const App: React.FC = () => {
           gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           ownship={ownship}
+          stabMode={stabMode}
+          setStabMode={setStabMode}
         />
       </div>
 

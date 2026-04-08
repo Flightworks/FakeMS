@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapMode, SystemStatus, PrototypeSettings, Entity } from '../types';
+import { MapMode, SystemStatus, PrototypeSettings, Entity, StabMode } from '../types';
 import packageData from '../package.json';
 import changelogRaw from '../CHANGELOG.md?raw';
 import {
-  Menu, ArrowUp, Search, X, Info, BookOpen
+  Menu, ArrowUp, Search, X, Info, BookOpen, Crosshair
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -18,6 +18,8 @@ interface LeftSidebarProps {
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onOpenCommandPalette: () => void;
   ownship: Entity;
+  stabMode: StabMode;
+  setStabMode: (m: StabMode) => void;
 }
 
 interface QakOption {
@@ -93,7 +95,8 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship
+  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
+  stabMode, setStabMode
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -113,6 +116,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   };
 
   const menuConfig: QakOption[] = [
+    {
+      id: 'stab',
+      label: 'STAB',
+      subLabel: stabMode === StabMode.GND ? 'GND' : 'H/C',
+      icon: Crosshair,
+      active: stabMode === StabMode.GND,
+      action: () => setStabMode(stabMode === StabMode.GND ? StabMode.HELICO : StabMode.GND),
+      description: 'Toggle map stabilisation between Ground (GND) and Helicopter/Cursor (H/C) mode.'
+    },
     {
       id: 'version',
       label: 'VER',
