@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { TopSystemBar } from '../../components/TopSystemBar';
-import { SystemStatus, NavMode } from '../../types';
+import { SystemStatus, NavMode, PrototypeSettings } from '../../types';
 
 describe('TopSystemBar Component', () => {
   const mockSystems: SystemStatus = {
@@ -12,23 +12,42 @@ describe('TopSystemBar Component', () => {
     eots: false
   };
 
+  const mockGestureSettings: PrototypeSettings = {
+    tapThreshold: 300,
+    indicatorDelay: 250,
+    longPressDuration: 1000,
+    jitterTolerance: 20,
+    uiScale: 1.0,
+    glowIntensity: 1.0,
+    animationSpeed: 300,
+    mapDim: 1.0,
+    hapticEnabled: false,
+    ownshipPanelPos: 'BL',
+    ownshipPanelScale: 1.0,
+    ownshipPanelOpacity: 0.95,
+    ownshipShowCoords: true,
+    ownshipShowDetails: true,
+    showSpeedVectors: true,
+    stabAutoGndOnPan: false,
+    stabFreezeHeadingDrop: true,
+    stabSnapRecenter: false,
+    stabRecenterOnOrientSwitch: false,
+  };
+
   const mockProps = {
     systems: mockSystems,
     navMode: NavMode.REAL,
     setNavMode: vi.fn(),
     ownship: { id: 'ownship', label: 'OWNSHIP', position: { lat: 0, lon: 0 }, heading: 0, speed: 0, type: 'FRIENDLY' as any },
     setOwnship: vi.fn(),
+    gestureSettings: mockGestureSettings,
+    setGestureSettings: vi.fn(),
   };
 
-  it('renders system statuses correctly', () => {
+  it('renders ADSB status correctly', () => {
     render(<TopSystemBar {...mockProps} />);
 
-    // RDR should be active (emerald green color class for its container)
-    const rdrText = screen.getByText('RDR');
-    const rdrContainer = rdrText.parentElement;
-    expect(rdrContainer).toHaveClass('border-emerald-600');
-
-    // ADSB should be inactive (slate color class for its container)
+    // ADSB should be inactive (adsb: false)
     const adsbText = screen.getByText('ADBS-IN');
     const adsbContainer = adsbText.parentElement;
     expect(adsbContainer).toHaveClass('border-slate-600');
@@ -42,5 +61,11 @@ describe('TopSystemBar Component', () => {
     // Check if the time is displayed, we can't test exact time due to setInterval,
     // but we can check if the span with 'Z' is there which represents the clock
     expect(zuluText.parentElement).toHaveClass('text-xl');
+  });
+
+  it('renders STABLN and HMI CFG buttons', () => {
+    render(<TopSystemBar {...mockProps} />);
+    expect(screen.getByText('STABLN')).toBeInTheDocument();
+    expect(screen.getByText('HMI')).toBeInTheDocument();
   });
 });

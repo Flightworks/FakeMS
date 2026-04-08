@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { SystemStatus, Entity, NavMode } from '../types';
-import { X } from 'lucide-react';
+import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
+import {
+  X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
+  MousePointer2, Timer, Fingerprint, Zap, Crosshair, ChevronRight
+} from 'lucide-react';
 
 interface TopSystemBarProps {
   systems: SystemStatus;
@@ -8,21 +11,29 @@ interface TopSystemBarProps {
   setNavMode: (mode: NavMode) => void;
   ownship: Entity;
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
+  gestureSettings: PrototypeSettings;
+  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
 }
 
 const StatusBlock = ({
   label,
   value,
-  status = 'default'
+  status = 'default',
+  onClick
 }: {
   label: string;
   value?: string;
-  status?: 'default' | 'active' | 'warning'
+  status?: 'default' | 'active' | 'warning';
+  onClick?: () => void;
 }) => (
-  <div className={`
-    h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
-    ${status === 'active' ? 'border-emerald-600' : status === 'warning' ? 'border-amber-600' : 'border-slate-600'}
-  `}>
+  <div
+    onClick={onClick}
+    className={`
+      h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
+      ${status === 'active' ? 'border-emerald-600' : status === 'warning' ? 'border-amber-600' : 'border-slate-600'}
+      ${onClick ? 'cursor-pointer hover:bg-slate-700 transition-colors active:scale-95' : ''}
+    `}
+  >
     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
     {value && <span className="text-sm font-bold text-white leading-none">{value}</span>}
   </div>
@@ -45,55 +56,228 @@ const ClockWidget = () => {
   );
 };
 
-export const TopSystemBar: React.FC<TopSystemBarProps> = ({ systems, navMode, setNavMode, ownship, setOwnship }) => {
-  const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
+// ── STAB CONTROL WIDGET ──────────────────────────────────────────────────────
+const StabControlWidget = ({ gestureSettings, setGestureSettings }: {
+  gestureSettings: PrototypeSettings;
+  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const toggle = (key: keyof PrototypeSettings) => {
+    setGestureSettings(s => ({ ...s, [key]: !s[key as keyof PrototypeSettings] }));
+  };
+
+  const prototypes: { key: keyof PrototypeSettings; label: string; description: string }[] = [
+    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Switch to GND stab when ownship leaves viewport during pan.' },
+    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading when dropping to GND stab.' },
+    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Instantly recenter without animation.' },
+    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Auto-recenter on ownship when orientation mode changes.' },
+  ];
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 h-20 flex items-center px-4 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
-      <div
-        className="flex items-start pt-2 pl-4 pointer-events-auto overflow-visible pb-1"
-        onPointerDown={stopProp}
-        onMouseDown={stopProp}
-        onTouchStart={stopProp}
-      >
-        <ClockWidget />
-
-        <div className="flex space-x-1">
-          {/* SIM/REAL Ownship Control Button (Toolbox) */}
-          <SimControlWidget navMode={navMode} setNavMode={setNavMode} ownship={ownship} setOwnship={setOwnship} />
-
-          <StatusBlock
-            label="RDR"
-            value="NAV3D"
-            status={systems.radar ? 'active' : 'default'}
-          />
-
-          <StatusBlock
-            label="EWS"
-            value="RLM"
-            status={systems.eots ? 'warning' : 'default'}
-          />
-
-          <StatusBlock
-            label="ADBS-IN"
-            value={systems.adsb ? 'AIS' : 'OFF'}
-            status={systems.adsb ? 'active' : 'default'}
-          />
-
-          <StatusBlock
-            label="EOS"
-            value={systems.eots ? 'ON' : 'STBY'}
-            status={systems.eots ? 'active' : 'default'}
-          />
-
-          <StatusBlock label="L22" value="LINK" status="active" />
-        </div>
-
+    <div className="relative">
+      <div onPointerDown={() => setIsOpen(!isOpen)} className="cursor-pointer transition-transform active:scale-95">
+        <StatusBlock
+          label="STABLN"
+          value="CFG"
+          status={isOpen ? 'active' : 'default'}
+        />
       </div>
+      {isOpen && (
+        <div className="absolute top-14 left-0 w-72 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl z-50 flex flex-col gap-3">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
+              <Crosshair size={14} className="text-indigo-400" /> Stab Prototypes
+            </span>
+            <button onPointerDown={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+          </div>
+          <div className="flex flex-col gap-2 pt-1 border-t border-slate-700">
+            {prototypes.map(p => (
+              <div key={p.key} className="flex items-start justify-between gap-3">
+                <div className="flex flex-col">
+                  <span className="text-slate-200 text-xs font-bold uppercase">{p.label}</span>
+                  <span className="text-slate-500 text-[10px] leading-tight mt-0.5">{p.description}</span>
+                </div>
+                <button
+                  className={`px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors ${gestureSettings[p.key] ? 'bg-indigo-600 text-white' : 'text-slate-400 bg-slate-800 hover:bg-slate-700'}`}
+                  onPointerDown={(e) => { e.stopPropagation(); toggle(p.key); }}
+                >
+                  {gestureSettings[p.key] ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
+// ── HMI CONFIG WIDGET ─────────────────────────────────────────────────────────
+interface HmiCategory {
+  id: string;
+  label: string;
+  children: HmiOption[];
+}
+
+interface HmiOption {
+  id: string;
+  label: string;
+  subLabel: string;
+  description: string;
+  action: () => void;
+}
+
+const HmiControlWidget = ({ gestureSettings, setGestureSettings }: {
+  gestureSettings: PrototypeSettings;
+  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+
+  const vib = (pattern: number | number[]) => {
+    if (gestureSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(pattern);
+  };
+
+  const cycleTap = () => {
+    const vals = [150, 250, 300, 400, 500];
+    setGestureSettings(s => ({ ...s, tapThreshold: vals[(vals.indexOf(s.tapThreshold) + 1) % vals.length] }));
+    vib([10, 5, 10]);
+  };
+  const cycleInd = () => {
+    const vals = [250, 400, 600, 700, 800, 1000];
+    setGestureSettings(s => ({ ...s, indicatorDelay: vals[(vals.indexOf(s.indicatorDelay) + 1) % vals.length] }));
+    vib(10);
+  };
+  const cycleHld = () => {
+    const vals = [800, 1000, 1200, 1500, 2000];
+    setGestureSettings(s => ({ ...s, longPressDuration: vals[(vals.indexOf(s.longPressDuration) + 1) % vals.length] }));
+    vib(20);
+  };
+  const cycleScl = () => {
+    const vals = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
+    setGestureSettings(s => ({ ...s, uiScale: vals[(vals.indexOf(s.uiScale) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleGlo = () => {
+    const vals = [0, 0.3, 0.6, 1.0, 1.5];
+    setGestureSettings(s => ({ ...s, glowIntensity: vals[(vals.indexOf(s.glowIntensity) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleAni = () => {
+    const vals = [0, 150, 300, 600, 1000];
+    setGestureSettings(s => ({ ...s, animationSpeed: vals[(vals.indexOf(s.animationSpeed) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleDim = () => {
+    const vals = [0.2, 0.4, 0.6, 0.8, 1.0];
+    setGestureSettings(s => ({ ...s, mapDim: vals[(vals.indexOf(s.mapDim) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleHudPos = () => {
+    const vals: OwnshipPanelPos[] = ['BL', 'TL', 'TR', 'BR'];
+    setGestureSettings(s => ({ ...s, ownshipPanelPos: vals[(vals.indexOf(s.ownshipPanelPos) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleHudScale = () => {
+    const vals = [0.75, 1.0, 1.25, 1.5];
+    setGestureSettings(s => ({ ...s, ownshipPanelScale: vals[(vals.indexOf(s.ownshipPanelScale) + 1) % vals.length] }));
+    vib(5);
+  };
+  const cycleHudAlpha = () => {
+    const vals = [0.4, 0.6, 0.8, 0.95];
+    setGestureSettings(s => ({ ...s, ownshipPanelOpacity: vals[(vals.indexOf(s.ownshipPanelOpacity) + 1) % vals.length] }));
+    vib(5);
+  };
+
+  const categories: HmiCategory[] = [
+    {
+      id: 'hud',
+      label: 'HUD',
+      children: [
+        { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, description: 'Ownship infobox corner position.', action: cycleHudPos },
+        { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, description: 'Ownship infobox scale.', action: cycleHudScale },
+        { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, description: 'HUD panel transparency.', action: cycleHudAlpha },
+        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', description: 'Speed vectors for all tracks.', action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })) },
+        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', description: 'Declutter HUD telemetry.', action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })) },
+      ]
+    },
+    {
+      id: 'gest',
+      label: 'GEST',
+      children: [
+        { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, description: 'Click vs hold threshold.', action: cycleTap },
+        { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, description: 'Pie menu ring delay.', action: cycleInd },
+        { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, description: 'Long press trigger duration.', action: cycleHld },
+      ]
+    },
+    {
+      id: 'vis',
+      label: 'VIS',
+      children: [
+        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, description: 'Overall UI scale factor.', action: cycleScl },
+        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, description: 'HUD glow intensity.', action: cycleGlo },
+        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, description: 'Map layer luminosity.', action: cycleDim },
+        { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, description: 'UI animation speed.', action: cycleAni },
+      ]
+    }
+  ];
+
+  const activeCategory = categories.find(c => c.id === activeCat);
+
+  return (
+    <div className="relative">
+      <div onPointerDown={() => { setIsOpen(o => !o); if (isOpen) setActiveCat(null); }} className="cursor-pointer transition-transform active:scale-95">
+        <StatusBlock label="HMI" value="CFG" status={isOpen ? 'active' : 'default'} />
+      </div>
+      {isOpen && (
+        <div className="absolute top-14 left-0 bg-slate-900 border border-slate-600 rounded-lg shadow-xl z-50 flex flex-col min-w-[16rem]">
+          <div className="flex justify-between items-center px-4 py-3 border-b border-slate-700">
+            <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
+              <Layout size={14} className="text-indigo-400" /> HMI Config
+            </span>
+            <button onPointerDown={() => { setIsOpen(false); setActiveCat(null); }} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+          </div>
+
+          <div className="flex">
+            {/* Level 1: Categories */}
+            <div className="flex flex-col gap-1 p-2 border-r border-slate-700 min-w-[7rem]">
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onPointerDown={(e) => { e.stopPropagation(); setActiveCat(activeCat === cat.id ? null : cat.id); }}
+                  className={`flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase transition-colors ${activeCat === cat.id ? 'bg-indigo-700 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                >
+                  {cat.label}
+                  <ChevronRight size={12} className={`transition-transform ${activeCat === cat.id ? 'rotate-90' : ''}`} />
+                </button>
+              ))}
+            </div>
+
+            {/* Level 2: Options */}
+            {activeCategory && (
+              <div className="flex flex-col gap-1 p-2 min-w-[11rem]">
+                {activeCategory.children.map(opt => (
+                  <button
+                    key={opt.id}
+                    onPointerDown={(e) => { e.stopPropagation(); opt.action(); }}
+                    className="flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase text-slate-200 hover:bg-slate-800 transition-colors group"
+                    title={opt.description}
+                  >
+                    <span className="text-slate-400 group-hover:text-slate-200">{opt.label}</span>
+                    <span className="text-emerald-400 font-mono">{opt.subLabel}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── SIM CONTROL WIDGET (unchanged) ────────────────────────────────────────────
 const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
   navMode: NavMode;
   setNavMode: (mode: NavMode) => void;
@@ -128,10 +312,10 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
   return (
     <div className="relative">
       <div onPointerDown={() => setIsOpen(!isOpen)} className="cursor-pointer transition-transform active:scale-95">
-        <StatusBlock 
-          label="NAV" 
-          value={navMode === NavMode.SIM ? 'SIM ⚠' : 'REAL'} 
-          status={navMode === NavMode.SIM ? 'warning' : 'active'} 
+        <StatusBlock
+          label="NAV"
+          value={navMode === NavMode.SIM ? 'SIM ⚠' : 'REAL'}
+          status={navMode === NavMode.SIM ? 'warning' : 'active'}
         />
       </div>
       {isOpen && (
@@ -140,15 +324,15 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
             <span className="text-white font-bold text-sm uppercase">Sim Toolbox</span>
             <button onPointerDown={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
           </div>
-          
+
           <div className="flex items-center justify-between">
             <span className="text-slate-300 text-xs font-bold uppercase">Mode:</span>
             <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
-              <button 
+              <button
                 className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.REAL ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
                 onPointerDown={(e) => { e.stopPropagation(); setNavMode(NavMode.REAL); }}
               >REAL</button>
-              <button 
+              <button
                 className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.SIM ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
                 onPointerDown={(e) => { e.stopPropagation(); setNavMode(NavMode.SIM); }}
               >SIM</button>
@@ -158,16 +342,16 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
           <div className="flex flex-col gap-1">
             <span className="text-slate-400 text-[10px] font-bold uppercase">Target Heading (°T)</span>
             <div className="flex gap-2">
-              <input 
-                 value={tempHdg} 
-                 onChange={e => setTempHdg(e.target.value)} 
+              <input
+                 value={tempHdg}
+                 onChange={e => setTempHdg(e.target.value)}
                  className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
                  type="number"
                  disabled={navMode !== NavMode.SIM}
               />
-              <button 
+              <button
                 onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white" 
+                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
                 disabled={navMode !== NavMode.SIM}
               >SET</button>
             </div>
@@ -176,16 +360,16 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
           <div className="flex flex-col gap-1">
             <span className="text-slate-400 text-[10px] font-bold uppercase">Target Speed (KTS)</span>
             <div className="flex gap-2">
-               <input 
-                 value={tempSpd} 
-                 onChange={e => setTempSpd(e.target.value)} 
+               <input
+                 value={tempSpd}
+                 onChange={e => setTempSpd(e.target.value)}
                  className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
                  type="number"
                  disabled={navMode !== NavMode.SIM}
               />
-              <button 
+              <button
                 onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white" 
+                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
                 disabled={navMode !== NavMode.SIM}
               >SET</button>
             </div>
@@ -194,22 +378,68 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
           <div className="flex flex-col gap-1">
             <span className="text-slate-400 text-[10px] font-bold uppercase">Turn Rate (°/S)</span>
             <div className="flex gap-2">
-               <input 
-                 value={tempTrn} 
-                 onChange={e => setTempTrn(e.target.value)} 
+               <input
+                 value={tempTrn}
+                 onChange={e => setTempTrn(e.target.value)}
                  className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
                  type="number"
                  disabled={navMode !== NavMode.SIM}
               />
-              <button 
+              <button
                 onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white" 
+                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
                 disabled={navMode !== NavMode.SIM}
               >SET</button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// ── MAIN TOP SYSTEM BAR ────────────────────────────────────────────────────────
+export const TopSystemBar: React.FC<TopSystemBarProps> = ({
+  systems, navMode, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings
+}) => {
+  const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
+
+  return (
+    <div className="absolute top-0 left-0 right-0 z-40 h-20 flex items-center px-4 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
+      <div
+        className="flex items-start pt-2 pl-4 pointer-events-auto overflow-visible pb-1"
+        onPointerDown={stopProp}
+        onMouseDown={stopProp}
+        onTouchStart={stopProp}
+      >
+        <ClockWidget />
+
+        <div className="flex space-x-1">
+          {/* SIM/REAL Ownship Control */}
+          <SimControlWidget navMode={navMode} setNavMode={setNavMode} ownship={ownship} setOwnship={setOwnship} />
+
+          {/* STABLN Advanced Prototype Toggles (replaces RDR) */}
+          <StabControlWidget gestureSettings={gestureSettings} setGestureSettings={setGestureSettings} />
+
+          {/* HMI Config two-level menu (replaces EWS) */}
+          <HmiControlWidget gestureSettings={gestureSettings} setGestureSettings={setGestureSettings} />
+
+          <StatusBlock
+            label="ADBS-IN"
+            value={systems.adsb ? 'AIS' : 'OFF'}
+            status={systems.adsb ? 'active' : 'default'}
+          />
+
+          <StatusBlock
+            label="EOS"
+            value={systems.eots ? 'ON' : 'STBY'}
+            status={systems.eots ? 'active' : 'default'}
+          />
+
+          <StatusBlock label="L22" value="LINK" status="active" />
+        </div>
+
+      </div>
     </div>
   );
 };

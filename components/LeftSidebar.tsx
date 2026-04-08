@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapMode, SystemStatus, PrototypeSettings, OwnshipPanelPos, Entity, StabMode } from '../types';
+import { MapMode, SystemStatus, PrototypeSettings, Entity } from '../types';
 import packageData from '../package.json';
 import changelogRaw from '../CHANGELOG.md?raw';
 import {
-  Menu, ArrowUp, Map as MapIcon, Layers, Crosshair,
-  ScanLine, Wrench, Search, Compass, X, Globe, Video, Eye, Target,
-  Fingerprint, Timer, Move, MousePointer2, Maximize, Palette, Zap, Smartphone,
-  BookOpen, Layout, MoreHorizontal, MapPin, TrendingUp, Info
+  Menu, ArrowUp, Search, X, Info, BookOpen
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -21,9 +18,6 @@ interface LeftSidebarProps {
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onOpenCommandPalette: () => void;
   ownship: Entity;
-  stabMode: StabMode;
-  setStabMode: (m: StabMode) => void;
-  onResetStab: () => void;
 }
 
 interface QakOption {
@@ -69,7 +63,7 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
 );
 
 const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ activeCategory }) => {
-  if (!activeCategory || !['prot', 'vis', 'hud'].includes(activeCategory.id)) return null;
+  if (!activeCategory || !activeCategory.children) return null;
 
   return (
     <div className="fixed right-6 top-24 w-64 bg-slate-950/90 border-2 border-emerald-600/50 rounded-lg p-4 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-300 pointer-events-none">
@@ -99,8 +93,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
-  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
-  stabMode, setStabMode, onResetStab
+  gestureSettings, setGestureSettings, onOpenCommandPalette, ownship
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -119,115 +112,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     if (!item.children && item.action) item.action();
   };
 
-  const vib = (pattern: number | number[]) => { if (gestureSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(pattern); };
-
-  const cycleTap = () => {
-    const vals = [150, 250, 300, 400, 500];
-    const next = vals[(vals.indexOf(gestureSettings.tapThreshold) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, tapThreshold: next }));
-    vib([10, 5, 10]);
-  };
-
-  const cycleInd = () => {
-    const vals = [250, 400, 600, 700, 800, 1000];
-    const next = vals[(vals.indexOf(gestureSettings.indicatorDelay) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, indicatorDelay: next }));
-    vib(10);
-  };
-
-  const cycleHld = () => {
-    const vals = [800, 1000, 1200, 1500, 2000];
-    const next = vals[(vals.indexOf(gestureSettings.longPressDuration) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, longPressDuration: next }));
-    vib(20);
-  };
-
-  const cycleScl = () => {
-    const vals = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
-    const next = vals[(vals.indexOf(gestureSettings.uiScale) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, uiScale: next }));
-    vib(5);
-  };
-
-  const cycleGlo = () => {
-    const vals = [0, 0.3, 0.6, 1.0, 1.5];
-    const next = vals[(vals.indexOf(gestureSettings.glowIntensity) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, glowIntensity: next }));
-    vib(5);
-  };
-
-  const cycleAni = () => {
-    const vals = [0, 150, 300, 600, 1000];
-    const next = vals[(vals.indexOf(gestureSettings.animationSpeed) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, animationSpeed: next }));
-    vib(5);
-  };
-
-  const cycleDim = () => {
-    const vals = [0.2, 0.4, 0.6, 0.8, 1.0];
-    const next = vals[(vals.indexOf(gestureSettings.mapDim) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, mapDim: next }));
-    vib(5);
-  };
-
-  // HUD Cycling Helpers
-  const cycleHudPos = () => {
-    const vals: OwnshipPanelPos[] = ['BL', 'TL', 'TR', 'BR'];
-    const next = vals[(vals.indexOf(gestureSettings.ownshipPanelPos) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, ownshipPanelPos: next }));
-    vib(5);
-  };
-
-  const cycleHudScale = () => {
-    const vals = [0.75, 1.0, 1.25, 1.5];
-    const next = vals[(vals.indexOf(gestureSettings.ownshipPanelScale) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, ownshipPanelScale: next }));
-    vib(5);
-  };
-
-  const cycleHudAlpha = () => {
-    const vals = [0.4, 0.6, 0.8, 0.95];
-    const next = vals[(vals.indexOf(gestureSettings.ownshipPanelOpacity) + 1) % vals.length];
-    setGestureSettings(s => ({ ...s, ownshipPanelOpacity: next }));
-    vib(5);
-  };
-
   const menuConfig: QakOption[] = [
-    {
-      id: 'stabln',
-      label: 'STABLN',
-      subLabel: stabMode === StabMode.GND ? 'GND' : 'HELICO',
-      icon: Crosshair,
-      active: activeCategoryId === 'stabln',
-      action: () => { if (stabMode === StabMode.GND) onResetStab(); },
-      description: "Recenter map or configure stabilization/orientation behavior.",
-      children: [
-        { id: 'st-gauto', label: 'AUTO', subLabel: gestureSettings.stabAutoGndOnPan ? 'GND' : 'OFF', icon: MapPin, active: gestureSettings.stabAutoGndOnPan, action: () => setGestureSettings(s => ({ ...s, stabAutoGndOnPan: !s.stabAutoGndOnPan })), description: "If ON, immediately switch to GND stabilization when panning." },
-        { id: 'st-frz', label: 'FREEZE', subLabel: gestureSettings.stabFreezeHeadingDrop ? 'HDG' : 'OFF', icon: Compass, active: gestureSettings.stabFreezeHeadingDrop, action: () => setGestureSettings(s => ({ ...s, stabFreezeHeadingDrop: !s.stabFreezeHeadingDrop })), description: "Freeze heading when ownship leaves viewport (drops to GND)." },
-        { id: 'st-snap', label: 'R-CNTR', subLabel: gestureSettings.stabSnapRecenter ? 'SNAP' : 'ANIM', icon: Target, active: gestureSettings.stabSnapRecenter, action: () => setGestureSettings(s => ({ ...s, stabSnapRecenter: !s.stabSnapRecenter })), description: "Snap to ownship instantly vs animate back smoothly." },
-        { id: 'st-rot', label: 'ORTN', subLabel: gestureSettings.stabRecenterOnOrientSwitch ? 'CNTR' : 'OFF', icon: Layers, active: gestureSettings.stabRecenterOnOrientSwitch, action: () => setGestureSettings(s => ({ ...s, stabRecenterOnOrientSwitch: !s.stabRecenterOnOrientSwitch })), description: "Recenter on ownship when switching map orientation." }
-      ]
-    },
-    {
-      id: 'hmi',
-      label: 'HMI',
-      subLabel: 'CFG',
-      icon: Layout,
-      active: activeCategoryId === 'hmi',
-      children: [
-        { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, icon: Move, action: cycleHudPos, description: "Change the anchor position of the Ownship Infobox." },
-        { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, icon: Maximize, action: cycleHudScale, description: "Scale the Ownship Infobox for readability." },
-        { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, icon: Eye, action: cycleHudAlpha, description: "Adjust the transparency of the HUD elements." },
-        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', icon: TrendingUp, active: gestureSettings.showSpeedVectors, action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })), description: "Toggle velocity leaders (speed vectors) for all tracked entities." },
-        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', icon: MoreHorizontal, active: gestureSettings.ownshipShowDetails, action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })), description: "Declutter toggle: Hide or show telemetry details (Speed, Alt, etc.)." },
-        { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, icon: MousePointer2, action: cycleTap, description: "Threshold to distinguish a 'Click' from a 'Hold' action." },
-        { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, icon: Timer, action: cycleInd, description: "Delay before the emerald visual progress ring appears." },
-        { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, icon: Fingerprint, action: cycleHld, description: "Total duration required to trigger the Contextual Pie Menu." },
-        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, icon: Maximize, action: cycleScl, description: "Resizes all UI elements to test ergonomic fit for various hardware." },
-        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, icon: Zap, action: cycleGlo, description: "Adjusts the bloom intensity for HUD-style light effects." },
-        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, icon: Eye, action: cycleDim, description: "Luminosity filter for the map layer to enhance data focus." }
-      ]
-    },
     {
       id: 'version',
       label: 'VER',
