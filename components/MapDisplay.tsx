@@ -101,8 +101,8 @@ const MapController: React.FC<{
   onMapMoveStart: () => void,
   onMapMove: (center: L.LatLng) => void,
   onMapZoom: (zoom: number) => void,
-  onMapClickBlockCheck: () => boolean
-}> = ({ center, zoom, rotation, onMapMoveStart, onMapMove, onMapZoom, onMapClickBlockCheck }) => {
+  isPanning: boolean
+}> = ({ center, zoom, rotation, onMapMoveStart, onMapMove, onMapZoom, isPanning }) => {
   const map = useMap();
   const mapContainer = map.getContainer();
   const isInteracting = useRef(false);
@@ -130,7 +130,9 @@ const MapController: React.FC<{
     movestart: () => { isInteracting.current = true; onMapMoveStart(); },
     moveend: () => {
       isInteracting.current = false;
-      onMapMove(map.getCenter());
+      if (!isPanning) {
+        onMapMove(map.getCenter());
+      }
     },
     zoomend: () => {
       onMapZoom(map.getZoom());
@@ -249,7 +251,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     startY: number,
     type: 'MAP' | 'ENTITY',
     entityId?: string,
-    autoTriggered: boolean
+    autoTriggered: boolean,
+    startPanOffset: { x: number, y: number }
   } | null>(null);
 
   const isDraggingRef = useRef(false);
@@ -304,7 +307,15 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     if (indTimer.current) clearTimeout(indTimer.current);
     if (hldTimer.current) clearTimeout(hldTimer.current);
 
-    interactionRef.current = { startTime: Date.now(), startX: x, startY: y, type, entityId, autoTriggered: false };
+    interactionRef.current = { 
+      startTime: Date.now(), 
+      startX: x, 
+      startY: y, 
+      type, 
+      entityId, 
+      autoTriggered: false,
+      startPanOffset: { ...panOffset }
+    };
     isDraggingRef.current = false;
     setLongPressIndicator(null);
 
@@ -332,10 +343,34 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const dy = y - interactionRef.current.startY;
 
     if (Math.sqrt(dx * dx + dy * dy) > 10) {
+      if (!isDraggingRef.current) {
+        if (stabMode !== StabMode.GND && !gestureSettings.stabAutoGndOnPan) {
+           // stay in helico
+        } else if (stabMode !== StabMode.GND) {
+           setStabMode(StabMode.GND);
+        }
+      }
       isDraggingRef.current = true;
       if (indTimer.current) clearTimeout(indTimer.current);
       if (hldTimer.current) clearTimeout(hldTimer.current);
       setLongPressIndicator(null);
+
+      // Rotation-Aware Panning Math
+      const rad = mapRotation * (Math.PI / 180);
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+
+      // Screen to Map transformation
+      const de = dx * cosR - dy * sinR;
+      const dn = -(dx * sinR + dy * cosR);
+
+      const latRad = ownship.position.lat * (Math.PI / 180);
+      const metersPerPixel = (2 * Math.PI * EARTH_RADIUS * Math.cos(latRad)) / (256 * Math.pow(2, leafletZoom));
+      
+      const newPanX = interactionRef.current.startPanOffset.x - de * metersPerPixel;
+      const newPanY = interactionRef.current.startPanOffset.y - dn * metersPerPixel;
+
+      onPan({ x: newPanX, y: newPanY });
     }
   };
 
@@ -477,6 +512,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         zoomAnimation={true}
         zoomSnap={0}
         zoomDelta={0.1}
+        dragging={false}
+        touchZoom={true}
+        doubleClickZoom={false}
+        scrollWheelZoom={true}
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -499,7 +538,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           }}
           onMapMove={handleMapMove}
           onMapZoom={handleMapZoom}
-          onMapClickBlockCheck={checkMapClickBlock}
+          isPanning={isDraggingRef.current}
         />
 
         <GhostTracker />
