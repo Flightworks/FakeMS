@@ -23,7 +23,7 @@ const angleDifference = (current: number, target: number) => {
 /**
  * Common kinematic step function for advancing an entity
  */
-const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
+export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
     if (!entity.speed && !entity.targetSpeed) return entity;
 
     let { lat, lon } = entity.position;

@@ -40,7 +40,7 @@ const App: React.FC = () => {
   const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);
   const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
-  const [groundCenter, setGroundCenter] = useState<{lat: number, lon: number} | null>(null);
+  const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
 
   const { entities, setEntities } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
 
@@ -139,10 +139,19 @@ const App: React.FC = () => {
       panAnimationRef.current = undefined;
     }
     setPanOffset(newOffset);
-    if (newCenterLatLon) {
-      setGroundCenter(newCenterLatLon);
-    }
+    // Note: groundAnchor remains fixed during manual panning to preserve the reference point.
   }, []);
+
+  const handleSetStabMode = React.useCallback((mode: StabMode | ((prev: StabMode) => StabMode)) => {
+    setStabMode(prev => {
+      const next = typeof mode === 'function' ? mode(prev) : mode;
+      if (next === StabMode.GND && prev !== StabMode.GND) {
+        // Anchor the ground position to current ownship position
+        setGroundAnchor({ ...ownship.position });
+      }
+      return next;
+    });
+  }, [ownship.position]);
 
   const handleMapModeChange = (newMode: MapMode | ((prev: MapMode) => MapMode)) => {
     setMapMode(prev => {
@@ -158,11 +167,11 @@ const App: React.FC = () => {
     // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
 
-    // If we are coming from GND stab, compute the current panOffset based on the fixed groundCenter and current ownship
+    // If we are coming from GND stab, compute the current panOffset based on the fixed groundAnchor and current ownship
     let start = { ...panOffset };
-    if (stabMode === StabMode.GND && groundCenter) {
-      const dLat = groundCenter.lat - ownship.position.lat;
-      const dLon = groundCenter.lon - ownship.position.lon;
+    if (stabMode === StabMode.GND && groundAnchor) {
+      const dLat = groundAnchor.lat - ownship.position.lat;
+      const dLon = groundAnchor.lon - ownship.position.lon;
       const panY = dLat * (Math.PI / 180) * 6378137;
       const panX = dLon * (Math.PI / 180) * (6378137 * Math.cos(ownship.position.lat * Math.PI / 180));
       start = { x: panX, y: panY };
@@ -201,7 +210,7 @@ const App: React.FC = () => {
       }
     };
     panAnimationRef.current = requestAnimationFrame(animate);
-  }, [panOffset, prototypeSettings.animationSpeed, stabMode, groundCenter, ownship.position.lat, ownship.position.lon]);
+  }, [panOffset, prototypeSettings.animationSpeed, stabMode, groundAnchor, ownship.position.lat, ownship.position.lon]);
 
   useEffect(() => {
     centerOnOwnship();
@@ -209,8 +218,9 @@ const App: React.FC = () => {
 
   const handleResetStab = React.useCallback(() => {
     setFrozenHeading(null);
+    handleSetStabMode(StabMode.HELICO);
     centerOnOwnship(); // This now sets stabMode to HELICO and animates
-  }, [centerOnOwnship]);
+  }, [centerOnOwnship, handleSetStabMode]);
 
   const handleDropCommand = (e: React.DragEvent) => {
     try {
@@ -266,12 +276,12 @@ const App: React.FC = () => {
             setGestureSettings={setPrototypeSettings}
             onMapDrop={handleDropCommand}
             stabMode={stabMode}
-            setStabMode={setStabMode}
+            setStabMode={handleSetStabMode}
             frozenHeading={frozenHeading}
             setFrozenHeading={setFrozenHeading}
             onResetStab={handleResetStab}
             setMapMode={handleMapModeChange}
-            groundCenter={groundCenter}
+            groundAnchor={groundAnchor}
           />
         )}
       </div>
@@ -284,7 +294,7 @@ const App: React.FC = () => {
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           ownship={ownship}
           stabMode={stabMode}
-          setStabMode={setStabMode}
+          setStabMode={handleSetStabMode}
         />
       </div>
 

@@ -48,7 +48,7 @@ interface MapDisplayProps {
   setFrozenHeading: (h: number | null) => void;
   onResetStab: () => void;
   setMapMode: (m: MapMode) => void;
-  groundCenter: {lat: number, lon: number} | null;
+  groundAnchor: {lat: number, lon: number} | null;
 }
 
 
@@ -170,7 +170,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   setFrozenHeading,
   onResetStab,
   setMapMode,
-  groundCenter
+  groundAnchor
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -181,9 +181,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     const map = useMap();
     useEffect(() => {
       const handler = () => {
-        if (stabMode !== StabMode.GND && (gestureSettings.stabAutoGndOnPan || stabMode !== StabMode.HELICO)) { 
-           setGhostData(null); 
-           return; 
+        if (stabMode !== StabMode.GND && !gestureSettings.stabAutoGndOnPan && stabMode === StabMode.HELICO) {
+           // Allow being off-screen in HELICO if auto-GND is OFF
+        } else if (stabMode !== StabMode.GND && stabMode !== StabMode.HELICO) {
+           setGhostData(null);
+           return;
         }
         const pt = map.latLngToContainerPoint([ownship.position.lat, ownship.position.lon]);
         const size = map.getSize();
@@ -211,7 +213,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
            return;
         }
 
-        if (stabMode === StabMode.HELICO && !gestureSettings.stabAutoGndOnPan) {
+        if (stabMode === StabMode.HELICO && gestureSettings.stabAutoGndOnPan) {
             setStabMode(StabMode.GND);
             const c = map.getCenter();
             onPan(panOffset, { lat: c.lat, lon: c.lng });
@@ -268,14 +270,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   // Coordinates
   const centerLatLon = useMemo(() => {
-    if (stabMode === StabMode.GND && groundCenter) {
-      return [groundCenter.lat, groundCenter.lon] as [number, number];
-    }
-    // A quick spherical offset for panning
+    // Current base point (either helicopter or fixed ground anchor)
+    const base = (stabMode === StabMode.GND && groundAnchor) ? groundAnchor : ownship.position;
+    
+    // Displacement from the base
     const dLat = (panOffset.y / EARTH_RADIUS) * (180 / Math.PI);
-    const dLon = (panOffset.x / (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180))) * (180 / Math.PI);
-    return [ownship.position.lat + dLat, ownship.position.lon + dLon] as [number, number];
-  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y, stabMode, groundCenter]);
+    const dLon = (panOffset.x / (EARTH_RADIUS * Math.cos(base.lat * Math.PI / 180))) * (180 / Math.PI);
+    return [base.lat + dLat, base.lon + dLon] as [number, number];
+  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y, stabMode, groundAnchor]);
 
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
@@ -360,15 +362,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       const cosR = Math.cos(rad);
       const sinR = Math.sin(rad);
 
-      // Screen to Map transformation
-      const de = dx * cosR - dy * sinR;
-      const dn = -(dx * sinR + dy * cosR);
+      // Rotate screen-space drag (dx, dy) into world-space displacement (un-rotate by mapRotation)
+      // Screen to World transformation (pulling the map)
+      const de = dx * cosR + dy * sinR;
+      const dn = -dx * sinR + dy * cosR;
 
-      const latRad = ownship.position.lat * (Math.PI / 180);
+      const latForMpp = (stabMode === StabMode.GND && groundAnchor) ? groundAnchor.lat : ownship.position.lat;
+      const latRad = latForMpp * (Math.PI / 180);
       const metersPerPixel = (2 * Math.PI * EARTH_RADIUS * Math.cos(latRad)) / (256 * Math.pow(2, leafletZoom));
       
       const newPanX = interactionRef.current.startPanOffset.x - de * metersPerPixel;
-      const newPanY = interactionRef.current.startPanOffset.y - dn * metersPerPixel;
+      const newPanY = interactionRef.current.startPanOffset.y + dn * metersPerPixel;
 
       onPan({ x: newPanX, y: newPanY });
     }
@@ -618,6 +622,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
              <ChevronUp size={24} className="text-amber-400" />
           </div>
         </div>
+      )}
+      {/* Pure Recentering Button */}
+      {(stabMode === StabMode.GND || Math.abs(panOffset.x) > 1 || Math.abs(panOffset.y) > 1) && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onResetStab(); }}
+          className="absolute bottom-6 right-6 z-30 w-14 h-14 flex items-center justify-center bg-slate-900/90 border-2 border-emerald-500 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] text-emerald-400 hover:bg-emerald-900 transition-all active:scale-90 pointer-events-auto group"
+          title="Recenter Map on Ownship"
+        >
+          <Crosshair size={28} className="group-hover:scale-110 transition-transform" />
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
+        </button>
       )}
 
       {/* Overlays */}

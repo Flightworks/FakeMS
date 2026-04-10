@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
 import {
   X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
@@ -289,12 +289,15 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
   const [tempSpd, setTempSpd] = useState<string>(ownship.targetSpeed !== undefined ? Math.round(ownship.targetSpeed).toString() : '120');
   const [tempTrn, setTempTrn] = useState<string>(ownship.turnRate !== undefined ? ownship.turnRate.toString() : '3');
 
+  const prevIsOpen = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    // Only resync when panel opens (transition false -> true)
+    if (isOpen && !prevIsOpen.current) {
       setTempHdg(ownship.targetHeading !== undefined ? Math.round(ownship.targetHeading).toString() : (ownship.heading !== undefined ? Math.round(ownship.heading).toString() : '0'));
       setTempSpd(ownship.targetSpeed !== undefined ? Math.round(ownship.targetSpeed).toString() : (ownship.speed !== undefined ? Math.round(ownship.speed).toString() : '120'));
       setTempTrn(ownship.turnRate !== undefined ? ownship.turnRate.toString() : '3');
     }
+    prevIsOpen.current = isOpen;
   }, [isOpen, ownship.targetHeading, ownship.targetSpeed, ownship.heading, ownship.speed, ownship.turnRate]);
 
   const applyParams = () => {
