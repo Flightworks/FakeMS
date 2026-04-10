@@ -419,7 +419,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     }
 
     const heading = entity.heading || 0;
-    const displayRotation = heading + rotation;
+    // The icon's rotation relative to the map container should be its true heading.
+    // Since the MapContainer is rotated by 'rotation' (e.g., -ownshipHeading in HUP),
+    // the resulting screen rotation is: heading + rotation.
+    // For ownship in HUP: ownshipHeading + (-ownshipHeading) = 0 (straight UP).
+    const displayRotation = heading;
 
     const svgString = renderToStaticMarkup(
       <div 
@@ -437,7 +441,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         </div>
         <div 
           className="absolute -bottom-4 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap"
-          style={{ transform: `rotate(${-displayRotation}deg)`, display: 'inline-block' }}
+          style={{ transform: `rotate(${-rotation}deg)`, display: 'inline-block' }}
         >
           {entity.label}
         </div>
