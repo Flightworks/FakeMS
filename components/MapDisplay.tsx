@@ -114,9 +114,15 @@ const MapController: React.FC<{
     }
   }, [center, zoom, map]);
 
-  // Sync Rotation
+  const prevRotRef = useRef<number>(rotation);
+
+  // Sync Rotation — always take shortest angular path
   useEffect(() => {
-    mapContainer.style.transform = `rotate(${rotation}deg)`;
+    let delta = rotation - prevRotRef.current;
+    // Normalize delta to [-180, 180]
+    delta = ((delta + 180) % 360 + 360) % 360 - 180;
+    prevRotRef.current = prevRotRef.current + delta;
+    mapContainer.style.transform = `rotate(${prevRotRef.current}deg)`;
     mapContainer.style.transition = 'transform 0.3s ease-out';
   }, [rotation, mapContainer, map]);
 
@@ -431,6 +437,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         </div>
         <div 
           className="absolute -bottom-4 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap"
+          style={{ transform: `rotate(${-displayRotation}deg)`, display: 'inline-block' }}
         >
           {entity.label}
         </div>

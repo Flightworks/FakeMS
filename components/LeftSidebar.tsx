@@ -101,6 +101,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const lastTopRef = useRef(0);
+  const compassAngleRef = useRef(0);
 
   useEffect(() => {
     if (!isOpen) setActiveCategoryId(null);
@@ -153,7 +154,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     lastTopRef.current = currentTopRem;
   }
 
-  const compassRotation = mapMode === MapMode.NORTH_UP ? 0 : -(ownship.heading || 0);
+  const rawCompass = mapMode === MapMode.NORTH_UP ? 0 : -(ownship.heading || 0);
+  const compassDelta = ((rawCompass - compassAngleRef.current + 180) % 360 + 360) % 360 - 180;
+  compassAngleRef.current = compassAngleRef.current + compassDelta;
+  const compassRotation = compassAngleRef.current;
 
   return (
     <>
