@@ -75,7 +75,8 @@ const App: React.FC = () => {
     stabSnapRecenter: false,
     stabRecenterOnOrientSwitch: false,
     stabAutoRecenterDelay: 0,
-    stabSmoothUnfreeze: false
+    stabSmoothUnfreeze: false,
+    stabMaintainScreenPosOnOrient: true
   });
 
   const toggleSystem = (sys: keyof SystemStatus) => {
@@ -166,6 +167,27 @@ const App: React.FC = () => {
     setMapMode(prev => {
       const nextMode = typeof newMode === 'function' ? newMode(prev) : newMode;
       if (nextMode !== prev) {
+        // Feature: Rotate panOffset to maintain helicopter screen position
+        if (prototypeSettings.stabMaintainScreenPosOnOrient) {
+          const prevRot = prev === MapMode.HEADING_UP 
+            ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : (ownship.heading || 0)) 
+            : 0;
+          const nextRot = nextMode === MapMode.HEADING_UP 
+            ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : (ownship.heading || 0)) 
+            : 0;
+          const deltaDeg = nextRot - prevRot;
+          
+          if (Math.abs(deltaDeg) > 0.01) {
+            const rad = (-deltaDeg) * (Math.PI / 180);
+            const cosR = Math.cos(rad);
+            const sinR = Math.sin(rad);
+            setPanOffset(prevPan => ({
+              x: prevPan.x * cosR - prevPan.y * sinR,
+              y: prevPan.x * sinR + prevPan.y * cosR
+            }));
+          }
+        }
+
         if (prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {
           handleResetStab();
         } else if (nextMode === MapMode.HEADING_UP && stabMode === StabMode.GND && frozenHeading === null && prototypeSettings.stabFreezeHeadingDrop) {

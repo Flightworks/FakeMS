@@ -603,17 +603,19 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
       {ghostData && (
         <div 
-          className="absolute z-20 pointer-events-none"
+          className="absolute z-20 pointer-events-auto cursor-pointer group"
           style={{ 
             left: ghostData.x, 
             top: ghostData.y,
             transform: `translate(-50%, -50%) rotate(${ghostData.angle}deg)`, 
             transition: 'all 0.1s linear'
           }}
+          onClick={(e) => { e.stopPropagation(); onResetStab(); }}
         >
-          <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/50 backdrop-blur-sm">
-             <ChevronUp size={24} className="text-amber-400" />
+          <div className="w-10 h-10 bg-amber-500/40 rounded-full flex items-center justify-center border border-amber-500/80 backdrop-blur-sm shadow-[0_0_15px_rgba(245,158,11,0.3)] group-hover:bg-amber-500/60 group-hover:scale-110 transition-all active:scale-95">
+             <ChevronUp size={24} className="text-amber-400 drop-shadow-[0_0_2px_rgba(0,0,0,0.5)]" />
           </div>
+          <div className="absolute -inset-1 bg-amber-500/20 rounded-full animate-ping opacity-50"></div>
         </div>
       )}
       {/* Pure Recentering Button */}

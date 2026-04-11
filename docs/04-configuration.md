@@ -35,8 +35,10 @@ Fine-tune how the map behaves during movement and mode switches:
 
 *   **Auto GND on Pan**: Automatically switches stabilization to `GND` (Ground) mode when a manual pan gesture is detected. This prevents the map from "snapping back" to the ownship while you are trying to look at something else.
 *   **Recenter on Orient**: Controls whether the map jumps back to the ownship when switching between `NORTH-UP` and `HEADING-UP` modes. Disable this to maintain your current panned view during orientation changes.
-*   **Freeze Heading Drop**: When enabled, switching to `HEADING-UP` while in `GND` mode will lock the map rotation to your current heading at that moment. This provides a stable reference point for tactical analysis.
+*   **Maintain Pos on Orient**: When enabled, switching between `NORTH-UP` and `HEADING-UP` will rotate the map around the current helicopter position on screen. This keeps the helicopter in the same place for the operator, even if the map itself rotates significantly.
+*   **Smooth Unfreeze**: Animates the map rotation transition from a frozen heading (in `GND` mode) back to the live heading when recentering.
 *   **Auto Recenter Timer**: (Prototype) Set a delay for the map to automatically return to `HELICO` (Ownship Centered) mode after a period of inactivity.
+*   **Snap Recenter**: If enabled, the map instantly jumps to the ownship when recentering, instead of flying back smoothly.
 
 ## Advanced: Prototype Settings
 

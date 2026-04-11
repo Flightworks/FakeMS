@@ -88,6 +88,7 @@ export interface PrototypeSettings {
   stabRecenterOnOrientSwitch: boolean;
   stabAutoRecenterDelay: number;  // 0=OFF, 5000/10000/15000 ms
   stabSmoothUnfreeze: boolean;    // Animate map rotation on GND->HELICO
+  stabMaintainScreenPosOnOrient: boolean;
 }
 
 export interface AppState {

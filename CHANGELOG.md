@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-11
+
+### Added
+- **Maintain Screen Position**: Added a new stabilization feature that preserves the ownship's screen coordinates when switching between map orientations (North-Up vs Heading-Up). This allows for seamless tactical context transitions without the ownship "jumping" relative to the operator's gaze.
+- **Interactive Ghost Ownship**: Enhanced the off-screen ownship indicator with better visibility and interactivity. Users can now click the ghost indicator to immediately recenter the map on the ownship.
+- **Smooth Rotation Unfreeze**: Added an option to smoothly animate the map rotation back to the live heading when recentering from GND mode, improving spatial awareness during recovery.
+
 ## [1.2.0] - 2026-04-11
 
 ### Added

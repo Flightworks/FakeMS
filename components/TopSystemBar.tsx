@@ -81,6 +81,7 @@ const StabControlWidget = ({ gestureSettings, setGestureSettings }: {
     { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip the fly-back animation when recentering. The map jumps instantly to the ownship position.' },
     { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Automatically return to the ownship when toggling between North-Up and Heading-Up orientation modes.' },
     { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'When recentering from GND mode, smoothly animate the map rotation back to the live heading instead of snapping.' },
+    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'When switching between North-Up and Heading-Up, rotate the map around the current helicopter position on screen so it stays in the same place.' },
   ];
 
   return (
