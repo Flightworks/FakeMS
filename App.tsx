@@ -164,11 +164,16 @@ const App: React.FC = () => {
 
   const handleMapModeChange = (newMode: MapMode | ((prev: MapMode) => MapMode)) => {
     setMapMode(prev => {
-       const nextMode = typeof newMode === 'function' ? newMode(prev) : newMode;
-       if (nextMode !== prev && prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {
+      const nextMode = typeof newMode === 'function' ? newMode(prev) : newMode;
+      if (nextMode !== prev) {
+        if (prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {
           handleResetStab();
-       }
-       return nextMode;
+        } else if (nextMode === MapMode.HEADING_UP && stabMode === StabMode.GND && frozenHeading === null && prototypeSettings.stabFreezeHeadingDrop) {
+          // If switching to HUP in GND and we don't recenter, at least lock the rotation if setting is on
+          setFrozenHeading(ownship.heading || 0);
+        }
+      }
+      return nextMode;
     });
   };
 
@@ -246,10 +251,6 @@ const App: React.FC = () => {
     panAnimationRef.current = requestAnimationFrame(animate);
   }, [panOffset, prototypeSettings.animationSpeed, prototypeSettings.stabSnapRecenter, prototypeSettings.stabSmoothUnfreeze, stabMode, groundAnchor, frozenHeading, ownship.position.lat, ownship.position.lon, ownship.heading]);
 
-  useEffect(() => {
-    centerOnOwnship();
-  }, [mapMode]);
-
   // 3A: Auto-recenter timer — fires centerOnOwnship() after idle in GND mode
   useEffect(() => {
     if (prototypeSettings.stabAutoRecenterDelay <= 0) return;
@@ -278,7 +279,7 @@ const App: React.FC = () => {
           ownship,
           systems,
           history: [], // Stub history 
-          setMapMode,
+          setMapMode: handleMapModeChange,
           toggleSystem,
           panTo: (lat, lon) => {
             // Drop command might pass coords or x/y offset, 

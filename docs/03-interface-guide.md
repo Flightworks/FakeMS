@@ -9,7 +9,11 @@ The map is the heart of the application.
 *   **Navigation**: Pan by dragging with one finger (or mouse) and zoom using the scroll wheel or pinch gestures.
 *   **Stabilization Modes**:
     *   **NORTH-UP**: The top of the map is always North.
-    *   **HEADING-UP**: The map rotates so that the direction you are facing is always at the top.
+    *   **HEADING-UP**: The map rotates so that your ownship heading is at the top.
+    *   **Transition Logic**: By default, switching modes will recenter the map on your ownship. This can be toggled in the **STABLN CFG** menu.
+*   **Stabilization States**:
+    *   **HELICO (Centered)**: The map is locked to your ownship. The ship stays in the center while the world moves underneath.
+    *   **GND (Panned)**: The map is anchored to a point on the ground. This occurs automatically when you pan the map manually.
 *   **Symbology**:
     *   **Blue Square (Viper 1-1)**: Your own ship (Ownship).
     *   **Red Diamond (Hostile)**: Enemy targets or unknown surface/air contacts.

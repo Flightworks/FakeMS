@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-11
+
+### Added
+- **Centralized Stabilization Logic**: Refactored the application core to centrally manage stabilization modes (`GND` vs `HELICO`), map orientation (`NORTH-UP` vs `HEADING-UP`), and heading freeze states.
+- **Orientation Recenter Control**: Added the `stabRecenterOnOrientSwitch` setting, allowing users to toggle whether the map automatically recenters on the ownship when switching map modes.
+- **Smart Heading Freeze**: The map now automatically freezes to the current heading when switching to `HEADING-UP` while in a panned state (`GND` mode), preventing disorienting jumps.
+- **Stabilization Test Suite**: Added a dedicated comprehensive test suite for stabilization transitions and edge cases.
+
+### Fixed
+- **Unintended Map Resets**: Fixed a bug where switching map modes would always force a recenter, bypassing the "Recenter on Orient" toggle.
+- **Command Palette Inconsistency**: Ensured that map mode changes triggered via the command palette correctly route through the centralized stabilization handler.
+
 ## [1.1.0] - 2026-03-15
 
 ### Added

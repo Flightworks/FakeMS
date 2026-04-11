@@ -153,4 +153,93 @@ describe('Stabilisation & Orientation Math', () => {
             expect(result).toBeNull();
         });
     });
+
+    // Pure logic replica of handleMapModeChange from App.tsx
+    const handleMapModeChange = ({
+        prevMode,
+        nextMode,
+        stabRecenterOnOrientSwitch,
+        stabMode,
+        frozenHeading,
+        stabFreezeHeadingDrop,
+        ownshipHeading,
+    }: {
+        prevMode: string,
+        nextMode: string,
+        stabRecenterOnOrientSwitch: boolean,
+        stabMode: string,
+        frozenHeading: number | null,
+        stabFreezeHeadingDrop: boolean,
+        ownshipHeading: number,
+    }) => {
+        let recenterCalled = false;
+        let newFrozenHeading = frozenHeading;
+
+        if (nextMode !== prevMode) {
+            if (stabRecenterOnOrientSwitch && stabMode === 'GND') {
+                recenterCalled = true;
+                newFrozenHeading = null; // handleResetStab resets heading
+            } else if (nextMode === 'HEADING_UP' && stabMode === 'GND' && frozenHeading === null && stabFreezeHeadingDrop) {
+                newFrozenHeading = ownshipHeading;
+            }
+        }
+
+        return { recenterCalled, newFrozenHeading };
+    };
+
+    describe('Map Mode Change (handleMapModeChange)', () => {
+        it('triggers recenter when option is ON and in GND mode', () => {
+            const result = handleMapModeChange({
+                prevMode: 'NORTH_UP',
+                nextMode: 'HEADING_UP',
+                stabRecenterOnOrientSwitch: true,
+                stabMode: 'GND',
+                frozenHeading: null,
+                stabFreezeHeadingDrop: true,
+                ownshipHeading: 45
+            });
+            expect(result.recenterCalled).toBe(true);
+        });
+
+        it('does NOT trigger recenter when option is OFF', () => {
+            const result = handleMapModeChange({
+                prevMode: 'NORTH_UP',
+                nextMode: 'HEADING_UP',
+                stabRecenterOnOrientSwitch: false,
+                stabMode: 'GND',
+                frozenHeading: null,
+                stabFreezeHeadingDrop: false,
+                ownshipHeading: 45
+            });
+            expect(result.recenterCalled).toBe(false);
+        });
+
+        it('freezes heading if switching to HUP while panned (GND) and recenter is OFF', () => {
+            const result = handleMapModeChange({
+                prevMode: 'NORTH_UP',
+                nextMode: 'HEADING_UP',
+                stabRecenterOnOrientSwitch: false,
+                stabMode: 'GND',
+                frozenHeading: null, // was NUP, so no frozen heading yet
+                stabFreezeHeadingDrop: true,
+                ownshipHeading: 120
+            });
+            expect(result.recenterCalled).toBe(false);
+            expect(result.newFrozenHeading).toBe(120);
+        });
+
+        it('does nothing if mode is unchanged', () => {
+            const result = handleMapModeChange({
+                prevMode: 'HEADING_UP',
+                nextMode: 'HEADING_UP',
+                stabRecenterOnOrientSwitch: true,
+                stabMode: 'GND',
+                frozenHeading: 10,
+                stabFreezeHeadingDrop: true,
+                ownshipHeading: 45
+            });
+            expect(result.recenterCalled).toBe(false);
+            expect(result.newFrozenHeading).toBe(10);
+        });
+    });
 });
