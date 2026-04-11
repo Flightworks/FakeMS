@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
 import {
   X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
-  MousePointer2, Timer, Fingerprint, Zap, Crosshair, ChevronRight
+  MousePointer2, Timer, Fingerprint, Zap, Crosshair, ChevronRight, Info
 } from 'lucide-react';
 
 interface TopSystemBarProps {
@@ -62,41 +62,53 @@ const StabControlWidget = ({ gestureSettings, setGestureSettings }: {
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const toggle = (key: keyof PrototypeSettings) => {
     setGestureSettings(s => ({ ...s, [key]: !s[key as keyof PrototypeSettings] }));
   };
 
-  const prototypes: { key: keyof PrototypeSettings; label: string; description: string }[] = [
-    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Switch to GND stab when ownship leaves viewport during pan.' },
-    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading when dropping to GND stab.' },
-    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Instantly recenter without animation.' },
-    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Auto-recenter on ownship when orientation mode changes.' },
+  const cycleDelay = () => {
+    const vals = [0, 5000, 10000, 15000];
+    setGestureSettings(s => ({ ...s, stabAutoRecenterDelay: vals[(vals.indexOf(s.stabAutoRecenterDelay) + 1) % vals.length] }));
+  };
+
+  const delayLabel = (ms: number) => ms === 0 ? 'OFF' : `${ms / 1000}s`;
+
+  const toggles: { key: keyof PrototypeSettings; label: string; description: string }[] = [
+    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Automatically switch to GND stabilisation when the ownship drifts out of the viewport during a pan gesture.' },
+    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze the map heading at the current ownship heading when dropping into GND stab. In HUP, the map rotation locks so the view stays oriented.' },
+    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip the fly-back animation when recentering. The map jumps instantly to the ownship position.' },
+    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Automatically return to the ownship when toggling between North-Up and Heading-Up orientation modes.' },
+    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'When recentering from GND mode, smoothly animate the map rotation back to the live heading instead of snapping.' },
   ];
 
   return (
     <div className="relative">
       <div onPointerDown={() => setIsOpen(!isOpen)} className="cursor-pointer transition-transform active:scale-95">
-        <StatusBlock
-          label="STABLN"
-          value="CFG"
-          status={isOpen ? 'active' : 'default'}
-        />
+        <StatusBlock label="STABLN" value="CFG" status={isOpen ? 'active' : 'default'} />
       </div>
       {isOpen && (
-        <div className="absolute top-14 left-0 w-72 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl z-50 flex flex-col gap-3">
+        <div className="absolute top-14 left-0 w-80 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl z-50 flex flex-col gap-3">
           <div className="flex justify-between items-center mb-1">
             <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
-              <Crosshair size={14} className="text-indigo-400" /> Stab Prototypes
+              <Crosshair size={14} className="text-indigo-400" /> Stab Options
             </span>
             <button onPointerDown={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
           </div>
-          <div className="flex flex-col gap-2 pt-1 border-t border-slate-700">
-            {prototypes.map(p => (
-              <div key={p.key} className="flex items-start justify-between gap-3">
-                <div className="flex flex-col">
-                  <span className="text-slate-200 text-xs font-bold uppercase">{p.label}</span>
-                  <span className="text-slate-500 text-[10px] leading-tight mt-0.5">{p.description}</span>
+          <div className="flex flex-col gap-1 pt-1 border-t border-slate-700">
+            {/* Toggle options */}
+            {toggles.map(p => (
+              <div key={p.key} className="relative flex items-center justify-between gap-2 py-1.5 px-1 rounded hover:bg-slate-800/50">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="text-slate-200 text-xs font-bold uppercase truncate">{p.label}</span>
+                  <span
+                    className="text-slate-500 hover:text-indigo-400 cursor-default shrink-0 transition-colors"
+                    onMouseEnter={() => setHoveredKey(p.key)}
+                    onMouseLeave={() => setHoveredKey(null)}
+                  >
+                    <Info size={11} />
+                  </span>
                 </div>
                 <button
                   className={`px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors ${gestureSettings[p.key] ? 'bg-indigo-600 text-white' : 'text-slate-400 bg-slate-800 hover:bg-slate-700'}`}
@@ -104,8 +116,38 @@ const StabControlWidget = ({ gestureSettings, setGestureSettings }: {
                 >
                   {gestureSettings[p.key] ? 'ON' : 'OFF'}
                 </button>
+                {/* Tooltip */}
+                {hoveredKey === p.key && (
+                  <div className="absolute left-0 top-full mt-1 w-72 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-md shadow-2xl z-[60] pointer-events-none">
+                    <p className="text-[10px] text-slate-300 leading-relaxed">{p.description}</p>
+                  </div>
+                )}
               </div>
             ))}
+            {/* Auto-recenter delay cycler */}
+            <div className="relative flex items-center justify-between gap-2 py-1.5 px-1 rounded hover:bg-slate-800/50">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <span className="text-slate-200 text-xs font-bold uppercase truncate">Auto Recenter</span>
+                <span
+                  className="text-slate-500 hover:text-indigo-400 cursor-default shrink-0 transition-colors"
+                  onMouseEnter={() => setHoveredKey('stabAutoRecenterDelay')}
+                  onMouseLeave={() => setHoveredKey(null)}
+                >
+                  <Info size={11} />
+                </span>
+              </div>
+              <button
+                className="px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors text-emerald-400 bg-slate-800 hover:bg-slate-700 font-mono"
+                onPointerDown={(e) => { e.stopPropagation(); cycleDelay(); }}
+              >
+                {delayLabel(gestureSettings.stabAutoRecenterDelay)}
+              </button>
+              {hoveredKey === 'stabAutoRecenterDelay' && (
+                <div className="absolute left-0 top-full mt-1 w-72 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-md shadow-2xl z-[60] pointer-events-none">
+                  <p className="text-[10px] text-slate-300 leading-relaxed">After this period of inactivity in GND mode, the map automatically recenters on the ownship. Set to OFF to disable.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -277,7 +319,7 @@ const HmiControlWidget = ({ gestureSettings, setGestureSettings }: {
   );
 };
 
-// ── SIM CONTROL WIDGET (unchanged) ────────────────────────────────────────────
+// ── SIM CONTROL WIDGET ────────────────────────────────────────────────────────
 const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
   navMode: NavMode;
   setNavMode: (mode: NavMode) => void;
@@ -285,13 +327,13 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [tempHdg, setTempHdg] = useState<string>(ownship.targetHeading !== undefined ? Math.round(ownship.targetHeading).toString() : '0');
-  const [tempSpd, setTempSpd] = useState<string>(ownship.targetSpeed !== undefined ? Math.round(ownship.targetSpeed).toString() : '120');
-  const [tempTrn, setTempTrn] = useState<string>(ownship.turnRate !== undefined ? ownship.turnRate.toString() : '3');
+  const [tempHdg, setTempHdg] = useState<string>('0');
+  const [tempSpd, setTempSpd] = useState<string>('120');
+  const [tempTrn, setTempTrn] = useState<string>('3');
+  const [isHeadingLocked, setIsHeadingLocked] = useState(false);
 
   const prevIsOpen = useRef(false);
   useEffect(() => {
-    // Only resync when panel opens (transition false -> true)
     if (isOpen && !prevIsOpen.current) {
       setTempHdg(ownship.targetHeading !== undefined ? Math.round(ownship.targetHeading).toString() : (ownship.heading !== undefined ? Math.round(ownship.heading).toString() : '0'));
       setTempSpd(ownship.targetSpeed !== undefined ? Math.round(ownship.targetSpeed).toString() : (ownship.speed !== undefined ? Math.round(ownship.speed).toString() : '120'));
@@ -299,6 +341,12 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
     }
     prevIsOpen.current = isOpen;
   }, [isOpen, ownship.targetHeading, ownship.targetSpeed, ownship.heading, ownship.speed, ownship.turnRate]);
+
+  // LOCK HDG: continuously set targetHeading to currentHeading to stop rotation
+  useEffect(() => {
+    if (!isHeadingLocked || navMode !== NavMode.SIM) return;
+    setOwnship(prev => ({ ...prev, targetHeading: prev.heading ?? prev.targetHeading }));
+  }, [isHeadingLocked, ownship.heading, navMode, setOwnship]);
 
   const applyParams = () => {
     const hdg = parseFloat(tempHdg);
@@ -310,7 +358,24 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
       targetSpeed: !isNaN(spd) ? spd : prev.targetSpeed,
       turnRate: !isNaN(trn) ? trn : prev.turnRate
     }));
-  }
+    setIsHeadingLocked(false); // applying a new heading releases the lock
+  };
+
+  const applyHeadingPreset = (delta: number) => {
+    const base = parseFloat(tempHdg);
+    const newHdg = Math.round(((isNaN(base) ? 0 : base) + delta + 360) % 360);
+    setTempHdg(newHdg.toString());
+  };
+
+  // Turn indicator
+  const actualHdg = Math.round(ownship.heading ?? 0);
+  const targetHdg = Math.round(ownship.targetHeading ?? actualHdg);
+  const hdgDiff = ((targetHdg - actualHdg + 180 + 360) % 360) - 180;
+  const turnIndicator = Math.abs(hdgDiff) < 1 ? '—' : hdgDiff > 0 ? '↻ R' : '↺ L';
+
+  const actualSpd = Math.round(ownship.speed ?? 0);
+  const targetSpd = Math.round(ownship.targetSpeed ?? actualSpd);
+  const spdIndicator = Math.abs(targetSpd - actualSpd) < 1 ? '—' : targetSpd > actualSpd ? '▲' : '▼';
 
   return (
     <div className="relative">
@@ -328,6 +393,7 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
             <button onPointerDown={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
           </div>
 
+          {/* Mode toggle */}
           <div className="flex items-center justify-between">
             <span className="text-slate-300 text-xs font-bold uppercase">Mode:</span>
             <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
@@ -342,59 +408,84 @@ const SimControlWidget = ({ navMode, setNavMode, ownship, setOwnship }: {
             </div>
           </div>
 
+          {/* HDG */}
           <div className="flex flex-col gap-1">
-            <span className="text-slate-400 text-[10px] font-bold uppercase">Target Heading (°T)</span>
-            <div className="flex gap-2">
-              <input
-                 value={tempHdg}
-                 onChange={e => setTempHdg(e.target.value)}
-                 className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
-                 type="number"
-                 disabled={navMode !== NavMode.SIM}
-              />
-              <button
-                onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
-                disabled={navMode !== NavMode.SIM}
-              >SET</button>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-[10px] font-bold uppercase">Target Heading (°T)</span>
+              <span className="text-[10px] font-mono">
+                <span className="text-slate-500">{actualHdg}° →</span>
+                <span className={`ml-1 ${Math.abs(hdgDiff) < 1 ? 'text-slate-500' : 'text-amber-400'}`}>{turnIndicator}</span>
+              </span>
+            </div>
+            <input
+              value={tempHdg}
+              onChange={e => setTempHdg(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
+              type="number" min="0" max="359"
+              disabled={navMode !== NavMode.SIM}
+            />
+            {/* Heading presets */}
+            <div className="flex gap-1 mt-0.5">
+              {[{label: '+90', delta: 90}, {label: '+180', delta: 180}, {label: 'RCPL', delta: 180}].map(p => (
+                <button
+                  key={p.label}
+                  onPointerDown={(e) => { e.stopPropagation(); applyHeadingPreset(p.delta); }}
+                  disabled={navMode !== NavMode.SIM}
+                  className="flex-1 py-0.5 text-[10px] font-bold rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-300 transition-colors"
+                >{p.label}</button>
+              ))}
             </div>
           </div>
 
+          {/* LOCK HDG */}
+          <button
+            onPointerDown={(e) => { e.stopPropagation(); setIsHeadingLocked(v => !v); }}
+            disabled={navMode !== NavMode.SIM}
+            className={`w-full py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-40 ${
+              isHeadingLocked
+                ? 'bg-amber-600/20 border-amber-500 text-amber-400'
+                : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-amber-600 hover:text-amber-400'
+            }`}
+          >
+            {isHeadingLocked ? '🔒 HDG LOCKED — Flying Straight' : 'LOCK HDG (Stop Rotation)'}
+          </button>
+
+          {/* SPD */}
           <div className="flex flex-col gap-1">
-            <span className="text-slate-400 text-[10px] font-bold uppercase">Target Speed (KTS)</span>
-            <div className="flex gap-2">
-               <input
-                 value={tempSpd}
-                 onChange={e => setTempSpd(e.target.value)}
-                 className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
-                 type="number"
-                 disabled={navMode !== NavMode.SIM}
-              />
-              <button
-                onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
-                disabled={navMode !== NavMode.SIM}
-              >SET</button>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-[10px] font-bold uppercase">Target Speed (KTS)</span>
+              <span className="text-[10px] font-mono">
+                <span className="text-slate-500">{actualSpd}kt →</span>
+                <span className={`ml-1 ${Math.abs(targetSpd - actualSpd) < 1 ? 'text-slate-500' : 'text-blue-400'}`}>{spdIndicator}</span>
+              </span>
             </div>
+            <input
+              value={tempSpd}
+              onChange={e => setTempSpd(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
+              type="number"
+              disabled={navMode !== NavMode.SIM}
+            />
           </div>
 
+          {/* TRN */}
           <div className="flex flex-col gap-1">
             <span className="text-slate-400 text-[10px] font-bold uppercase">Turn Rate (°/S)</span>
-            <div className="flex gap-2">
-               <input
-                 value={tempTrn}
-                 onChange={e => setTempTrn(e.target.value)}
-                 className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
-                 type="number"
-                 disabled={navMode !== NavMode.SIM}
-              />
-              <button
-                onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
-                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 rounded font-bold text-xs text-white"
-                disabled={navMode !== NavMode.SIM}
-              >SET</button>
-            </div>
+            <input
+              value={tempTrn}
+              onChange={e => setTempTrn(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
+              type="number"
+              disabled={navMode !== NavMode.SIM}
+            />
           </div>
+
+          {/* Unified APPLY */}
+          <button
+            onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded font-bold text-xs text-white transition-colors uppercase tracking-wider"
+            disabled={navMode !== NavMode.SIM}
+          >Apply All</button>
         </div>
       )}
     </div>

@@ -108,4 +108,49 @@ describe('Stabilisation & Orientation Math', () => {
             expect(de).toBeCloseTo(0);
         });
     });
+
+    // Pure-function replica of handleSetStabMode freeze logic in App.tsx
+    const handleSetStabMode = (
+        prev: string, next: string,
+        mapMode: string, stabFreezeHeadingDrop: boolean,
+        ownshipHeading: number, frozenHeading: number | null
+    ): number | null => {
+        if (next === 'GND' && prev !== 'GND') {
+            if (mapMode === 'HEADING_UP' && stabFreezeHeadingDrop) {
+                return ownshipHeading; // freeze
+            }
+        }
+        if (next === 'HELICO') {
+            return null; // unfreeze
+        }
+        return frozenHeading; // unchanged
+    };
+
+    describe('Freeze HDG centralization (handleSetStabMode)', () => {
+        it('freezes heading on HELICO->GND in HUP with freeze enabled', () => {
+            const result = handleSetStabMode('HELICO', 'GND', 'HEADING_UP', true, 135, null);
+            expect(result).toBe(135);
+        });
+
+        it('does NOT freeze heading in NUP even with freeze enabled', () => {
+            const result = handleSetStabMode('HELICO', 'GND', 'NORTH_UP', true, 135, null);
+            expect(result).toBeNull();
+        });
+
+        it('does NOT freeze heading in HUP with freeze DISABLED', () => {
+            const result = handleSetStabMode('HELICO', 'GND', 'HEADING_UP', false, 135, null);
+            expect(result).toBeNull();
+        });
+
+        it('does NOT freeze on GND->GND (no-op transition)', () => {
+            // already in GND, heading should remain unchanged
+            const result = handleSetStabMode('GND', 'GND', 'HEADING_UP', true, 200, 135);
+            expect(result).toBe(135); // unchanged
+        });
+
+        it('clears frozen heading on transition back to HELICO', () => {
+            const result = handleSetStabMode('GND', 'HELICO', 'HEADING_UP', true, 200, 135);
+            expect(result).toBeNull();
+        });
+    });
 });

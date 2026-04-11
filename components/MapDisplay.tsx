@@ -217,9 +217,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             setStabMode(StabMode.GND);
             const c = map.getCenter();
             onPan(panOffset, { lat: c.lat, lon: c.lng });
-            if (mapMode === MapMode.HEADING_UP && gestureSettings.stabFreezeHeadingDrop) {
-               setFrozenHeading(ownship.heading || 0);
-            }
         }
 
         let rx = sx;
@@ -346,11 +343,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
     if (Math.sqrt(dx * dx + dy * dy) > 10) {
       if (!isDraggingRef.current) {
-        if (stabMode !== StabMode.GND && !gestureSettings.stabAutoGndOnPan) {
-           // stay in helico
-        } else if (stabMode !== StabMode.GND) {
-           setStabMode(StabMode.GND);
+        if (stabMode !== StabMode.GND && gestureSettings.stabAutoGndOnPan) {
+          setStabMode(StabMode.GND); // routes through handleSetStabMode in App.tsx
         }
+        // else: stay in HELICO (panning without forced GND switch)
       }
       isDraggingRef.current = true;
       if (indTimer.current) clearTimeout(indTimer.current);
@@ -531,13 +527,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           rotation={mapRotation}
           onMapMoveStart={() => {
             if (stabMode === StabMode.HELICO && !gestureSettings.stabAutoGndOnPan) {
-               return; // Skip GND force, allow panning while in HELICO!
+               return;
             }
             if (stabMode !== StabMode.GND) {
               setStabMode(StabMode.GND);
-              if (mapMode === MapMode.HEADING_UP && gestureSettings.stabFreezeHeadingDrop) {
-                setFrozenHeading(ownship.heading || 0);
-              }
             }
           }}
           onMapMove={handleMapMove}

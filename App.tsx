@@ -73,7 +73,9 @@ const App: React.FC = () => {
     stabAutoGndOnPan: false,
     stabFreezeHeadingDrop: true,
     stabSnapRecenter: false,
-    stabRecenterOnOrientSwitch: false
+    stabRecenterOnOrientSwitch: false,
+    stabAutoRecenterDelay: 0,
+    stabSmoothUnfreeze: false
   });
 
   const toggleSystem = (sys: keyof SystemStatus) => {
@@ -81,6 +83,8 @@ const App: React.FC = () => {
   };
 
   const panAnimationRef = useRef<number | undefined>(undefined);
+  const lastPanActivityRef = useRef<number>(Date.now());
+  const headingUnfreezeRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -139,6 +143,7 @@ const App: React.FC = () => {
       panAnimationRef.current = undefined;
     }
     setPanOffset(newOffset);
+    lastPanActivityRef.current = Date.now(); // Track activity for auto-recenter
     // Note: groundAnchor remains fixed during manual panning to preserve the reference point.
   }, []);
 
@@ -148,10 +153,14 @@ const App: React.FC = () => {
       if (next === StabMode.GND && prev !== StabMode.GND) {
         // Anchor the ground position to current ownship position
         setGroundAnchor({ ...ownship.position });
+        // Centralized: freeze heading if option is enabled
+        if (mapMode === MapMode.HEADING_UP && prototypeSettings.stabFreezeHeadingDrop) {
+          setFrozenHeading(ownship.heading || 0);
+        }
       }
       return next;
     });
-  }, [ownship.position]);
+  }, [ownship.position, ownship.heading, mapMode, prototypeSettings.stabFreezeHeadingDrop, setFrozenHeading]);
 
   const handleMapModeChange = (newMode: MapMode | ((prev: MapMode) => MapMode)) => {
     setMapMode(prev => {
@@ -166,6 +175,7 @@ const App: React.FC = () => {
   const centerOnOwnship = React.useCallback(() => {
     // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
+    if (headingUnfreezeRef.current) cancelAnimationFrame(headingUnfreezeRef.current);
 
     // If we are coming from GND stab, compute the current panOffset based on the fixed groundAnchor and current ownship
     let start = { ...panOffset };
@@ -183,6 +193,7 @@ const App: React.FC = () => {
     if (duration <= 0 || (Math.abs(start.x) < 0.1 && Math.abs(start.y) < 0.1)) {
       setPanOffset(end);
       setStabMode(StabMode.HELICO);
+      setFrozenHeading(null);
       return;
     }
 
@@ -190,6 +201,29 @@ const App: React.FC = () => {
     setStabMode(StabMode.HELICO);
 
     const startTime = performance.now();
+
+    // 3B: Smooth heading unfreeze — animate frozenHeading -> null (live heading)
+    if (frozenHeading !== null && prototypeSettings.stabSmoothUnfreeze) {
+      const startFrozen = frozenHeading;
+      const targetHeading = ownship.heading || 0;
+      // shortest angular difference
+      let diff = ((targetHeading - startFrozen + 180) % 360 + 360) % 360 - 180;
+      const animateHeading = (time: number) => {
+        const elapsed = time - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        if (progress < 1) {
+          setFrozenHeading(startFrozen + diff * ease);
+          headingUnfreezeRef.current = requestAnimationFrame(animateHeading);
+        } else {
+          setFrozenHeading(null);
+        }
+      };
+      headingUnfreezeRef.current = requestAnimationFrame(animateHeading);
+    } else {
+      setFrozenHeading(null);
+    }
+
     const animate = (time: number) => {
       const elapsed = time - startTime;
       const progress = Math.min(elapsed / duration, 1);
@@ -210,11 +244,24 @@ const App: React.FC = () => {
       }
     };
     panAnimationRef.current = requestAnimationFrame(animate);
-  }, [panOffset, prototypeSettings.animationSpeed, stabMode, groundAnchor, ownship.position.lat, ownship.position.lon]);
+  }, [panOffset, prototypeSettings.animationSpeed, prototypeSettings.stabSnapRecenter, prototypeSettings.stabSmoothUnfreeze, stabMode, groundAnchor, frozenHeading, ownship.position.lat, ownship.position.lon, ownship.heading]);
 
   useEffect(() => {
     centerOnOwnship();
   }, [mapMode]);
+
+  // 3A: Auto-recenter timer — fires centerOnOwnship() after idle in GND mode
+  useEffect(() => {
+    if (prototypeSettings.stabAutoRecenterDelay <= 0) return;
+    const interval = setInterval(() => {
+      if (stabMode !== StabMode.GND) return;
+      const elapsed = Date.now() - lastPanActivityRef.current;
+      if (elapsed >= prototypeSettings.stabAutoRecenterDelay) {
+        centerOnOwnship();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [prototypeSettings.stabAutoRecenterDelay, stabMode, centerOnOwnship]);
 
   const handleResetStab = React.useCallback(() => {
     setFrozenHeading(null);
