@@ -179,7 +179,7 @@ const App: React.FC = () => {
           
           if (Math.abs(deltaDeg) > 0.01 && stabMode === StabMode.HELICO) {
             // HELICO mode: Rotate panOffset to keep ownship fixed on screen
-            const rad = (deltaDeg) * (Math.PI / 180);
+            const rad = -(deltaDeg) * (Math.PI / 180);
             const cosR = Math.cos(rad);
             const sinR = Math.sin(rad);
             setPanOffset(prevPan => ({

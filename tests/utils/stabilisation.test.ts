@@ -184,9 +184,9 @@ describe('Stabilisation & Orientation Math', () => {
             }
 
             // HELICO mode should rotate around ownship
-            // Formula should be: rad = deltaDeg * (Math.PI / 180) 
-            // Currently it is rad = -deltaDeg which is likely the bug.
-            const rad = (deltaDeg) * (Math.PI / 180);
+            // The pan offset must rotate in the OPPOSITE direction of the map rotation
+            // to maintain the same screen coordinates.
+            const rad = -(deltaDeg) * (Math.PI / 180);
             const cosR = Math.cos(rad);
             const sinR = Math.sin(rad);
 
@@ -212,7 +212,7 @@ describe('Stabilisation & Orientation Math', () => {
             const nextPan = calculatePanAdjustment(prevPan, 'NORTH_UP', 'HEADING_UP', 'HELICO', 90, null, true);
             
             expect(nextPan.x).toBeCloseTo(0);
-            expect(nextPan.y).toBeCloseTo(-100);
+            expect(nextPan.y).toBeCloseTo(100);
         });
 
         it('rotates around center in GND mode (ignores ownship pos)', () => {

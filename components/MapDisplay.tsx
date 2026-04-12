@@ -123,16 +123,13 @@ const MapController: React.FC<{
     delta = ((delta + 180) % 360 + 360) % 360 - 180;
     prevRotRef.current = prevRotRef.current + delta;
     mapContainer.style.transform = `rotate(${prevRotRef.current}deg)`;
-    mapContainer.style.transition = 'transform 0.3s ease-out';
+    mapContainer.style.transition = 'none';
   }, [rotation, mapContainer, map]);
 
   useMapEvents({
     movestart: () => { isInteracting.current = true; onMapMoveStart(); },
     moveend: () => {
       isInteracting.current = false;
-      if (!isPanning) {
-        onMapMove(map.getCenter());
-      }
     },
     zoomend: () => {
       onMapZoom(map.getZoom());
@@ -281,7 +278,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     if (stabMode === StabMode.HELICO && gestureSettings.stabMaintainScreenPosOnOrient) {
        const deltaDeg = mapRotation - rotAtPanSetRef.current;
        if (Math.abs(deltaDeg) > 0.01) {
-          const rad = deltaDeg * (Math.PI / 180);
+          const rad = -deltaDeg * (Math.PI / 180);
           const cosR = Math.cos(rad);
           const sinR = Math.sin(rad);
           activePanX = panOffset.x * cosR - panOffset.y * sinR;

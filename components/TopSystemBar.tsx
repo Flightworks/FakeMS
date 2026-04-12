@@ -606,7 +606,7 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
       {/* Toolbox Container Area (Non-overlapping) */}
       {(isSimOpen || isStabOpen || isHmiOpen) && (
         <div 
-          className="mt-2 px-8 flex flex-row flex-wrap items-start gap-4 pointer-events-auto"
+          className="mt-2 pl-44 pr-8 flex flex-row flex-wrap items-start gap-4 pointer-events-auto"
           onPointerDown={stopProp}
         >
           {isSimOpen && (
