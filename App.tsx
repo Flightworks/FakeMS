@@ -177,8 +177,9 @@ const App: React.FC = () => {
             : 0;
           const deltaDeg = nextRot - prevRot;
           
-          if (Math.abs(deltaDeg) > 0.01) {
-            const rad = (-deltaDeg) * (Math.PI / 180);
+          if (Math.abs(deltaDeg) > 0.01 && stabMode === StabMode.HELICO) {
+            // HELICO mode: Rotate panOffset to keep ownship fixed on screen
+            const rad = (deltaDeg) * (Math.PI / 180);
             const cosR = Math.cos(rad);
             const sinR = Math.sin(rad);
             setPanOffset(prevPan => ({
@@ -186,6 +187,7 @@ const App: React.FC = () => {
               y: prevPan.x * sinR + prevPan.y * cosR
             }));
           }
+          // In GND mode, we do nothing to panOffset, so it naturally rotates around center
         }
 
         if (prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {

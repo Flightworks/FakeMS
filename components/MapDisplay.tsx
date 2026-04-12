@@ -216,7 +216,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         if (stabMode === StabMode.HELICO && gestureSettings.stabAutoGndOnPan) {
             setStabMode(StabMode.GND);
             const c = map.getCenter();
-            onPan(panOffset, { lat: c.lat, lon: c.lng });
+            onPan(activePan, { lat: c.lat, lon: c.lng });
         }
 
         let rx = sx;
@@ -239,7 +239,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       handler();
 
       return () => { map.off('move', handler); map.off('zoom', handler); };
-    }, [map, ownship.position.lat, ownship.position.lon, stabMode, mapRotation]); // Re-run when these change
+    }, [map, ownship.position.lat, ownship.position.lon, stabMode, mapRotation, activePan.x, activePan.y]); // Re-run when these change
     return null;
   };
 
@@ -265,16 +265,45 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : ownship.heading || 0) 
     : 0;
 
+  // --- Dynamic Pan Rotation (Continuous HUP fixing) ---
+  const lastPanOffsetRef = useRef(panOffset);
+  const rotAtPanSetRef = useRef(mapRotation);
+
+  if (panOffset !== lastPanOffsetRef.current) {
+    lastPanOffsetRef.current = panOffset;
+    rotAtPanSetRef.current = mapRotation;
+  }
+
+  const getEffectivePan = () => {
+    let activePanX = panOffset.x;
+    let activePanY = panOffset.y;
+
+    if (stabMode === StabMode.HELICO && gestureSettings.stabMaintainScreenPosOnOrient) {
+       const deltaDeg = mapRotation - rotAtPanSetRef.current;
+       if (Math.abs(deltaDeg) > 0.01) {
+          const rad = deltaDeg * (Math.PI / 180);
+          const cosR = Math.cos(rad);
+          const sinR = Math.sin(rad);
+          activePanX = panOffset.x * cosR - panOffset.y * sinR;
+          activePanY = panOffset.x * sinR + panOffset.y * cosR;
+       }
+    }
+    return { x: activePanX, y: activePanY };
+  };
+
+  const activePan = getEffectivePan();
+
   // Coordinates
   const centerLatLon = useMemo(() => {
     // Current base point (either helicopter or fixed ground anchor)
     const base = (stabMode === StabMode.GND && groundAnchor) ? groundAnchor : ownship.position;
+    if (!base) return { lat: 0, lng: 0 };
     
     // Displacement from the base
-    const dLat = (panOffset.y / EARTH_RADIUS) * (180 / Math.PI);
-    const dLon = (panOffset.x / (EARTH_RADIUS * Math.cos(base.lat * Math.PI / 180))) * (180 / Math.PI);
+    const dLat = (activePan.y / EARTH_RADIUS) * (180 / Math.PI);
+    const dLon = (activePan.x / (EARTH_RADIUS * Math.cos(base.lat * Math.PI / 180))) * (180 / Math.PI);
     return [base.lat + dLat, base.lon + dLon] as [number, number];
-  }, [ownship.position.lat, ownship.position.lon, panOffset.x, panOffset.y, stabMode, groundAnchor]);
+  }, [ownship.position.lat, ownship.position.lon, activePan.x, activePan.y, stabMode, groundAnchor]);
 
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
@@ -313,7 +342,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       type, 
       entityId, 
       autoTriggered: false,
-      startPanOffset: { ...panOffset }
+      startPanOffset: { ...activePan }
     };
     isDraggingRef.current = false;
     setLongPressIndicator(null);

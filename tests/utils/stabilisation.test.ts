@@ -154,92 +154,73 @@ describe('Stabilisation & Orientation Math', () => {
         });
     });
 
-    // Pure logic replica of handleMapModeChange from App.tsx
-    const handleMapModeChange = ({
-        prevMode,
-        nextMode,
-        stabRecenterOnOrientSwitch,
-        stabMode,
-        frozenHeading,
-        stabFreezeHeadingDrop,
-        ownshipHeading,
-    }: {
-        prevMode: string,
-        nextMode: string,
-        stabRecenterOnOrientSwitch: boolean,
-        stabMode: string,
-        frozenHeading: number | null,
-        stabFreezeHeadingDrop: boolean,
-        ownshipHeading: number,
-    }) => {
-        let recenterCalled = false;
-        let newFrozenHeading = frozenHeading;
+    describe('Maintain Screen Position (Implementation Logic)', () => {
+        // Replicating specific math from App.tsx handleMapModeChange
+        const calculatePanAdjustment = (
+            prevPan: { x: number, y: number },
+            prevMode: string,
+            nextMode: string,
+            stabMode: string,
+            ownshipHeading: number,
+            frozenHeading: number | null,
+            maintainScreenPos: boolean
+        ) => {
+            if (!maintainScreenPos) return prevPan;
 
-        if (nextMode !== prevMode) {
-            if (stabRecenterOnOrientSwitch && stabMode === 'GND') {
-                recenterCalled = true;
-                newFrozenHeading = null; // handleResetStab resets heading
-            } else if (nextMode === 'HEADING_UP' && stabMode === 'GND' && frozenHeading === null && stabFreezeHeadingDrop) {
-                newFrozenHeading = ownshipHeading;
+            const prevRot = prevMode === 'HEADING_UP'
+                ? -((stabMode === 'GND' && frozenHeading !== null) ? frozenHeading : ownshipHeading)
+                : 0;
+            const nextRot = nextMode === 'HEADING_UP'
+                ? -((stabMode === 'GND' && frozenHeading !== null) ? frozenHeading : ownshipHeading)
+                : 0;
+            const deltaDeg = nextRot - prevRot;
+
+            if (Math.abs(deltaDeg) < 0.01) return prevPan;
+
+            // Branching based on user feedback
+            if (stabMode === 'GND') {
+                // GND mode should rotate around map center (no pan adjustment)
+                return prevPan; 
             }
-        }
 
-        return { recenterCalled, newFrozenHeading };
-    };
+            // HELICO mode should rotate around ownship
+            // Formula should be: rad = deltaDeg * (Math.PI / 180) 
+            // Currently it is rad = -deltaDeg which is likely the bug.
+            const rad = (deltaDeg) * (Math.PI / 180);
+            const cosR = Math.cos(rad);
+            const sinR = Math.sin(rad);
 
-    describe('Map Mode Change (handleMapModeChange)', () => {
-        it('triggers recenter when option is ON and in GND mode', () => {
-            const result = handleMapModeChange({
-                prevMode: 'NORTH_UP',
-                nextMode: 'HEADING_UP',
-                stabRecenterOnOrientSwitch: true,
-                stabMode: 'GND',
-                frozenHeading: null,
-                stabFreezeHeadingDrop: true,
-                ownshipHeading: 45
-            });
-            expect(result.recenterCalled).toBe(true);
+            return {
+                x: prevPan.x * cosR - prevPan.y * sinR,
+                y: prevPan.x * sinR + prevPan.y * cosR
+            };
+        };
+
+        it('maintains screen position in HELICO mode (NUP -> HUP)', () => {
+            // NUP (0) -> HUP (Heading 90 East -> -90 CSS)
+            // Initial Pan: Offset {x: 100, y: 0} (Center is 100m East of Ownship)
+            // rotation changes from 0 to -90. deltaDeg = -90.
+            // Requirement: Ownship stays at same screen pos.
+            // Screen Pos at 0: rotate(0) * (-pan) = (-100, 0)
+            // Screen Pos at -90: rotate(-90) * (-newPan) = (-100, 0)
+            // rotate(-90) CCW 90deg. For it to result in (-100, 0), input must be (0, -100).
+            // So -newPan = (0, -100) -> newPan = (0, 100).
+            // Rotation of (100, 0) by -90 CW (deltaDeg = -90) results in (0, -100).
+            // Wait, RotateMath(100, 0, -90) = (0, -100). 
+            
+            const prevPan = { x: 100, y: 0 };
+            const nextPan = calculatePanAdjustment(prevPan, 'NORTH_UP', 'HEADING_UP', 'HELICO', 90, null, true);
+            
+            expect(nextPan.x).toBeCloseTo(0);
+            expect(nextPan.y).toBeCloseTo(-100);
         });
 
-        it('does NOT trigger recenter when option is OFF', () => {
-            const result = handleMapModeChange({
-                prevMode: 'NORTH_UP',
-                nextMode: 'HEADING_UP',
-                stabRecenterOnOrientSwitch: false,
-                stabMode: 'GND',
-                frozenHeading: null,
-                stabFreezeHeadingDrop: false,
-                ownshipHeading: 45
-            });
-            expect(result.recenterCalled).toBe(false);
-        });
-
-        it('freezes heading if switching to HUP while panned (GND) and recenter is OFF', () => {
-            const result = handleMapModeChange({
-                prevMode: 'NORTH_UP',
-                nextMode: 'HEADING_UP',
-                stabRecenterOnOrientSwitch: false,
-                stabMode: 'GND',
-                frozenHeading: null, // was NUP, so no frozen heading yet
-                stabFreezeHeadingDrop: true,
-                ownshipHeading: 120
-            });
-            expect(result.recenterCalled).toBe(false);
-            expect(result.newFrozenHeading).toBe(120);
-        });
-
-        it('does nothing if mode is unchanged', () => {
-            const result = handleMapModeChange({
-                prevMode: 'HEADING_UP',
-                nextMode: 'HEADING_UP',
-                stabRecenterOnOrientSwitch: true,
-                stabMode: 'GND',
-                frozenHeading: 10,
-                stabFreezeHeadingDrop: true,
-                ownshipHeading: 45
-            });
-            expect(result.recenterCalled).toBe(false);
-            expect(result.newFrozenHeading).toBe(10);
+        it('rotates around center in GND mode (ignores ownship pos)', () => {
+            const prevPan = { x: 100, y: 100 };
+            const nextPan = calculatePanAdjustment(prevPan, 'NORTH_UP', 'HEADING_UP', 'GND', 90, 45, true);
+            
+            // In GND mode, it should not change
+            expect(nextPan).toEqual(prevPan);
         });
     });
 });

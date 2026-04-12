@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-04-12
+
+### Fixed
+- **HELICO Mode Orbit Drift**: Fixed a critical stabilization bug where the ownship would "orbit" the map center during continuous heading changes. The map now dynamically offsets in the background to maintain its locked screen-pixel relationship with the helicopter's position during rotation.
+
 ## [1.3.0] - 2026-04-11
 
 ### Added
