@@ -41,6 +41,7 @@ export interface Entity {
   acceleration?: number; // Knots per second
 
   altitude?: number;     // Current Altitude (Feet)
+  continuousTurn?: 'L' | 'R' | null; // orbit left or right indefinitely
 
   // Navigation
   waypoints?: Position[]; // List of coordinates to follow

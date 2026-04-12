@@ -50,15 +50,22 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
     }
 
     // --- 2. Heading / Turn Logic ---
-    const turnDiff = angleDifference(currentHeading, targetHeading);
-    if (turnDiff !== 0) {
+    if (entity.continuousTurn) {
         let change = turnRate * dtSeconds;
-        if (Math.abs(turnDiff) < change) {
-            currentHeading = targetHeading;
-        } else {
-            currentHeading += Math.sign(turnDiff) * change;
-        }
+        currentHeading += (entity.continuousTurn === 'R' ? 1 : -1) * change;
         currentHeading = normalizeAngle(currentHeading);
+        targetHeading = currentHeading; // Keep target in sync
+    } else {
+        const turnDiff = angleDifference(currentHeading, targetHeading);
+        if (turnDiff !== 0) {
+            let change = turnRate * dtSeconds;
+            if (Math.abs(turnDiff) < change) {
+                currentHeading = targetHeading;
+            } else {
+                currentHeading += Math.sign(turnDiff) * change;
+            }
+            currentHeading = normalizeAngle(currentHeading);
+        }
     }
 
     // --- 3. Speed / Acceleration Logic ---

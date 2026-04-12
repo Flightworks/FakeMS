@@ -166,13 +166,21 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           <SidebarButton label="" icon={isOpen ? X : Menu} onClick={onToggle} active={isOpen} />
           <button
             onClick={() => setMapMode(mapMode === MapMode.NORTH_UP ? MapMode.HEADING_UP : MapMode.NORTH_UP)}
-            className="w-16 h-16 flex items-center justify-center rounded-full border-2 border-slate-600 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto bg-slate-800/90 backdrop-blur-md text-slate-300 hover:bg-slate-700/90"
+            className={`
+              w-16 h-16 flex items-center justify-center rounded-full border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto backdrop-blur-md
+              ${mapMode === MapMode.NORTH_UP 
+                ? 'bg-emerald-900 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+                : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700/90'}
+            `}
             title={`Active: ${mapMode === MapMode.NORTH_UP ? 'NORTH UP' : 'HEADING UP'}`}
           >
             <div className="relative flex items-center justify-center w-full h-full">
+              {mapMode === MapMode.NORTH_UP && (
+                <span className="absolute top-1 text-[9px] font-bold text-emerald-200 uppercase tracking-tighter">N</span>
+              )}
               <ArrowUp
-                size={32}
-                className="text-slate-200"
+                size={34}
+                className={mapMode === MapMode.NORTH_UP ? "text-white" : "text-slate-400"}
                 style={{ transform: `rotate(${compassRotation}deg)`, transition: 'transform 0.3s ease-out' }}
               />
             </div>

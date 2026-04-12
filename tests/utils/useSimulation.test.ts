@@ -56,4 +56,22 @@ describe('Simulation Kinematics', () => {
         const next = stepEntity(turningEntity, 10.0); // 10s * 3deg = 30deg > 5deg
         expect(next.heading).toBe(5);
     });
+
+    it('rotates continuously when continuousTurn is set to R', () => {
+        const orbitEntity = { ...baseEntity, continuousTurn: 'R' as const };
+        // At 3 deg/sec, after 40 seconds it should have done 120 deg
+        const step1 = stepEntity(orbitEntity, 40.0);
+        expect(step1.heading).toBe(120);
+
+        // After another 100 seconds (total 140s), it should be at 420 % 360 = 60
+        const step2 = stepEntity(step1, 100.0);
+        expect(step2.heading).toBe(60);
+    });
+
+    it('rotates continuously when continuousTurn is set to L', () => {
+        const orbitEntity = { ...baseEntity, continuousTurn: 'L' as const };
+        // At 3 deg/sec, after 10 seconds it should be at -30 deg (330)
+        const next = stepEntity(orbitEntity, 10.0);
+        expect(next.heading).toBe(330);
+    });
 });

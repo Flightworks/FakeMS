@@ -7,7 +7,7 @@ Fake MS is a high-fidelity, tactile-first interface designed for **Human-Machine
 ## Technical & Functional Modules
 
 ### 1. Experimental Tactical Map
-*   **Stabilization Modes**: Implements `NORTH-UP` and `HEADING-UP` (Map rotates based on simulated ownship heading).
+*   **Stabilization Modes**: Implements `NORTH-UP` and `HEADING-UP`. Supports **Maintain Screen Position** which ensures the ownship remains at consistent screen coordinates during orientation switches and continuous maneuvers.
 *   **Symbology**: Employs simplified military-grade symbology (APP-6) as high-contrast visual anchors for tracking experiments.
 *   **Projection & Math**: Uses Mercator-based tile mapping with **WGS84 Geodesic math** for distance and bearing calculations (`utils/geo.ts`). `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels).
 *   **Offline Resilience**: Dynamic loading and caching of dark-mode geographic tiles (CartoDB) via Service Worker for simulation stability.
@@ -48,6 +48,7 @@ This codebase supports working on multiple branches simultaneously via **Git Wor
 *   **Memoization**: Map layers must be memoized. A frame drop during a 360-degree rotation breaks the HMI "feel."
 *   **Z-Index**: Keep `CommandPalette` at the highest level (`z-[100]`), followed by `Sidebars/TopBars` (`z-50`).
 *   **React Strict Mode / State Closures**: When deriving geographic coordinate shifts (or any mathematical delta) inside a `useEffect`, do not chain multiple specific `setState` calls inside a hook closure like `setOwnship(prev => { ... setEntities(...) })`. React 18 tests pure functions by firing them twice, causing compounding math shifts. Decouple your state updates, and use a `useRef` (like `lastOriginRef`) to construct idempotent deltas.
+*   **Stabilization Performance (HUP)**: To maintain the ownship's screen position during continuous heading changes in `HEADING-UP` mode, avoid updating global `panOffset` state on every frame. Instead, use a reference rotation (`rotAtPanSetRef`) at the time of the last pan and derive a local `activePan` in the render loop. This prevents expensive state propagation while keeping the ownship physically locked to its screen-space coordinates.
 
 ---
 

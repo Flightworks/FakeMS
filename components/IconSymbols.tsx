@@ -8,14 +8,21 @@ import React from 'react';
 
 export const HelicopterSymbol = ({ color = "text-cyan-400" }: { color?: string }) => (
   <svg viewBox="0 0 100 100" className={`w-full h-full ${color} fill-none stroke-current drop-shadow-lg overflow-visible`}>
-    {/* Friendly Frame: Rectangle */}
-    <rect x="15" y="25" width="70" height="50" strokeWidth="6" />
+    {/* Tail Assembly */}
+    <path d="M 50 70 L 50 90" strokeWidth="4" strokeLinecap="round" />
+    <path d="M 44 90 L 56 90" strokeWidth="3" strokeLinecap="round" />
     
-    {/* Icon: Rotary Wing (Simplified Bowtie/Hourglass) */}
-    <path d="M 50 50 L 35 35 V 65 L 50 50 L 65 35 V 65 Z" strokeWidth="4" fill="currentColor" fillOpacity="0.3" />
+    {/* Fuselage - Top Down */}
+    <rect x="42" y="30" width="16" height="40" rx="8" fill="currentColor" fillOpacity="0.2" strokeWidth="4" />
     
-    {/* Velocity Leader (Static) */}
-    <path d="M 50 25 L 50 5" strokeWidth="4" />
+    {/* Main Rotor (Static X) */}
+    <g transform="rotate(45 50 50)">
+      <path d="M 12 50 L 88 50" strokeWidth="4" strokeLinecap="round" />
+      <path d="M 50 12 L 50 88" strokeWidth="4" strokeLinecap="round" />
+    </g>
+    
+    {/* Heading Indicator */}
+    <path d="M 50 30 L 50 10" strokeWidth="4" strokeLinecap="round" />
   </svg>
 );
 
