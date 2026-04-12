@@ -168,32 +168,14 @@ const App: React.FC = () => {
       const nextMode = typeof newMode === 'function' ? newMode(prev) : newMode;
       if (nextMode !== prev) {
         // Feature: Rotate panOffset to maintain helicopter screen position
-        if (prototypeSettings.stabMaintainScreenPosOnOrient) {
-          const prevRot = prev === MapMode.HEADING_UP 
-            ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : (ownship.heading || 0)) 
-            : 0;
-          const nextRot = nextMode === MapMode.HEADING_UP 
-            ? -((stabMode === StabMode.GND && frozenHeading !== null) ? frozenHeading : (ownship.heading || 0)) 
-            : 0;
-          const deltaDeg = nextRot - prevRot;
-          
-          if (Math.abs(deltaDeg) > 0.01 && stabMode === StabMode.HELICO) {
-            // HELICO mode: Rotate panOffset to keep ownship fixed on screen
-            const rad = -(deltaDeg) * (Math.PI / 180);
-            const cosR = Math.cos(rad);
-            const sinR = Math.sin(rad);
-            setPanOffset(prevPan => ({
-              x: prevPan.x * cosR - prevPan.y * sinR,
-              y: prevPan.x * sinR + prevPan.y * cosR
-            }));
-          }
-          // In GND mode, we do nothing to panOffset, so it naturally rotates around center
-        }
-
+        // DEPRECATED: We now rely on MapDisplay's continuous stabilization logic (getEffectivePan)
+        // to handle the jump visually. This avoids double-compensation and timing issues.
+        
         if (prototypeSettings.stabRecenterOnOrientSwitch && stabMode === StabMode.GND) {
           handleResetStab();
-        } else if (nextMode === MapMode.HEADING_UP && stabMode === StabMode.GND && frozenHeading === null && prototypeSettings.stabFreezeHeadingDrop) {
-          // If switching to HUP in GND and we don't recenter, at least lock the rotation if setting is on
+        } else if (nextMode === MapMode.HEADING_UP && stabMode === StabMode.GND && prototypeSettings.stabFreezeHeadingDrop) {
+          // Fix Issue 1: Always update or initialize frozenHeading when switching to HUP in GND mode.
+          // This ensures the map aligns with the current aircraft heading even if it was previously frozen at another angle.
           setFrozenHeading(ownship.heading || 0);
         }
       }

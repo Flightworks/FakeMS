@@ -51,7 +51,7 @@ This codebase supports working on multiple branches simultaneously via **Git Wor
 *   **Z-Index**: Keep `CommandPalette` at the highest level (`z-[100]`), followed by `Sidebars/TopBars` (`z-50`).
 *   **React Strict Mode / State Closures**: When deriving geographic coordinate shifts (or any mathematical delta) inside a `useEffect`, do not chain multiple specific `setState` calls inside a hook closure like `setOwnship(prev => { ... setEntities(...) })`. React 18 tests pure functions by firing them twice, causing compounding math shifts. Decouple your state updates, and use a `useRef` (like `lastOriginRef`) to construct idempotent deltas.
 *   **Stabilization Performance (HUP)**: To maintain the ownship's screen position during continuous heading changes in `HEADING-UP` mode, avoid updating global `panOffset` state on every frame via Leaflet `move` events. Instead, derive the center from the internal `panOffset` and map rotation.
-*   **Rotation Math**: Stabilization requires counter-rotating the user's `panOffset` by `-deltaDeg` relative to the map rotation. 
+*   **Rotation Math**: Stabilization requires counter-rotating the user's `panOffset` by `+deltaDeg` (or just `deltaDeg`) relative to the map rotation to compensate for the Leaflet y-axis inversion versus screen CSS coordinates. 
 *   **Transition Lock**: Never use CSS animations/transitions on the `MapContainer` during continuous stabilization, as the 300ms delay causes perceived drift and "orbiting" behavior.
 
 ---

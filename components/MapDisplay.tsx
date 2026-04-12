@@ -278,7 +278,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     if (stabMode === StabMode.HELICO && gestureSettings.stabMaintainScreenPosOnOrient) {
        const deltaDeg = mapRotation - rotAtPanSetRef.current;
        if (Math.abs(deltaDeg) > 0.01) {
-          const rad = -deltaDeg * (Math.PI / 180);
+          const rad = deltaDeg * (Math.PI / 180); // +deltaDeg: compensates for Leaflet y-axis inversion vs screen CSS y-down coordinates
           const cosR = Math.cos(rad);
           const sinR = Math.sin(rad);
           activePanX = panOffset.x * cosR - panOffset.y * sinR;

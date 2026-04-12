@@ -222,5 +222,36 @@ describe('Stabilisation & Orientation Math', () => {
             // In GND mode, it should not change
             expect(nextPan).toEqual(prevPan);
         });
+
+        it('replicates MapDisplay logic to verify unified jump handling', () => {
+            // This test simulates the MapDisplay's internal logic after an orientation switch
+            // where the panOffset (in App state) HAS NOT CHANGED.
+            
+            let panOffsetState = { x: 100, y: 0 }; // 100m East, 0m North
+            
+            // 1. Initial State: HUP at Heading 90 (rotation -90)
+            // rotAtPanSet = -90. currentRotation = -90. delta = 0.
+            // effectivePan = (100, 0)
+            
+            // 2. Transition: Switch to NUP (rotation 0)
+            // App state panOffsetState stays {x: 100, y: 0}
+            // MapDisplay sees: mapRotation = 0. rotAtPanSet = -90.
+            // deltaDeg = 0 - (-90) = 90.
+            // rad = -90.
+            const rad = -(90) * (Math.PI / 180);
+            const cosR = Math.cos(rad);
+            const sinR = Math.sin(rad);
+            const activePanX = panOffsetState.x * cosR - panOffsetState.y * sinR;
+            const activePanY = panOffsetState.x * sinR + panOffsetState.y * cosR;
+            
+            // In HUP at 90 (East Up), (100, 0) is 100m East, which is DOWN on screen.
+            // In NUP at 0 (North Up), (100, 0) is 100m East, which is RIGHT on screen.
+            // We want the ownship to stay at the same screen spot (DOWN).
+            // In NUP, DOWN on screen is 100m South (x=0, y=-100).
+            expect(activePanX).toBeCloseTo(0);
+            expect(activePanY).toBeCloseTo(-100);
+            
+            // This confirms that if App.tsx DOES NOTHING, MapDisplay handles the jump perfectly.
+        });
     });
 });

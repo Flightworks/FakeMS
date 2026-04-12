@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-04-12
+
+### Fixed
+- **Tactical Map Stabilization**: Corrected the coordinate transformation math in the stabilization engine. Fixed a sign error where the map was counter-rotating with the wrong polarity, causing "jumps" during orientation toggles and drift during continuous turns. The fix correctly accounts for Leaflet's screen-space y-axis inversion.
+- **Orientation Synchronization**: Centralized stabilization logic in `MapDisplay` and removed redundant path compensation in `App.tsx` that was causing jitter.
+
 ## [1.3.1] - 2026-04-12
 
 ### Fixed
