@@ -20,6 +20,7 @@ interface LeftSidebarProps {
   ownship: Entity;
   stabMode: StabMode;
   setStabMode: (m: StabMode) => void;
+  onResetStab: () => void;
 }
 
 interface QakOption {
@@ -96,7 +97,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
   gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
-  stabMode, setStabMode
+  stabMode, setStabMode, onResetStab
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -123,7 +124,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       subLabel: stabMode === StabMode.GND ? 'GND' : 'H/C',
       icon: Crosshair,
       active: stabMode === StabMode.GND,
-      action: () => setStabMode(stabMode === StabMode.GND ? StabMode.HELICO : StabMode.GND),
+      action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.HELICO),
       description: 'Toggle map stabilisation between Ground (GND) and Helicopter/Cursor (H/C) mode.'
     },
     {

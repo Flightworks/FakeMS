@@ -11,7 +11,7 @@ Fake MS is a high-fidelity, tactile-first interface designed for **Human-Machine
 *   **Stabilization & Feedback Protection**: Avoid updating global `panOffset` from `moveend` events triggered by programmatic `setView` calls. This prevents "stabilization feedback loops" where the system overwrites the panned coordinates on every frame.
 *   **Visual Synchronization**: Map rotation transitions (CSS `transition`) should be `none` during active stabilization to ensure the visual state perfectly matches the ground-relative calculations.
 *   **Symbology**: Employs top-down helicopter silhouette for ownship and simplified military-grade symbology (APP-6) as high-contrast visual anchors for tracking experiments.
-*   **Projection & Math**: Uses Mercator-based tile mapping with **WGS84 Geodesic math** for distance and bearing calculations (`utils/geo.ts`). `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels).
+*   **Projection & Math**: Uses Mercator-based tile mapping with **WGS84 Geodesic math** for distance and bearing calculations (`utils/geo.ts`). `MapDisplay.tsx` handles the conversion from World Coordinates (Meters) -> Mercator -> Screen (Pixels). **Note**: Ghosting distance and boundary clipping MUST be calculated relative to the parent viewport dimensions (`mapContainerRef.current?.parentElement`), as the `MapContainer` itself is oversized for tile buffering.
 *   **Offline Resilience**: Dynamic loading and caching of dark-mode geographic tiles (CartoDB) via Service Worker for simulation stability.
 
 ### 2. Radial Interaction Lab (Pie Menu)
@@ -54,7 +54,8 @@ This codebase supports working on multiple branches simultaneously via **Git Wor
 *   **Rotation Math**: Stabilization requires counter-rotating the user's `panOffset` by `+deltaDeg` (or just `deltaDeg`) relative to the map rotation to compensate for the Leaflet y-axis inversion versus screen CSS coordinates. 
 *   **Transition Lock**: Never use CSS animations/transitions on the `MapContainer` during continuous stabilization, as the 300ms delay causes perceived drift and "orbiting" behavior.
 
----
+*   **Ghost Tracker Stability**: The `GhostTracker` (or any viewport-wide overlays) must remain as a stable, high-level child of the `MapDisplay` to prevent unnecessary re-mounting and event listener churn during ownship position updates.
+*   **Recenter Coordination**: Manual recovery actions (sidebar button, ghost click) must trigger a coordinated sequence via `App.tsx`: Glide to target $\rightarrow$ Stabilize to `HELICO` $\rightarrow$ Restore previous orientation (NUP/HUP). Avoid raw `setStabMode` calls for recovery.
 
 ## Codebase Structure
 *   `components/`: Core HMI elements (Map, PieMenu, Sidebar, InfoPanels).

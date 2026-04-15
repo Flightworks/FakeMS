@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const { entities, setEntities } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
 
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
+  const [mapModeBeforeGhost, setMapModeBeforeGhost] = useState<MapMode | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(0.05);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -154,14 +155,38 @@ const App: React.FC = () => {
       if (next === StabMode.GND && prev !== StabMode.GND) {
         // Anchor the ground position to current ownship position
         setGroundAnchor({ ...ownship.position });
-        // Centralized: freeze heading if option is enabled
-        if (mapMode === MapMode.HEADING_UP && prototypeSettings.stabFreezeHeadingDrop) {
-          setFrozenHeading(ownship.heading || 0);
+        
+        // Spec requirements:
+        // si appui sur STAB pour passer en GND (cas où H/C se trouve sur le TPP) {=> on veut passer en logique TAC} 
+        // => Le Nord passe en haut (rotation autour du centre écran)
+        setMapMode(MapMode.NORTH_UP);
+        setFrozenHeading(null);
+      }
+      if (next === StabMode.HELICO && prev === StabMode.GND) {
+        // Restore orientation if we had a saved one from ghosting
+        if (mapModeBeforeGhost) {
+          handleMapModeChange(mapModeBeforeGhost);
+          setMapModeBeforeGhost(null);
         }
       }
       return next;
     });
-  }, [ownship.position, ownship.heading, mapMode, prototypeSettings.stabFreezeHeadingDrop, setFrozenHeading]);
+  }, [ownship.position, ownship.heading, mapMode, prototypeSettings.stabFreezeHeadingDrop, mapModeBeforeGhost]);
+
+  const handleGhostEvent = React.useCallback((isGhost: boolean) => {
+    if (isGhost && stabMode === StabMode.HELICO) {
+      // Auto-switch to GND
+      setMapModeBeforeGhost(mapMode);
+      setStabMode(StabMode.GND);
+      setGroundAnchor({ ...ownship.position });
+      
+      // si on panne et que H/C se retrouve GHOST {=> TAC}, 
+      // alors la STAB passe automatiquement GND au dernier cap mémorisé (celui au moment du passage GHOST).
+      if (mapMode === MapMode.HEADING_UP) {
+        setFrozenHeading(ownship.heading || 0);
+      }
+    }
+  }, [stabMode, mapMode, ownship.position, ownship.heading]);
 
   const handleMapModeChange = (newMode: MapMode | ((prev: MapMode) => MapMode)) => {
     setMapMode(prev => {
@@ -210,6 +235,12 @@ const App: React.FC = () => {
 
     // Immediately switch to HELICO so the animation runs relative to ownship
     setStabMode(StabMode.HELICO);
+
+    // Restore orientation if we had a saved one from ghosting
+    if (mapModeBeforeGhost) {
+      handleMapModeChange(mapModeBeforeGhost);
+      setMapModeBeforeGhost(null);
+    }
 
     const startTime = performance.now();
 
@@ -336,6 +367,7 @@ const App: React.FC = () => {
             onResetStab={handleResetStab}
             setMapMode={handleMapModeChange}
             groundAnchor={groundAnchor}
+            onGhostEvent={handleGhostEvent}
           />
         )}
       </div>
@@ -349,6 +381,7 @@ const App: React.FC = () => {
           ownship={ownship}
           stabMode={stabMode}
           setStabMode={handleSetStabMode}
+          onResetStab={handleResetStab}
         />
       </div>
 

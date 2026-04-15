@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-04-15
+
+### Added
+- **Stabilization Logic Documentation**: Created a comprehensive guide (`docs/stabilisation.md`) defining the behavioral matrix for Navigation vs. Tactical modes.
+- **Improved H/C Recenter**: The STAB toggle in the sidebar now triggers a coordinated recovery (glide + orientation restore) when switching from GND back to HELICO mode.
+
+### Fixed
+- **Ghost Ownship Visibility**: Resolved a bug where the off-screen indicator was clipped incorrectly. Now uses actual parent viewport dimensions for boundary calculations instead of oversized map buffering zones.
+
 ## [1.3.2] - 2026-04-12
 
 ### Fixed

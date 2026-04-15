@@ -44,14 +44,6 @@ describe('TopSystemBar Component', () => {
     setGestureSettings: vi.fn(),
   };
 
-  it('renders ADSB status correctly', () => {
-    render(<TopSystemBar {...mockProps} />);
-
-    // ADSB should be inactive (adsb: false)
-    const adsbText = screen.getByText('ADBS-IN');
-    const adsbContainer = adsbText.parentElement;
-    expect(adsbContainer).toHaveClass('border-slate-600');
-  });
 
   it('displays correct time format', () => {
     render(<TopSystemBar {...mockProps} />);

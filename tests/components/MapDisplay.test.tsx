@@ -18,7 +18,33 @@ vi.mock('@react-spring/web', () => ({
 
 vi.mock('lucide-react', () => ({
   Crosshair: () => <div data-testid="icon-crosshair" />,
-  Navigation: () => <div data-testid="icon-navigation" />
+  Navigation: () => <div data-testid="icon-navigation" />,
+  ChevronUp: () => <div data-testid="icon-chevron-up" />,
+  MapPin: () => <div />,
+  Info: () => <div />,
+  Trash2: () => <div />,
+  CircleDashed: () => <div />,
+  Zap: () => <div />,
+  Shield: () => <div />,
+  FileText: () => <div />,
+  Scan: () => <div />,
+  Eye: () => <div />,
+  Slash: () => <div />,
+  Target: () => <div />,
+  Settings: () => <div />,
+  Router: () => <div />,
+  Lock: () => <div />,
+  Anchor: () => <div />,
+  Flag: () => <div />,
+  Video: () => <div />,
+  Wifi: () => <div />,
+  Globe: () => <div />,
+  Thermometer: () => <div />,
+  Activity: () => <div />,
+  ArrowLeftRight: () => <div />,
+  CornerUpRight: () => <div />,
+  Flame: () => <div />,
+  TrendingUp: () => <div />
 }));
 
 describe('MapDisplay Component', () => {
@@ -96,9 +122,10 @@ describe('MapDisplay Component', () => {
     setStabMode: vi.fn(),
     frozenHeading: null,
     setFrozenHeading: vi.fn(),
+    groundAnchor: { lat: 35, lon: -120 },
+    onGhostEvent: vi.fn(),
     onResetStab: vi.fn(),
-    setMapMode: vi.fn(),
-    groundCenter: { lat: 35, lon: -120 }
+    setMapMode: vi.fn()
   };
 
   it('renders entities on the map', () => {

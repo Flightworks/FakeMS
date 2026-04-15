@@ -49,6 +49,7 @@ interface MapDisplayProps {
   onResetStab: () => void;
   setMapMode: (m: MapMode) => void;
   groundAnchor: {lat: number, lon: number} | null;
+  onGhostEvent?: (isGhost: boolean) => void;
 }
 
 
@@ -146,6 +147,107 @@ const MapController: React.FC<{
   return null;
 };
 
+// Ghost Tracker component
+interface GhostTrackerProps {
+  onGhost: (isGhost: boolean) => void;
+  ownshipPos: { lat: number; lon: number };
+  mapRotation: number;
+  stabMode: StabMode;
+  activePanX: number;
+  activePanY: number;
+  setGhostData: (data: { x: number; y: number, angle: number } | null) => void;
+}
+
+const GhostTracker: React.FC<GhostTrackerProps> = ({ 
+  onGhost, ownshipPos, mapRotation, stabMode, activePanX, activePanY, setGhostData 
+}) => {
+  const map = useMap();
+  const lastGhostRef = useRef(false);
+  const onGhostRef = useRef(onGhost);
+  onGhostRef.current = onGhost;
+
+  useEffect(() => {
+    const handler = () => {
+      const container = map.getContainer();
+      const viewport = container.parentElement;
+      if (!viewport) return;
+
+      const size = map.getSize(); // Map element size (might be oversized)
+      const viewportSize = { x: viewport.clientWidth, y: viewport.clientHeight };
+      
+      if (viewportSize.x <= 0 || viewportSize.y <= 0) return;
+
+      const cx = size.x / 2;
+      const cy = size.y / 2;
+
+      // Viewport center relative to viewport itself
+      const vcx = viewportSize.x / 2;
+      const vcy = viewportSize.y / 2;
+
+      const pt = map.latLngToContainerPoint([ownshipPos.lat, ownshipPos.lon]);
+
+      // Vector from map center to ownship in container pixels
+      const lx = pt.x - cx;
+      const ly = pt.y - cy;
+
+      // Rotate map-relative vector by mapRotation to get screen-relative vector
+      const rad = mapRotation * Math.PI / 180;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      
+      const sx = lx * cosR - ly * sinR;
+      const sy = lx * sinR + ly * cosR;
+
+      const padding = 35; 
+      const screenHalfW = viewportSize.x / 2 - padding;
+      const screenHalfH = viewportSize.y / 2 - padding;
+
+      const isOutside = Math.abs(sx) > screenHalfW || Math.abs(sy) > screenHalfH;
+
+      if (!isOutside) {
+         setGhostData(null);
+         if (lastGhostRef.current) {
+           lastGhostRef.current = false;
+           onGhostRef.current(false);
+         }
+         return;
+      }
+
+      if (!lastGhostRef.current) {
+        lastGhostRef.current = true;
+        onGhostRef.current(true);
+      }
+
+      // Calculate ghost indicator position on screen edge
+      let rx = sx;
+      let ry = sy;
+      if (Math.abs(sx) * screenHalfH > Math.abs(sy) * screenHalfW) {
+          rx = Math.sign(sx) * screenHalfW;
+          ry = sy * (screenHalfW / Math.abs(sx));
+      } else {
+          ry = Math.sign(sy) * screenHalfH;
+          rx = sx * (screenHalfH / Math.abs(sy));
+      }
+
+      const angleDeg = Math.atan2(sy, sx) * 180 / Math.PI + 90;
+
+      // Position is relative to viewport center
+      setGhostData({ x: vcx + rx, y: vcy + ry, angle: angleDeg });
+    };
+
+    map.on('move', handler);
+    map.on('zoom', handler);
+    handler();
+
+    return () => { 
+      map.off('move', handler); 
+      map.off('zoom', handler); 
+    };
+  }, [map, ownshipPos.lat, ownshipPos.lon, stabMode, mapRotation, activePanX, activePanY, setGhostData]); // Removed onGhost from deps
+
+  return null;
+};
+
 export const MapDisplay: React.FC<MapDisplayProps> = ({
   ownship,
   entities,
@@ -167,78 +269,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   setFrozenHeading,
   onResetStab,
   setMapMode,
-  groundAnchor
+  groundAnchor,
+  onGhostEvent
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
   const [ghostData, setGhostData] = useState<{x: number, y: number, angle: number} | null>(null);
-
-  // Ghost Tracker inner component
-  const GhostTracker: React.FC = () => {
-    const map = useMap();
-    useEffect(() => {
-      const handler = () => {
-        if (stabMode !== StabMode.GND && !gestureSettings.stabAutoGndOnPan && stabMode === StabMode.HELICO) {
-           // Allow being off-screen in HELICO if auto-GND is OFF
-        } else if (stabMode !== StabMode.GND && stabMode !== StabMode.HELICO) {
-           setGhostData(null);
-           return;
-        }
-        const pt = map.latLngToContainerPoint([ownship.position.lat, ownship.position.lon]);
-        const size = map.getSize();
-        const cx = size.x / 2;
-        const cy = size.y / 2;
-
-        let lx = pt.x - cx;
-        let ly = pt.y - cy;
-
-        const rad = mapRotation * Math.PI / 180;
-        const cosR = Math.cos(rad);
-        const sinR = Math.sin(rad);
-        
-        const sx = lx * cosR - ly * sinR;
-        const sy = lx * sinR + ly * cosR;
-
-        const padding = 30; 
-        const screenHalfW = window.innerWidth / 2 - padding;
-        const screenHalfH = window.innerHeight / 2 - padding;
-
-        const isOutside = Math.abs(sx) > screenHalfW || Math.abs(sy) > screenHalfH;
-
-        if (!isOutside) {
-           setGhostData(null);
-           return;
-        }
-
-        if (stabMode === StabMode.HELICO && gestureSettings.stabAutoGndOnPan) {
-            setStabMode(StabMode.GND);
-            const c = map.getCenter();
-            onPan(activePan, { lat: c.lat, lon: c.lng });
-        }
-
-        let rx = sx;
-        let ry = sy;
-        if (Math.abs(sx) * screenHalfH > Math.abs(sy) * screenHalfW) {
-            rx = Math.sign(sx) * screenHalfW;
-            ry = sy * (screenHalfW / Math.abs(sx));
-        } else {
-            ry = Math.sign(sy) * screenHalfH;
-            rx = sx * (screenHalfH / Math.abs(sy));
-        }
-
-        const angleDeg = Math.atan2(sy, sx) * 180 / Math.PI + 90;
-
-        setGhostData({ x: (window.innerWidth / 2) + rx, y: (window.innerHeight / 2) + ry, angle: angleDeg });
-      };
-
-      map.on('move', handler);
-      map.on('zoom', handler);
-      handler();
-
-      return () => { map.off('move', handler); map.off('zoom', handler); };
-    }, [map, ownship.position.lat, ownship.position.lon, stabMode, mapRotation, activePan.x, activePan.y]); // Re-run when these change
-    return null;
-  };
 
   // Interaction State
   const interactionRef = useRef<{
@@ -564,7 +600,15 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           isPanning={isDraggingRef.current}
         />
 
-        <GhostTracker />
+        <GhostTracker 
+          onGhost={(isGhost) => onGhostEvent && onGhostEvent(isGhost)}
+          ownshipPos={ownship.position}
+          mapRotation={mapRotation}
+          stabMode={stabMode}
+          activePanX={activePan.x}
+          activePanY={activePan.y}
+          setGhostData={setGhostData}
+        />
 
         {/* Ownship */}
         <Marker
