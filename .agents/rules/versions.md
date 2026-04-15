@@ -4,3 +4,4 @@ description: whenever any github action, commit, push or writting action are per
 ---
 
 when i ask you to bump version you also update changelog.md
+do not bump or commit to github without my explicit order to do so.

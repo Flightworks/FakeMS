@@ -429,7 +429,7 @@ const App: React.FC = () => {
         <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
       )}
 
-      <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.9)] z-40"></div>
+      {/* Global vignette shadow removed */}
     </div>
   );
 };

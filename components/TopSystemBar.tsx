@@ -568,8 +568,7 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
 
   return (
     <div className="absolute top-0 left-0 right-0 z-40 flex flex-col pointer-events-none">
-      {/* Top Bar Background Gradient */}
-      <div className="absolute inset-0 h-40 bg-gradient-to-b from-slate-950/80 to-transparent -z-10" />
+      {/* Top Bar Background Gradient removed */}
 
       {/* Main Bar */}
       <div className="h-20 flex items-center px-4">

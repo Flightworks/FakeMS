@@ -1,7 +1,7 @@
 {
   "name": "fake-ms",
   "private": true,
-  "version": "1.3.4",
+  "version": "1.3.5",
   "homepage": "https://Flightworks.github.io/FakeMS/",
   "type": "module",
   "scripts": {
