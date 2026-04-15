@@ -124,7 +124,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       subLabel: stabMode === StabMode.GND ? 'GND' : 'H/C',
       icon: Crosshair,
       active: stabMode === StabMode.GND,
-      action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.HELICO),
+      action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.GND),
       description: 'Toggle map stabilisation between Ground (GND) and Helicopter/Cursor (H/C) mode.'
     },
     {
