@@ -34,7 +34,7 @@ const INITIAL_ENTITIES: Entity[] = [
 ];
 
 const App: React.FC = () => {
-  const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(null);
+  const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
 
   const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);

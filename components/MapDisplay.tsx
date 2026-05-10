@@ -156,13 +156,15 @@ interface GhostTrackerProps {
   activePanX: number;
   activePanY: number;
   setGhostData: (data: { x: number; y: number, angle: number } | null) => void;
+  setIsOffCenter: (val: boolean) => void;
 }
 
 const GhostTracker: React.FC<GhostTrackerProps> = ({ 
-  onGhost, ownshipPos, mapRotation, stabMode, activePanX, activePanY, setGhostData 
+  onGhost, ownshipPos, mapRotation, stabMode, activePanX, activePanY, setGhostData, setIsOffCenter 
 }) => {
   const map = useMap();
   const lastGhostRef = useRef(false);
+  const lastOffCenterRef = useRef(false);
   const onGhostRef = useRef(onGhost);
   onGhostRef.current = onGhost;
 
@@ -189,6 +191,13 @@ const GhostTracker: React.FC<GhostTrackerProps> = ({
       // Vector from map center to ownship in container pixels
       const lx = pt.x - cx;
       const ly = pt.y - cy;
+
+      // Check if visually off-center
+      const offCenter = Math.abs(lx) > 10 || Math.abs(ly) > 10;
+      if (lastOffCenterRef.current !== offCenter) {
+        lastOffCenterRef.current = offCenter;
+        setIsOffCenter(offCenter);
+      }
 
       // Rotate map-relative vector by mapRotation to get screen-relative vector
       const rad = mapRotation * Math.PI / 180;
@@ -243,7 +252,7 @@ const GhostTracker: React.FC<GhostTrackerProps> = ({
       map.off('move', handler); 
       map.off('zoom', handler); 
     };
-  }, [map, ownshipPos.lat, ownshipPos.lon, stabMode, mapRotation, activePanX, activePanY, setGhostData]); // Removed onGhost from deps
+  }, [map, ownshipPos.lat, ownshipPos.lon, stabMode, mapRotation, activePanX, activePanY, setGhostData, setIsOffCenter]); // Removed onGhost from deps
 
   return null;
 };
@@ -275,6 +284,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
   const [ghostData, setGhostData] = useState<{x: number, y: number, angle: number} | null>(null);
+  const [isOffCenter, setIsOffCenter] = useState(false);
 
   // Interaction State
   const interactionRef = useRef<{
@@ -608,6 +618,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           activePanX={activePan.x}
           activePanY={activePan.y}
           setGhostData={setGhostData}
+          setIsOffCenter={setIsOffCenter}
         />
 
         {/* Ownship */}
@@ -689,7 +700,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         </div>
       )}
       {/* Pure Recentering Button */}
-      {(stabMode === StabMode.GND || Math.abs(panOffset.x) > 1 || Math.abs(panOffset.y) > 1) && (
+      {(stabMode === StabMode.GND || isOffCenter) && (
         <button
           onClick={(e) => { e.stopPropagation(); onResetStab(); }}
           className="absolute bottom-6 right-6 z-30 w-14 h-14 flex items-center justify-center bg-slate-900/90 border-2 border-emerald-500 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] text-emerald-400 hover:bg-emerald-900 transition-all active:scale-90 pointer-events-auto group"
