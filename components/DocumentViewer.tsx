@@ -70,14 +70,27 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
+    const handleClose = (e?: React.MouseEvent | React.TouchEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        onClose();
+    };
+
     return (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
             {/* Removed the backdrop-blur and darkened semi-transparent background as requested */}
-            <div className="absolute inset-0 cursor-pointer" onClick={onClose} />
+            <div
+                className="absolute inset-0 cursor-pointer"
+                onClick={handleClose}
+                onTouchEnd={handleClose}
+            />
 
             <div
                 className="relative bg-[#0b1121] border border-emerald-500/30 rounded-xl shadow-2xl shadow-black/80 w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
                 style={{ transform: `scale(${uiScale})`, transformOrigin: 'center center' }}
             >
                 {/* Header */}
@@ -101,8 +114,9 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
                         </button>
 
                         <button
-                            onClick={onClose}
-                            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-white hover:bg-red-900/50 rounded-md transition-colors"
+                            onClick={handleClose}
+                            onTouchEnd={handleClose}
+                            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-white hover:bg-red-900/50 rounded-md transition-colors relative z-10"
                         >
                             <X size={20} />
                         </button>
