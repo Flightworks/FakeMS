@@ -40,6 +40,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
+  // Check if touch device to disable native drag-and-drop on mobile, freeing up Framer's swipe gesture
+  const isTouchDevice = useMemo(() => {
+    return typeof window !== 'undefined' &&
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
   // History State
   const [history, setHistory] = useState<HistoryEntry[]>(() => {
     const saved = localStorage.getItem('cmd_history');
@@ -290,8 +296,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     dragConstraints={{ left: 0, right: 0 }}
                     dragElastic={{ right: 0.5, left: 0.1 }} // Allow drag right
                     onDragEnd={(e, info) => handleSwipe(e, info, cmd)}
-                    draggable="true"
-                    onDragStart={(e: any) => handleDragStart(e, cmd)}
+                    draggable={!isTouchDevice ? "true" : "false"}
+                    onDragStart={(e: any) => !isTouchDevice && handleDragStart(e, cmd)}
                     className={`
                      group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
                      ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
