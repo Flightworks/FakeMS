@@ -55,6 +55,43 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   });
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
 
+  // Visual Viewport State to handle mobile keyboards
+  const [viewportHeight, setViewportHeight] = useState(() => {
+    return typeof window !== 'undefined' && window.visualViewport
+      ? window.visualViewport.height
+      : (typeof window !== 'undefined' ? window.innerHeight : 1000);
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleResize = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+      } else {
+        setViewportHeight(window.innerHeight);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+    } else {
+      window.addEventListener('resize', handleResize);
+    }
+
+    handleResize();
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+        window.visualViewport.removeEventListener('scroll', handleResize);
+      } else {
+        window.removeEventListener('resize', handleResize);
+      }
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen) {
       setQuery('');
@@ -171,9 +208,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center pb-8 lg:pb-12 animate-in fade-in duration-200" onClick={onClose}>
+    <div
+      className="fixed top-0 left-0 right-0 z-[100] flex items-end justify-center pb-2 lg:pb-12 animate-in fade-in duration-200"
+      style={{ height: viewportHeight ? `${viewportHeight}px` : '100vh' }}
+      onClick={onClose}
+    >
       <div
-        className="w-[600px] max-w-[90vw] h-[60vh] min-h-[400px] max-h-[500px] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
+        className="w-[600px] max-w-[90vw] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
+        style={{
+          maxHeight: viewportHeight ? `${Math.min(500, viewportHeight * 0.95)}px` : '500px',
+          height: '60vh',
+          minHeight: viewportHeight && viewportHeight < 450 ? `${viewportHeight * 0.95}px` : '400px'
+        }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center px-4 py-3 border-b border-slate-800 bg-slate-900/50">
