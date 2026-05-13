@@ -132,3 +132,14 @@ Executing this will log the text into your local Scratchpad history.
 
 ---
 [Back to Interface Guide](./03-interface-guide.md) | [Back to Home](../README.md)
+---
+
+## 🛠️ Under the Hood (Libraries & Tools)
+
+The Scratchpad's extensive capabilities are powered by several robust open-source libraries:
+
+*   **[mathjs](https://mathjs.org/)**: Drives the powerful math engine, handling complex trigonometry and natural language unit conversions.
+*   **[fuse.js](https://fusejs.io/)**: Provides the lightning-fast, lightweight fuzzy-search matching for entity names and commands.
+*   **[framer-motion](https://motion.dev/)**: Manages the fluid animations and touch/swipe gestures (like swipe-to-execute) within the Scratchpad UI.
+*   **[react-markdown](https://github.com/remarkjs/react-markdown) & [remark-gfm](https://github.com/remarkjs/remark-gfm)**: Enables the parsing and rendering of Markdown files (like `optask.md`) directly within the Scratchpad's Document Viewer.
+*   **[lucide-react](https://lucide.dev/)**: Supplies the clean, consistent iconography used throughout the command list and interface.
