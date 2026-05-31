@@ -58,6 +58,9 @@ describe('CommandPalette Component', () => {
     ownshipNavMode: NavMode.REAL,
     toggleNavMode: vi.fn(),
     setOwnshipNavMode: vi.fn(),
+    updateOwnship: vi.fn(),
+    notes: [],
+    setNotes: vi.fn(),
   };
 
   it('renders input field when open', () => {
@@ -80,4 +83,13 @@ describe('CommandPalette Component', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(mockProps.onClose).toHaveBeenCalled();
   });
+
+  it('renders fallback save note when query matches nothing', () => {
+    render(<CommandPalette {...mockProps} />);
+    const input = screen.getByPlaceholderText("Type a command (e.g., 'DCT', 'TK2 180 5')...");
+
+    fireEvent.change(input, { target: { value: 'vdvdwww' } });
+    expect(screen.getByText('SAVE: "vdvdwww"')).toBeInTheDocument();
+  });
 });
+

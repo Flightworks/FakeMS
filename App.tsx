@@ -7,7 +7,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
 import { DocumentViewer } from './components/DocumentViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
-import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
+import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode, TacticalNote } from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
@@ -79,6 +79,25 @@ const App: React.FC = () => {
     stabSmoothUnfreeze: false,
     stabMaintainScreenPosOnOrient: true
   });
+
+  // Tactical Notes State
+  const [notes, setNotes] = useState<TacticalNote[]>(() => {
+    const saved = localStorage.getItem('tactical_notes');
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('tactical_notes', JSON.stringify(notes));
+  }, [notes]);
+
+  const updateOwnship = React.useCallback((kinematics: Partial<Entity>) => {
+    setOwnship(prev => ({ ...prev, ...kinematics }));
+  }, []);
 
   const toggleSystem = (sys: keyof SystemStatus) => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
@@ -325,7 +344,20 @@ const App: React.FC = () => {
           },
           openDocument: setOpenDoc,
           ownshipNavMode,
-          toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
+          toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
+          updateOwnship,
+          notes,
+          saveNote: (text) => {
+            const newNote: TacticalNote = {
+              id: Math.random().toString(36).substring(2, 9),
+              text,
+              timestamp: Date.now()
+            };
+            setNotes(prev => [newNote, ...prev]);
+          },
+          deleteNote: (id) => {
+            setNotes(prev => prev.filter(n => n.id !== id));
+          }
         };
 
         const cmds = getCommands(data.query, context);
@@ -399,6 +431,9 @@ const App: React.FC = () => {
         openDocument={setOpenDoc}
         ownshipNavMode={ownshipNavMode}
         setOwnshipNavMode={setOwnshipNavMode}
+        updateOwnship={updateOwnship}
+        notes={notes}
+        setNotes={setNotes}
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">

@@ -41,6 +41,7 @@ export interface Entity {
   acceleration?: number; // Knots per second
 
   altitude?: number;     // Current Altitude (Feet)
+  targetAltitude?: number;// Desired Altitude (Feet)
   continuousTurn?: 'L' | 'R' | null; // orbit left or right indefinitely
 
   // Navigation
@@ -58,6 +59,12 @@ export interface SystemStatus {
 
 export interface HistoryEntry {
   original: string;
+  timestamp: number;
+}
+
+export interface TacticalNote {
+  id: string;
+  text: string;
   timestamp: number;
 }
 

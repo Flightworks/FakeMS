@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
+import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, TacticalNote } from '../types';
 import { Search, ChevronRight, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
@@ -18,6 +18,9 @@ interface CommandPaletteProps {
   openDocument: (filename: string) => void;
   ownshipNavMode: NavMode;
   setOwnshipNavMode: (mode: NavMode) => void;
+  updateOwnship: (kinematics: Partial<Entity>) => void;
+  notes: TacticalNote[];
+  setNotes: React.Dispatch<React.SetStateAction<TacticalNote[]>>;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -33,7 +36,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   origin,
   openDocument,
   ownshipNavMode,
-  setOwnshipNavMode
+  setOwnshipNavMode,
+  updateOwnship,
+  notes,
+  setNotes
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -82,20 +88,45 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   };
 
   const commands = useMemo(() => {
-    const context: CommandContext = {
-      entities,
-      ownship,
-      systems,
-      setMapMode,
-      toggleSystem,
-      panTo: (x, y) => onPan({ x, y }),
-      history, // Pass history to registry
-      openDocument,
-      ownshipNavMode,
-      toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
-    };
-    return getCommands(query, context);
-  }, [query, entities, ownship, systems, mapMode, history]);
+    try {
+      const context: CommandContext = {
+        entities,
+        ownship,
+        systems,
+        setMapMode,
+        toggleSystem,
+        panTo: (x, y) => onPan({ x, y }),
+        history, // Pass history to registry
+        openDocument,
+        ownshipNavMode,
+        toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
+        updateOwnship,
+        notes,
+        saveNote: (text) => {
+          const newNote: TacticalNote = {
+            id: Math.random().toString(36).substr(2, 9),
+            text,
+            timestamp: Date.now()
+          };
+          setNotes(prev => [newNote, ...prev]);
+        },
+        deleteNote: (id) => {
+          setNotes(prev => prev.filter(n => n.id !== id));
+        }
+      };
+      return getCommands(query, context);
+    } catch (err: any) {
+      console.error("Error in getCommands:", err);
+      return [{
+        id: 'error-msg',
+        label: `ERROR: ${err.message}`,
+        subLabel: err.stack,
+        icon: Search,
+        action: () => {},
+        keywords: []
+      }];
+    }
+  }, [query, entities, ownship, systems, mapMode, history, ownshipNavMode, updateOwnship, notes, setNotes]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -129,6 +160,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         if (newIndex < history.length) {
           setHistoryIndex(newIndex);
           setQuery(history[newIndex].original);
+        }
+      }
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (commands[selectedIndex]) {
+        const cmd = commands[selectedIndex];
+        if (cmd.autocompleteValue) {
+          setQuery(cmd.autocompleteValue);
+        } else {
+          setQuery(cmd.historyValue || cmd.label);
         }
       }
     } else if (e.key === 'Enter') {
@@ -171,9 +212,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center pb-8 lg:pb-12 animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-[1px] flex items-end justify-center pb-8 lg:pb-12 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="w-[600px] max-w-[90vw] h-[60vh] min-h-[400px] max-h-[500px] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
+        className="w-[600px] max-w-[90vw] h-[60vh] min-h-[400px] max-h-[500px] bg-slate-950/85 backdrop-blur-md border border-emerald-500/30 rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.25)] overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center px-4 py-3 border-b border-slate-800 bg-slate-900/50">
@@ -229,88 +270,82 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               No commands found for "{query}"
             </li>
           ) : (
-            <AnimatePresence>
-              {commands.map((cmd, idx) => {
-                const Icon = cmd.icon;
-                const isSelected = idx === selectedIndex;
-                return (
-                  <motion.li
-                    key={cmd.id}
-                    layout
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    drag="x"
-                    dragConstraints={{ left: 0, right: 0 }}
-                    dragElastic={{ right: 0.5, left: 0.1 }} // Allow drag right
-                    onDragEnd={(e, info) => handleSwipe(e, info, cmd)}
-                    draggable="true"
-                    onDragStart={(e: any) => handleDragStart(e, cmd)}
-                    className={`
-                     group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
-                     ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
-                   `}
-                    onClick={() => {
-                      if (cmd.isHistory) {
-                        setQuery(cmd.label);
-                        inputRef.current?.focus();
-                      } else if (cmd.autocompleteValue) {
-                        setQuery(cmd.autocompleteValue);
-                        inputRef.current?.focus();
-                      } else {
-                        addToHistory(cmd.historyValue || query);
-                        cmd.action();
-                        onClose();
-                      }
-                    }}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                    style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
-                  >
-                    {/* Swift Right Action Background */}
-                    <div className="absolute inset-y-0 left-0 w-full bg-emerald-600/20 -z-10 flex items-center pl-4 opacity-0 motion-safe:group-active:opacity-100">
-                      <MoveRight size={24} className="text-emerald-400" />
-                      <span className="ml-2 font-bold text-emerald-400">DIRECT TO</span>
-                    </div>
+            commands.map((cmd, idx) => {
+              const Icon = cmd.icon;
+              const isSelected = idx === selectedIndex;
+              return (
+                <motion.li
+                  key={cmd.id}
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={{ right: 0.5, left: 0.1 }} // Allow drag right
+                  onDragEnd={(e, info) => handleSwipe(e, info, cmd)}
+                  draggable="true"
+                  onDragStart={(e: any) => handleDragStart(e, cmd)}
+                  className={`
+                   group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
+                   ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
+                 `}
+                  onClick={() => {
+                    if (cmd.isHistory) {
+                      setQuery(cmd.label);
+                      inputRef.current?.focus();
+                    } else if (cmd.autocompleteValue) {
+                      setQuery(cmd.autocompleteValue);
+                      inputRef.current?.focus();
+                    } else {
+                      addToHistory(cmd.historyValue || query);
+                      cmd.action();
+                      onClose();
+                    }
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
+                >
+                  {/* Swift Right Action Background */}
+                  <div className="absolute inset-y-0 left-0 w-full bg-emerald-600/20 -z-10 flex items-center pl-4 opacity-0 motion-safe:group-active:opacity-100">
+                    <MoveRight size={24} className="text-emerald-400" />
+                    <span className="ml-2 font-bold text-emerald-400">DIRECT TO</span>
+                  </div>
 
-                    <div className={`p-2 rounded-md ${isSelected ? 'bg-emerald-900/40 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                      <Icon size={18} />
-                    </div>
-                    <div className="flex-1 min-w-0 flex justify-between items-center pointer-events-none">
-                      <div>
-                        <div className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-100' : 'text-slate-200'}`}>
-                          {cmd.label}
-                        </div>
-                        {cmd.subLabel && !cmd.isPreview && (
-                          <div className="text-xs text-slate-500 truncate mt-0.5">
-                            {cmd.subLabel}
-                          </div>
-                        )}
+                  <div className={`p-2 rounded-md ${isSelected ? 'bg-emerald-900/40 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                    <Icon size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0 flex justify-between items-center pointer-events-none">
+                    <div>
+                      <div className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-100' : 'text-slate-200'}`}>
+                        {cmd.label}
                       </div>
-
-                      {/* Preview Pane logic: Show prominently if isPreview (Calculator result) */}
-                      {cmd.isPreview && cmd.subLabel && (
-                        <div className="bg-emerald-900/40 text-emerald-400 px-2 py-1 rounded text-xs font-bold border border-emerald-500/30">
+                      {cmd.subLabel && !cmd.isPreview && (
+                        <div className="text-xs text-slate-500 truncate mt-0.5">
                           {cmd.subLabel}
                         </div>
                       )}
                     </div>
-                    {cmd.isHistory && (
-                      <div
-                        className="ml-2 text-slate-500 hover:text-emerald-400 cursor-pointer p-2 z-10 relative opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard.writeText(cmd.label);
-                        }}
-                        title="Copy History Item"
-                      >
-                        <Copy size={16} />
+
+                    {/* Preview Pane logic: Show prominently if isPreview (Calculator result) */}
+                    {cmd.isPreview && cmd.subLabel && (
+                      <div className="bg-emerald-900/40 text-emerald-400 px-2 py-1 rounded text-xs font-bold border border-emerald-500/30">
+                        {cmd.subLabel}
                       </div>
                     )}
-                    {isSelected && <CornerDownLeft size={16} className={`text-emerald-500 ${cmd.isHistory ? 'ml-1' : 'ml-2'}`} />}
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
+                  </div>
+                  {cmd.isHistory && (
+                    <div
+                      className="ml-2 text-slate-500 hover:text-emerald-400 cursor-pointer p-2 z-10 relative opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(cmd.label);
+                      }}
+                      title="Copy History Item"
+                    >
+                      <Copy size={16} />
+                    </div>
+                  )}
+                  {isSelected && <CornerDownLeft size={16} className={`text-emerald-500 ${cmd.isHistory ? 'ml-1' : 'ml-2'}`} />}
+                </motion.li>
+              );
+            })
           )}
         </ul>
 

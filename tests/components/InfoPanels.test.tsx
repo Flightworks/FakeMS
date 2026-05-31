@@ -52,7 +52,10 @@ describe('InfoPanels Components', () => {
     stabAutoGndOnPan: false,
     stabFreezeHeadingDrop: true,
     stabSnapRecenter: false,
-    stabRecenterOnOrientSwitch: true
+    stabRecenterOnOrientSwitch: true,
+    stabAutoRecenterDelay: 0,
+    stabSmoothUnfreeze: false,
+    stabMaintainScreenPosOnOrient: true
   };
 
   describe('OwnshipPanel', () => {

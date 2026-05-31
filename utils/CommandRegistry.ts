@@ -1,8 +1,8 @@
-import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
+import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, TacticalNote } from '../types';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Info } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
-import { getDestinationPoint } from './geo';
+import { getDestinationPoint, distanceBetween } from './geo';
 
 // Configure mathjs to use degrees
 const math = create(all);
@@ -27,6 +27,10 @@ export interface CommandContext {
     openDocument: (filename: string) => void;
     ownshipNavMode: NavMode;
     toggleNavMode: () => void;
+    updateOwnship: (kinematics: Partial<Entity>) => void;
+    notes: TacticalNote[];
+    saveNote: (text: string) => void;
+    deleteNote: (id: string) => void;
 }
 
 export interface CommandOption {
@@ -157,7 +161,7 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history, openDocument } = context;
+    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history, openDocument, updateOwnship, notes, saveNote, deleteNote } = context;
     const commands: CommandOption[] = [];
 
     // --- 0. HISTORY INJECTION (When query is empty) ---
@@ -347,6 +351,66 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
 
     // 3. Fuzzy Search
     if (q.length > 0) {
+        // A. Contextual Autocomplete check
+        const dctMatch = q.match(/^dct\s*(.*)$/i);
+        const etaPrefixMatch = q.match(/^eta\s*(.*)$/i);
+
+        if (dctMatch) {
+            const dctQuery = dctMatch[1].trim().toLowerCase();
+            const matchingEntities = dctQuery
+                ? entities.filter(e => e.label.toLowerCase().includes(dctQuery))
+                : entities;
+            
+            matchingEntities.forEach(e => {
+                commands.push({
+                    id: `dct-context-${e.id}`,
+                    label: `DCT ${e.label}`,
+                    subLabel: `Fly Map to ${e.label}`,
+                    icon: Target,
+                    action: () => {
+                        panTo(e.position.lat, e.position.lon);
+                    },
+                    keywords: ['dct', e.label],
+                    isHistory: false,
+                    historyValue: `DCT ${e.label}`
+                });
+            });
+            if (commands.length > 0) return commands;
+        }
+
+        if (etaPrefixMatch) {
+            const etaQuery = etaPrefixMatch[1].trim().toLowerCase();
+            const matchingEntities = entities.filter(e => e.id !== 'ownship' && (etaQuery === '' || e.label.toLowerCase().includes(etaQuery)));
+            
+            matchingEntities.forEach(e => {
+                const distMeters = distanceBetween(
+                    ownship.position.lat, ownship.position.lon,
+                    e.position.lat, e.position.lon
+                );
+                const speedMps = (ownship.speed || 1) * 0.5144;
+                let timeString = "N/A";
+                if (ownship.speed && ownship.speed > 0) {
+                    const timeSec = distMeters / speedMps;
+                    const timeMin = Math.round(timeSec / 60);
+                    timeString = `${timeMin} MIN`;
+                } else {
+                    timeString = "Inf (Speed 0)";
+                }
+
+                commands.push({
+                    id: `eta-context-${e.id}`,
+                    label: `ETA ${e.label}`,
+                    subLabel: `ETE: ${timeString} (${(distMeters / 1000).toFixed(1)} km)`,
+                    icon: Calculator,
+                    action: () => {},
+                    keywords: ['eta', e.label],
+                    isPreview: true,
+                    historyValue: `ETA ${e.label}`
+                });
+            });
+            if (commands.length > 0) return commands;
+        }
+
         // Define file commands
         const knownFiles = [
             'optask.md',
@@ -418,10 +482,10 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             const targetName = etaMatch[1].toLowerCase();
             const target = entities.find(e => e.label.toLowerCase().includes(targetName));
             if (target) {
-                // Using spherical distance for ETA
-                const distMeters = getDestinationPoint ?
-                    Math.hypot(target.position.lat - ownship.position.lat, target.position.lon - ownship.position.lon) * 111000 : // rough fallback
-                    0; // actual distanceBetween needs importing if accurate ETA wanted, skipped for brevity or use direct formula
+                const distMeters = distanceBetween(
+                    ownship.position.lat, ownship.position.lon,
+                    target.position.lat, target.position.lon
+                );
 
                 const speedMps = (ownship.speed || 1) * 0.5144;
                 let timeString = "N/A";
@@ -471,7 +535,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             });
         }
 
-        // 5. Kinematic Controls (HDG/SPD) for SIM Mode
+        // 5. Kinematic Controls (HDG/SPD/ALT) for SIM Mode
         const hdgMatch = q.match(/^hdg\s+(\d+)$/i);
         if (hdgMatch) {
             const targetHdg = parseInt(hdgMatch[1]);
@@ -479,13 +543,17 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 commands.push({
                     id: 'set-target-hdg',
                     label: `SET HDG: ${targetHdg}°`,
-                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
+                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Will switch to Simulation Mode',
                     icon: Compass,
                     action: () => {
-                        // Action handled by event dispatch or specific context updater in further refactor
+                        if (context.ownshipNavMode !== NavMode.SIM) {
+                            context.toggleNavMode();
+                        }
+                        updateOwnship({ targetHeading: targetHdg });
                     },
                     keywords: ['hdg', 'heading', 'steer'],
-                    isPreview: true
+                    isPreview: false,
+                    historyValue: `SET HDG ${targetHdg}`
                 });
             }
         }
@@ -497,11 +565,149 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 commands.push({
                     id: 'set-target-spd',
                     label: `SET SPD: ${targetSpd} KTS`,
-                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
+                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Will switch to Simulation Mode',
                     icon: Zap,
-                    action: () => { },
+                    action: () => {
+                        if (context.ownshipNavMode !== NavMode.SIM) {
+                            context.toggleNavMode();
+                        }
+                        updateOwnship({ targetSpeed: targetSpd });
+                    },
                     keywords: ['spd', 'speed', 'throttle'],
+                    isPreview: false,
+                    historyValue: `SET SPD ${targetSpd}`
+                });
+            }
+        }
+
+        const altMatch = q.match(/^(alt|hgt)\s+(\d+)$/i);
+        if (altMatch) {
+            const targetAlt = parseInt(altMatch[2]);
+            if (!isNaN(targetAlt)) {
+                commands.push({
+                    id: 'set-target-alt',
+                    label: `SET ALT: ${targetAlt} FT`,
+                    subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Will switch to Simulation Mode',
+                    icon: Navigation,
+                    action: () => {
+                        if (context.ownshipNavMode !== NavMode.SIM) {
+                            context.toggleNavMode();
+                        }
+                        updateOwnship({ targetAltitude: targetAlt });
+                    },
+                    keywords: ['alt', 'altitude', 'hgt', 'height', 'climb', 'descend'],
+                    isPreview: false,
+                    historyValue: `SET ALT ${targetAlt}`
+                });
+            }
+        }
+
+        // 5.5 Tactical Notes System
+        const noteMatch = q.match(/^note\s+(.+)$/i);
+        if (noteMatch) {
+            const noteText = noteMatch[1].trim();
+            commands.unshift({
+                id: 'create-note',
+                label: `CREATE NOTE: "${noteText}"`,
+                subLabel: 'Add to tactical notes log',
+                icon: FileText,
+                action: () => {
+                    saveNote(noteText);
+                },
+                keywords: ['note', 'save', 'log'],
+                isPreview: false,
+                historyValue: `note ${noteText}`
+            });
+        }
+
+        if (q.toLowerCase() === 'notes' || q.toLowerCase() === 'log') {
+            if (notes && notes.length > 0) {
+                notes.forEach((note) => {
+                    let noteCoords = parseCoordinates(note.text);
+                    if (!noteCoords) {
+                        const ddMatch = note.text.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+                        if (ddMatch) {
+                            const lat = parseFloat(ddMatch[1]);
+                            const lon = parseFloat(ddMatch[2]);
+                            if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+                                noteCoords = { lat, lon };
+                            }
+                        }
+                    }
+                    if (!noteCoords) {
+                        const ddmMatch = note.text.toUpperCase().replace(/\s+/g, '').match(/([NS])(\d{1,3})(\d{2})?([EW])(\d{1,3})(\d{2})?/);
+                        if (ddmMatch) {
+                            const [_, latDir, latDegStr, latMinStr, lonDir, lonDegStr, lonMinStr] = ddmMatch;
+                            const latDeg = parseInt(latDegStr);
+                            const latMin = latMinStr ? parseInt(latMinStr) : 0;
+                            const lonDeg = parseInt(lonDegStr);
+                            const lonMin = lonMinStr ? parseInt(lonMinStr) : 0;
+                            let lat = latDeg + latMin / 60;
+                            if (latDir === 'S') lat = -lat;
+                            let lon = lonDeg + lonMin / 60;
+                            if (lonDir === 'W') lon = -lon;
+                            if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+                                noteCoords = { lat, lon };
+                            }
+                        }
+                    }
+
+                    commands.unshift({
+                        id: `view-note-${note.id}`,
+                        label: note.text,
+                        subLabel: new Date(note.timestamp).toLocaleTimeString() + ' (Click to delete)',
+                        icon: FileText,
+                        action: () => {
+                            deleteNote(note.id);
+                        },
+                        keywords: ['notes', 'log'],
+                        isPreview: false
+                    });
+
+                    if (noteCoords && !noteCoords.isPartial) {
+                        commands.unshift({
+                            id: `fly-to-note-${note.id}`,
+                            label: `FLY TO NOTE POSITION: ${noteCoords.lat.toFixed(5)}, ${noteCoords.lon.toFixed(5)}`,
+                            subLabel: `Location from: "${note.text}"`,
+                            icon: MapPin,
+                            action: () => {
+                                panTo(noteCoords.lat, noteCoords.lon);
+                            },
+                            keywords: ['notes', 'log', 'fly', 'coord'],
+                            isPreview: false
+                        });
+                    }
+                });
+            } else {
+                commands.unshift({
+                    id: 'no-notes',
+                    label: 'No tactical notes found',
+                    subLabel: 'Create notes with: note [your text]',
+                    icon: Info,
+                    action: () => {},
+                    keywords: ['notes', 'log'],
                     isPreview: true
+                });
+            }
+        }
+
+        const notesQueryMatch = q.match(/^notes\s+(.+)$/i) || q.match(/^log\s+(.+)$/i);
+        if (notesQueryMatch) {
+            const filterQ = notesQueryMatch[1].toLowerCase();
+            const filteredNotes = notes.filter(n => n.text.toLowerCase().includes(filterQ));
+            if (filteredNotes.length > 0) {
+                filteredNotes.forEach(note => {
+                    commands.push({
+                        id: `view-note-${note.id}`,
+                        label: note.text,
+                        subLabel: new Date(note.timestamp).toLocaleTimeString() + ' (Click to delete)',
+                        icon: FileText,
+                        action: () => {
+                            deleteNote(note.id);
+                        },
+                        keywords: ['notes', 'log'],
+                        isPreview: false
+                    });
                 });
             }
         }
@@ -510,9 +716,11 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         commands.push({
             id: 'save-text-note',
             label: `SAVE: "${q}"`,
-            subLabel: 'Save text to history',
+            subLabel: 'Save text to tactical notes log',
             icon: FileText,
-            action: () => { },
+            action: () => {
+                saveNote(q);
+            },
             keywords: [],
             isHistory: false
         });

@@ -58,7 +58,10 @@ describe('LeftSidebar Component', () => {
       stabAutoGndOnPan: false,
       stabFreezeHeadingDrop: true,
       stabSnapRecenter: false,
-      stabRecenterOnOrientSwitch: true
+      stabRecenterOnOrientSwitch: true,
+      stabAutoRecenterDelay: 0,
+      stabSmoothUnfreeze: false,
+      stabMaintainScreenPosOnOrient: true
     },
     setGestureSettings: vi.fn(),
     onOpenCommandPalette: vi.fn(),

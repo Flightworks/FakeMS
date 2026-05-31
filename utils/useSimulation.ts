@@ -81,6 +81,20 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
         if (currentSpeed < 0) currentSpeed = 0; 
     }
 
+    // --- 3.5. Altitude / Climb Logic ---
+    let currentAltitude = entity.altitude ?? 0;
+    let targetAltitude = entity.targetAltitude ?? currentAltitude;
+    if (Math.abs(currentAltitude - targetAltitude) > 0.1) {
+        const climbRate = 1000 / 60; // 1000 ft/min
+        const altDir = Math.sign(targetAltitude - currentAltitude);
+        const altChange = climbRate * dtSeconds;
+        if (Math.abs(targetAltitude - currentAltitude) < altChange) {
+            currentAltitude = targetAltitude;
+        } else {
+            currentAltitude += altDir * altChange;
+        }
+    }
+
     // --- 4. Position Update ---
     if (currentSpeed > 0) {
         const distanceMeters = (currentSpeed * KNOTS_TO_M_S) * dtSeconds;
@@ -96,6 +110,8 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
         targetHeading,
         speed: currentSpeed,
         targetSpeed,
+        altitude: currentAltitude,
+        targetAltitude,
         waypoints
     };
 };

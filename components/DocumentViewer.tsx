@@ -4,6 +4,32 @@ import { X, FileText, Code } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const flattenChildren = (children: any): string => {
+    if (typeof children === 'string') return children;
+    if (typeof children === 'number') return String(children);
+    if (!children) return '';
+    if (Array.isArray(children)) {
+        return children.map(flattenChildren).join('');
+    }
+    if (children.props && children.props.children) {
+        return flattenChildren(children.props.children);
+    }
+    return '';
+};
+
+const slugify = (text: string): string => {
+    return text
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '') // Remove all non-word chars (except spaces and hyphens)
+        .replace(/[\s_]+/g, '-')  // Replace spaces and underscores with hyphens
+        .replace(/-+/g, '-');     // Replace multiple consecutive hyphens with a single hyphen
+};
+
+const getHeadingId = (children: any): string => {
+    return slugify(flattenChildren(children));
+};
+
 interface DocumentViewerProps {
     filename: string;
     onClose: () => void;
@@ -129,11 +155,41 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
-                                    h1: ({ node, ...props }) => <h1 className="text-2xl font-bold text-white mb-4 mt-8" {...props} />,
-                                    h2: ({ node, ...props }) => <h2 className="text-xl font-bold text-white border-b border-emerald-900/50 pb-2 mt-8 mb-4 tracking-tight" {...props} />,
-                                    h3: ({ node, ...props }) => <h3 className="text-lg font-bold text-slate-200 mt-6 mb-3" {...props} />,
+                                    h1: ({ node, children, ...props }) => {
+                                        const id = getHeadingId(children);
+                                        return <h1 id={id} className="text-2xl font-bold text-white mb-4 mt-8" {...props}>{children}</h1>;
+                                    },
+                                    h2: ({ node, children, ...props }) => {
+                                        const id = getHeadingId(children);
+                                        return <h2 id={id} className="text-xl font-bold text-white border-b border-emerald-900/50 pb-2 mt-8 mb-4 tracking-tight" {...props}>{children}</h2>;
+                                    },
+                                    h3: ({ node, children, ...props }) => {
+                                        const id = getHeadingId(children);
+                                        return <h3 id={id} className="text-lg font-bold text-slate-200 mt-6 mb-3" {...props}>{children}</h3>;
+                                    },
                                     p: ({ node, ...props }) => <p className="text-slate-300 leading-relaxed mb-4" {...props} />,
-                                    a: ({ node, ...props }) => <a className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 decoration-emerald-500/30 hover:decoration-emerald-400 transition-colors" {...props} />,
+                                    a: ({ node, href, children, ...props }) => {
+                                        const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+                                            if (href && href.startsWith('#')) {
+                                                e.preventDefault();
+                                                const targetId = href.substring(1);
+                                                const element = document.getElementById(targetId);
+                                                if (element) {
+                                                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                }
+                                            }
+                                        };
+                                        return (
+                                            <a
+                                                href={href}
+                                                onClick={handleClick}
+                                                className="text-emerald-400 hover:text-emerald-300 underline underline-offset-4 decoration-emerald-500/30 hover:decoration-emerald-400 transition-colors"
+                                                {...props}
+                                            >
+                                                {children}
+                                            </a>
+                                        );
+                                    },
                                     ul: ({ node, ...props }) => <ul className="list-disc list-inside text-slate-300 mb-4 space-y-1 marker:text-emerald-500" {...props} />,
                                     ol: ({ node, ...props }) => <ol className="list-decimal list-inside text-slate-300 mb-4 space-y-1 marker:text-emerald-500" {...props} />,
                                     li: ({ node, ...props }) => <li className="text-slate-300" {...props} />,

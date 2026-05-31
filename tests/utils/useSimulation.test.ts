@@ -5,6 +5,7 @@ import { Entity, EntityType } from '../../types';
 describe('Simulation Kinematics', () => {
     const baseEntity: Entity = {
         id: 'test',
+        label: 'TEST',
         type: EntityType.FRIENDLY,
         position: { lat: 34, lon: -118 },
         heading: 0,

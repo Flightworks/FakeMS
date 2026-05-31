@@ -39,7 +39,11 @@ describe('CommandRegistry', () => {
     history: [],
     openDocument: vi.fn(),
     ownshipNavMode: NavMode.REAL,
-    toggleNavMode: vi.fn()
+    toggleNavMode: vi.fn(),
+    updateOwnship: vi.fn(),
+    notes: [],
+    saveNote: vi.fn(),
+    deleteNote: vi.fn()
   };
 
   describe('getCommands', () => {
@@ -90,16 +94,83 @@ describe('CommandRegistry', () => {
     });
 
     it('should create direct-to commands', () => {
-        const commands = getCommands('dct target', mockContext);
-        const dctCmd = commands.find(c => c.id === 'dct-target1');
-        expect(dctCmd).toBeDefined();
+      const commands = getCommands('dct target', mockContext);
+      const dctCmd = commands.find(c => c.id === 'dct-context-target1');
+      expect(dctCmd).toBeDefined();
     });
 
-    it('should create save text fallback for unmatched queries', () => {
-        const commands = getCommands('some random text', mockContext);
-        const saveCmd = commands.find(c => c.id === 'save-text-note');
-        expect(saveCmd).toBeDefined();
-        expect(saveCmd?.label).toBe('SAVE: "some random text"');
+    it('should create save text fallback and call saveNote', () => {
+      const commands = getCommands('some random text', mockContext);
+      const saveCmd = commands.find(c => c.id === 'save-text-note');
+      expect(saveCmd).toBeDefined();
+      expect(saveCmd?.label).toBe('SAVE: "some random text"');
+      
+      saveCmd?.action();
+      expect(mockContext.saveNote).toHaveBeenCalledWith('some random text');
+    });
+
+    it('should parse kinematic commands (hdg, spd, alt)', () => {
+      // hdg
+      const hdgCmds = getCommands('hdg 180', mockContext);
+      const hdgCmd = hdgCmds.find(c => c.id === 'set-target-hdg');
+      expect(hdgCmd).toBeDefined();
+      hdgCmd?.action();
+      expect(mockContext.updateOwnship).toHaveBeenCalledWith({ targetHeading: 180 });
+
+      // spd
+      const spdCmds = getCommands('spd 150', mockContext);
+      const spdCmd = spdCmds.find(c => c.id === 'set-target-spd');
+      expect(spdCmd).toBeDefined();
+      spdCmd?.action();
+      expect(mockContext.updateOwnship).toHaveBeenCalledWith({ targetSpeed: 150 });
+
+      // alt
+      const altCmds = getCommands('alt 5000', mockContext);
+      const altCmd = altCmds.find(c => c.id === 'set-target-alt');
+      expect(altCmd).toBeDefined();
+      altCmd?.action();
+      expect(mockContext.updateOwnship).toHaveBeenCalledWith({ targetAltitude: 5000 });
+    });
+
+    it('should support contextual autocomplete for dct and eta', () => {
+      // dct
+      const dctCmds = getCommands('dct ', mockContext);
+      const dctContextCmd = dctCmds.find(c => c.id === 'dct-context-target1');
+      expect(dctContextCmd).toBeDefined();
+      expect(dctContextCmd?.label).toBe('DCT TARGET1');
+
+      // eta
+      const etaCmds = getCommands('eta ', mockContext);
+      const etaContextCmd = etaCmds.find(c => c.id === 'eta-context-target1');
+      expect(etaContextCmd).toBeDefined();
+      expect(etaContextCmd?.label).toBe('ETA TARGET1');
+    });
+
+    it('should handle note saving, notes list, notes filtering, and notes actions', () => {
+      // save note command
+      const noteCmds = getCommands('note bridge down', mockContext);
+      const createNoteCmd = noteCmds.find(c => c.id === 'create-note');
+      expect(createNoteCmd).toBeDefined();
+      createNoteCmd?.action();
+      expect(mockContext.saveNote).toHaveBeenCalledWith('bridge down');
+
+      // list notes
+      const notesContext = {
+        ...mockContext,
+        notes: [
+          { id: 'n1', text: 'Convoy at 34.05, -118.24', timestamp: Date.now() }
+        ]
+      };
+      const listCmds = getCommands('notes', notesContext);
+      const viewNoteCmd = listCmds.find(c => c.id === 'view-note-n1');
+      const flyNoteCmd = listCmds.find(c => c.id === 'fly-to-note-n1');
+      expect(viewNoteCmd).toBeDefined();
+      expect(viewNoteCmd?.label).toBe('Convoy at 34.05, -118.24');
+      
+      // fly to notes coordinates
+      expect(flyNoteCmd).toBeDefined();
+      flyNoteCmd?.action();
+      expect(notesContext.panTo).toHaveBeenCalledWith(34.05, -118.24);
     });
   });
 });
