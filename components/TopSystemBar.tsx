@@ -13,6 +13,8 @@ interface TopSystemBarProps {
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  onOpenSolver?: () => void;
+  isSolverActive?: boolean;
 }
 
 const StatusBlock = ({
@@ -548,7 +550,8 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
 
 // ── MAIN TOP SYSTEM BAR ────────────────────────────────────────────────────────
 export const TopSystemBar: React.FC<TopSystemBarProps> = ({
-  systems, navMode, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings
+  systems, navMode, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings,
+  onOpenSolver, isSolverActive
 }) => {
   const [openToolboxes, setOpenToolboxes] = useState<Set<string>>(new Set());
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -598,6 +601,18 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
               isOpen={isHmiOpen}
               onToggle={() => toggleToolbox('hmi')}
             />
+
+            {onOpenSolver && (
+              <div className="relative">
+                <div onPointerDown={onOpenSolver} className="cursor-pointer transition-transform active:scale-95">
+                  <StatusBlock
+                    label="SIGMA"
+                    value="IA"
+                    status={isSolverActive ? 'active' : 'default'}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

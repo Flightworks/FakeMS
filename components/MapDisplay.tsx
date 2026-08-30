@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Rectangle, Circle, CircleMarker, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
+import {
+  Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode,
+  TrajectoryOption, AirplanArea, Position, BayesianCell, BayesianSearchModel
+} from '../types';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
 import {
   MapPin, Crosshair, Navigation, Info, Trash2, CircleDashed,
   Zap, Shield, FileText, Scan, Eye, Slash, Target, Settings, Router,
   Lock, Anchor, Flag, Video, Wifi, Globe, Thermometer, Activity,
-  ArrowLeftRight, CornerUpRight, Flame, TrendingUp, ChevronUp
+  ArrowLeftRight, CornerUpRight, Flame, TrendingUp, ChevronUp, AlertTriangle, X
 } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -50,7 +53,21 @@ interface MapDisplayProps {
   setMapMode: (m: MapMode) => void;
   groundAnchor: {lat: number, lon: number} | null;
   onGhostEvent?: (isGhost: boolean) => void;
+  // Solver & Tactical Mission Overlays
+  airplanArea?: AirplanArea | null;
+  activeTrajectory?: TrajectoryOption | null;
+  candidateTrajectories?: TrajectoryOption[];
+  frigatePosition?: Position;
+  frigateLabel?: string;
+  deviationAlert?: { active: boolean; message: string } | null;
+  onOpenSolver?: () => void;
+  onDismissAlert?: () => void;
+  bayesianHeatmapActive?: boolean;
+  bayesianCells?: BayesianCell[];
+  bayesianSearchModel?: BayesianSearchModel;
 }
+
+
 
 
 const EARTH_RADIUS = 6378137;
@@ -279,7 +296,18 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onResetStab,
   setMapMode,
   groundAnchor,
-  onGhostEvent
+  onGhostEvent,
+  airplanArea,
+  activeTrajectory,
+  candidateTrajectories,
+  frigatePosition,
+  frigateLabel,
+  deviationAlert,
+  onOpenSolver,
+  onDismissAlert,
+  bayesianHeatmapActive = false,
+  bayesianCells = [],
+  bayesianSearchModel
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -563,6 +591,63 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     });
   };
 
+  const createFrigateIcon = (label: string, rotation: number) => {
+    const svgString = renderToStaticMarkup(
+      <div 
+        className="relative flex flex-col items-center justify-center pointer-events-none"
+        style={{ width: '48px', height: '48px' }}
+      >
+        <div className="w-8 h-8 rounded-full bg-cyan-950/80 border-2 border-cyan-400 flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.6)]">
+          <Anchor size={18} className="text-cyan-300" />
+        </div>
+        <div 
+          className="absolute -bottom-4 text-[9px] text-cyan-300 font-mono font-bold bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-500/40 whitespace-nowrap"
+          style={{ transform: `rotate(${-rotation}deg)`, display: 'inline-block' }}
+        >
+          {label}
+        </div>
+      </div>
+    );
+
+    return L.divIcon({
+      html: svgString,
+      className: 'custom-frigate-icon',
+      iconSize: [48, 48],
+      iconAnchor: [24, 24]
+    });
+  };
+
+  const createTrajectoryWptIcon = (label: string, index: number, color: string, rotation: number) => {
+    const svgString = renderToStaticMarkup(
+      <div 
+        className="relative flex flex-col items-center justify-center pointer-events-none"
+        style={{ width: '32px', height: '32px' }}
+      >
+        <div 
+          className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white font-mono shadow-md border"
+          style={{ backgroundColor: color, borderColor: '#ffffff' }}
+        >
+          {index}
+        </div>
+        {label && (
+          <div 
+            className="absolute -bottom-3.5 text-[8px] text-white font-mono bg-slate-950/90 px-1 rounded border border-slate-700 whitespace-nowrap"
+            style={{ transform: `rotate(${-rotation}deg)`, display: 'inline-block' }}
+          >
+            {label}
+          </div>
+        )}
+      </div>
+    );
+
+    return L.divIcon({
+      html: svgString,
+      className: 'custom-wpt-icon',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  };
+
   return (
     <div
       className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
@@ -620,6 +705,157 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           setGhostData={setGhostData}
           setIsOffCenter={setIsOffCenter}
         />
+
+        {/* Airplan Bounding Box Overlay */}
+        {airplanArea && (
+          <Rectangle
+            bounds={[
+              [airplanArea.topLeft.lat, airplanArea.topLeft.lon],
+              [airplanArea.bottomRight.lat, airplanArea.bottomRight.lon]
+            ]}
+            pathOptions={{
+              color: airplanArea.color || '#ef4444',
+              weight: 2,
+              dashArray: '8, 8',
+              fillColor: '#ef4444',
+              fillOpacity: 0.04
+            }}
+          />
+        )}
+
+        {/* Bayesian Probability Ellipse & Coup-de-Faux Corridor (Go-Fast Search) */}
+        {bayesianHeatmapActive && bayesianSearchModel && (
+          <>
+            {/* Concentric Probability Ellipses */}
+            {bayesianSearchModel.contours.map((contour, idx) => (
+              <Polygon
+                key={`bayes-contour-${idx}`}
+                positions={contour.points}
+                pathOptions={{
+                  color: contour.color,
+                  weight: contour.level === 'CORE' ? 2 : 1.5,
+                  dashArray: contour.level === 'CORE' ? undefined : '5, 5',
+                  fillColor: contour.color,
+                  fillOpacity: contour.fillOpacity,
+                }}
+              />
+            ))}
+
+            {/* Datum Progression Line */}
+            <Polyline
+              positions={[
+                [bayesianSearchModel.datumCenter.lat, bayesianSearchModel.datumCenter.lon],
+                [bayesianSearchModel.estimatedCurrentPos.lat, bayesianSearchModel.estimatedCurrentPos.lon],
+              ]}
+              pathOptions={{
+                color: '#f59e0b',
+                weight: 2,
+                dashArray: '4, 4',
+                opacity: 0.85,
+              }}
+            />
+
+            {/* Transversal 90° Coup-de-Faux Sweep Corridor Line */}
+            <Polyline
+              positions={[
+                [bayesianSearchModel.transversalSweepLeg.start.lat, bayesianSearchModel.transversalSweepLeg.start.lon],
+                [bayesianSearchModel.transversalSweepLeg.end.lat, bayesianSearchModel.transversalSweepLeg.end.lon],
+              ]}
+              pathOptions={{
+                color: '#38bdf8',
+                weight: 2.5,
+                opacity: 0.9,
+              }}
+            />
+
+            {/* Datum Origin Marker */}
+            <Marker
+              position={[bayesianSearchModel.datumCenter.lat, bayesianSearchModel.datumCenter.lon]}
+              icon={L.divIcon({
+                className: 'bg-transparent',
+                html: `<div style="transform: translate(-50%, -50%);" class="flex flex-col items-center">
+                  <div class="w-3 h-3 rounded-full border-2 border-amber-400 bg-amber-500/50"></div>
+                  <span class="text-[9px] font-mono text-amber-300 font-bold bg-slate-950/80 px-1 rounded border border-amber-500/40 mt-0.5 whitespace-nowrap">
+                    DATUM t0 (${bayesianSearchModel.headingDeg}°/${bayesianSearchModel.speedKts}kt)
+                  </span>
+                </div>`,
+              })}
+            />
+
+            {/* Estimated Current Center Marker */}
+            <Marker
+              position={[bayesianSearchModel.estimatedCurrentPos.lat, bayesianSearchModel.estimatedCurrentPos.lon]}
+              icon={L.divIcon({
+                className: 'bg-transparent',
+                html: `<div style="transform: translate(-50%, -50%);" class="flex flex-col items-center">
+                  <div class="w-3.5 h-3.5 rounded-full border-2 border-red-500 bg-red-500/60 animate-ping"></div>
+                  <span class="text-[9px] font-mono text-red-300 font-bold bg-slate-950/90 px-1.5 py-0.5 rounded border border-red-500/60 mt-1 whitespace-nowrap shadow-lg">
+                    ESTIMÉ t+${bayesianSearchModel.timeElapsedMin}m (P_max 88%)
+                  </span>
+                </div>`,
+              })}
+            />
+          </>
+        )}
+
+        {/* Stand-off Distance (SOD 6 NM = 11112m) for Enemies */}
+        {entities.filter(e => e.type === EntityType.ENEMY).map(e => (
+          <Circle
+            key={`sod-${e.id}`}
+            center={[e.position.lat, e.position.lon]}
+            radius={11112} // 6 NM in meters
+            pathOptions={{
+              color: '#ef4444',
+              weight: 1.5,
+              dashArray: '4, 6',
+              fillColor: '#ef4444',
+              fillOpacity: 0.03,
+            }}
+          />
+        ))}
+
+        {/* Candidate Trajectories (Inactive / Preview) */}
+        {candidateTrajectories?.filter(c => c.id !== activeTrajectory?.id).map(opt => (
+          <Polyline
+            key={opt.id}
+            positions={opt.waypoints.map(w => [w.lat, w.lon])}
+            pathOptions={{
+              color: opt.color,
+              weight: 2.5,
+              dashArray: '5, 8',
+              opacity: 0.55
+            }}
+          />
+        ))}
+
+        {/* Active Selected Trajectory */}
+        {activeTrajectory && (
+          <>
+            <Polyline
+              positions={activeTrajectory.waypoints.map(w => [w.lat, w.lon])}
+              pathOptions={{
+                color: activeTrajectory.color,
+                weight: 4.5,
+                opacity: 0.95
+              }}
+            />
+            {activeTrajectory.waypoints.map((wpt, idx) => (
+              <Marker
+                key={`act-wpt-${idx}`}
+                position={[wpt.lat, wpt.lon]}
+                icon={createTrajectoryWptIcon(wpt.label || `WPT ${idx}`, idx + 1, activeTrajectory.color, mapRotation)}
+              />
+            ))}
+          </>
+        )}
+
+        {/* Frigate BPH (Point C) */}
+        {frigatePosition && (
+          <Marker
+            position={[frigatePosition.lat, frigatePosition.lon]}
+            icon={createFrigateIcon(frigateLabel || 'FS AQUITAINE (PT C)', mapRotation)}
+          />
+        )}
 
         {/* Ownship */}
         <Marker
@@ -679,6 +915,45 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           ))}
 
       </MapContainer>
+
+      {/* Floating Tactical Kinematic Deviation Alert Banner */}
+      {deviationAlert?.active && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[92%] p-3.5 bg-slate-900/95 border-2 border-amber-500 rounded-xl shadow-[0_0_30px_rgba(245,158,11,0.4)] backdrop-blur-md flex items-center justify-between gap-3 pointer-events-auto animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} className="text-amber-400 animate-pulse" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                Déviation Cinématique Détectée
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-900/80 text-amber-300 font-mono">
+                  AMI ALERT
+                </span>
+              </div>
+              <div className="text-[11px] text-amber-200/90 leading-tight mt-0.5 font-medium">
+                {deviationAlert.message || "Rupture de cap piste suspecte (Cap 310° / 35kt). Recalcul automatique proposé (Bingo Fuel vérifié)."}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onOpenSolver}
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg shadow-md transition-all active:scale-95 uppercase flex items-center gap-1"
+            >
+              <Sparkles size={13} />
+              Voir Recalcul
+            </button>
+            <button
+              onClick={onDismissAlert}
+              className="p-1.5 text-amber-400 hover:text-white rounded hover:bg-amber-900/50 transition-colors"
+              title="Fermer l'alerte"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* Map orientation and stab are now controlled via the Left Sidebar */}
 

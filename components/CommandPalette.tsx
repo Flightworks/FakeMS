@@ -18,6 +18,7 @@ interface CommandPaletteProps {
   openDocument: (filename: string) => void;
   ownshipNavMode: NavMode;
   setOwnshipNavMode: (mode: NavMode) => void;
+  openSolver?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -33,7 +34,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   origin,
   openDocument,
   ownshipNavMode,
-  setOwnshipNavMode
+  setOwnshipNavMode,
+  openSolver
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -92,10 +94,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       history, // Pass history to registry
       openDocument,
       ownshipNavMode,
-      toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
+      toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
+      openSolver
     };
     return getCommands(query, context);
-  }, [query, entities, ownship, systems, mapMode, history]);
+  }, [query, entities, ownship, systems, mapMode, history, openSolver]);
 
   useEffect(() => {
     setSelectedIndex(0);

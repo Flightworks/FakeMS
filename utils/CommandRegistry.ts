@@ -1,5 +1,5 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Sparkles } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
 import { getDestinationPoint } from './geo';
@@ -27,6 +27,7 @@ export interface CommandContext {
     openDocument: (filename: string) => void;
     ownshipNavMode: NavMode;
     toggleNavMode: () => void;
+    openSolver?: () => void;
 }
 
 export interface CommandOption {
@@ -345,6 +346,18 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         historyValue: 'Heading Up'
     });
 
+    if (context.openSolver) {
+        systemCommands.push({
+            id: 'open-solver-ami',
+            label: 'SOLVER: AMI / SIGMA',
+            subLabel: 'Optimisation de Trajectoire Multi-Critères',
+            icon: Sparkles,
+            action: () => context.openSolver?.(),
+            keywords: ['solver', 'solveur', 'ami', 'sigma', 'opt', 'trajectoire', 'optimisation', 'maven', 'gofast', 'ecovents', 'menace', 'mto'],
+            historyValue: 'SOLVER'
+        });
+    }
+
     // 3. Fuzzy Search
     if (q.length > 0) {
         // Define file commands
@@ -357,6 +370,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             'docs/03-interface-guide.md',
             'docs/04-configuration.md',
             'docs/05-scratchpad-guide.md',
+            'docs/06-sigma-ai-conops.md',
             'docs/README.md'
         ];
         const fileCommands = knownFiles.map(file => ({

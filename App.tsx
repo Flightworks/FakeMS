@@ -1,15 +1,23 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 import { MapDisplay } from './components/MapDisplay';
 import { TopSystemBar } from './components/TopSystemBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
 import { DocumentViewer } from './components/DocumentViewer';
+import { SigmaMissionCenter, SigmaModuleType } from './components/SigmaMissionCenter';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
-import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
+import {
+  Entity, EntityType, MapMode, SystemStatus, PrototypeSettings,
+  StabMode, NavMode, TrajectoryOption, AirplanArea, SolverEnvironment, SolverMetrics,
+  BayesianSearchModel
+} from './types';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
+import { DEFAULT_SOLVER_ENV, DEFAULT_SOLVER_METRICS, solveTrajectories, generateBayesianSearchModel } from './utils/solverEngine';
+
+
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 
@@ -17,21 +25,29 @@ const INITIAL_OWNSHIP: Entity = {
   id: 'ownship',
   type: EntityType.OWNSHIP,
   position: { lat: DEFAULT_ORIGIN.lat, lon: DEFAULT_ORIGIN.lon },
-  label: 'VIPER 1-1',
+  label: 'VIPER 1-1 (H160M)',
   heading: 0,
   speed: 120, // Default speed in knots for ETA calculations
   altitude: 3428
 };
 
-// Seeding test entities with Lat/Lon Native coordinates
+// Seeding test entities with Lat/Lon Native coordinates (Airplan Alpha Scenario)
 const INITIAL_ENTITIES: Entity[] = [
-  { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01' },
-  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO' },
-  { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE' },
-  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3 },
+  { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01 (TRAFIC AIS)' },
+  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO (AIS)' },
+  { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE HIL' },
+  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'TN0012 (SUSPECT NO-AIS)', heading: 270, targetHeading: 270, speed: 20, targetSpeed: 20, turnRate: 3 },
   // Adding Waypoint routine to ENEMY 2 to test automatic navigation
-  { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }] },
+  { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'GO-FAST DATUM', heading: 320, targetHeading: 320, speed: 32, targetSpeed: 32, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }] },
 ];
+
+const INITIAL_AIRPLAN: AirplanArea = {
+  id: 'airplan-alpha',
+  name: 'AIRPLAN ALPHA (SURMAR)',
+  topLeft: { lat: 34.18, lon: -118.48 },
+  bottomRight: { lat: 33.90, lon: -118.05 },
+  color: '#ef4444'
+};
 
 const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
@@ -52,8 +68,20 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
-  const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
+  const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: true, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
+
+  // ── SIGMA MISSION ASSISTANT STATE ─────────────────────────────────────────
+  const [isSigmaOpen, setIsSigmaOpen] = useState(false);
+  const [sigmaModule, setSigmaModule] = useState<SigmaModuleType>('SURMAR_ROUTING');
+  const [solverEnvironment, setEnvironment] = useState<SolverEnvironment>(DEFAULT_SOLVER_ENV);
+  const [airplanArea, setAirplanArea] = useState<AirplanArea | null>(INITIAL_AIRPLAN);
+  const [activeTrajectory, setActiveTrajectory] = useState<TrajectoryOption | null>(null);
+  const [selectedTrajectoryOptionId, setSelectedTrajectoryOptionId] = useState<string | null>(null);
+  const [isContinuousOpt, setIsContinuousOpt] = useState(true);
+  const [deviationAlert, setDeviationAlert] = useState<{ active: boolean; message: string } | null>(null);
+  const [bayesianHeatmapActive, setBayesianHeatmapActive] = useState<boolean>(false);
+  const [solverMetrics, setSolverMetrics] = useState<SolverMetrics>(DEFAULT_SOLVER_METRICS);
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
     tapThreshold: 300,
@@ -342,6 +370,87 @@ const App: React.FC = () => {
     }
   };
 
+  // ── TRAJECTORY SOLVER HANDLERS ───────────────────────────────────────────
+  const handleOpenSolver = () => {
+    setIsSolverOpen(true);
+  };
+
+  const handleAcceptTrajectory = (opt: TrajectoryOption) => {
+    setActiveTrajectory(opt);
+    setSelectedTrajectoryOptionId(opt.id);
+
+    // Apply waypoints to ownship
+    const waypointsPos = opt.waypoints.map(w => ({ lat: w.lat, lon: w.lon }));
+    setOwnship(prev => ({
+      ...prev,
+      waypoints: waypointsPos,
+      targetSpeed: solverEnvironment.ownshipSpeedKts
+    }));
+
+    // Switch to SIM mode so ownship follows the trajectory
+    setOwnshipNavMode(NavMode.SIM);
+    setIsSolverOpen(false);
+    setDeviationAlert(null);
+  };
+
+  const handleTriggerKinematicBreak = () => {
+    // Enemy 1 breaks heading towards high seas (310°) and speeds up to 35 kts
+    setEntities(prev => prev.map(e => {
+      if (e.id === 'en-1' || e.type === EntityType.ENEMY) {
+        return {
+          ...e,
+          heading: 310,
+          targetHeading: 310,
+          speed: 35,
+          targetSpeed: 35,
+          turnRate: 6
+        };
+      }
+      return e;
+    }));
+
+    setDeviationAlert({
+      active: true,
+      message: "Rupture de cap suspecte TN0012 (Cap 310° / 35 kts vers haute mer). Recalcul automatique d'interception proposé (Bingo Fuel vérifié)."
+    });
+  };
+
+  const handleOpenSigma = (module: SigmaModuleType = 'SURMAR_ROUTING') => {
+    setSigmaModule(module);
+    setIsSigmaOpen(true);
+    if (module === 'BAYESIAN_INTERCEPT') {
+      setBayesianHeatmapActive(true);
+    }
+  };
+
+  const handleToggleSigma = () => {
+    setIsSigmaOpen(prev => !prev);
+  };
+
+  const suspectTrack = entities.find(e => e.type === EntityType.ENEMY)?.position || { lat: 34.07, lon: -118.10 };
+  const secondaryTracks = entities
+    .filter(e => e.type !== EntityType.ENEMY && e.type !== EntityType.OWNSHIP)
+    .map(e => e.position);
+
+  const candidateTrajectories = useMemo(() => {
+    return solveTrajectories(
+      ownship.position,
+      suspectTrack,
+      secondaryTracks,
+      solverEnvironment,
+      solverMetrics
+    );
+  }, [ownship.position.lat, ownship.position.lon, suspectTrack.lat, suspectTrack.lon, secondaryTracks.length, solverEnvironment, solverMetrics]);
+
+  const bayesianSearchModel = useMemo(() => {
+    return generateBayesianSearchModel(
+      suspectTrack,
+      320, // Estimated Go-fast heading
+      32,  // Estimated Go-fast speed
+      15   // 15 min elapsed
+    );
+  }, [suspectTrack.lat, suspectTrack.lon]);
+
   return (
     <div
       className="relative w-screen h-screen bg-black overflow-hidden font-sans select-none"
@@ -368,9 +477,46 @@ const App: React.FC = () => {
             setMapMode={handleMapModeChange}
             groundAnchor={groundAnchor}
             onGhostEvent={handleGhostEvent}
+            airplanArea={airplanArea}
+            activeTrajectory={activeTrajectory}
+            candidateTrajectories={candidateTrajectories}
+            frigatePosition={solverEnvironment.frigatePosition}
+            frigateLabel={solverEnvironment.frigateLabel}
+            deviationAlert={deviationAlert}
+            onOpenSolver={() => handleOpenSigma('SURMAR_ROUTING')}
+            onDismissAlert={() => setDeviationAlert(null)}
+            bayesianHeatmapActive={bayesianHeatmapActive}
+            bayesianSearchModel={bayesianSearchModel}
           />
         )}
       </div>
+
+      {/* Modular SIGMA Mission Assistant (Closed by default, opened on demand) */}
+      <SigmaMissionCenter
+        isOpen={isSigmaOpen}
+        onClose={() => setIsSigmaOpen(false)}
+        activeModule={sigmaModule}
+        setActiveModule={setSigmaModule}
+        ownship={ownship}
+        entities={entities}
+        environment={solverEnvironment}
+        options={candidateTrajectories}
+        activeTrajectory={activeTrajectory}
+        selectedOptionId={selectedTrajectoryOptionId}
+        onSelectOption={(opt) => {
+          setSelectedTrajectoryOptionId(opt?.id || null);
+          setActiveTrajectory(opt);
+        }}
+        onAcceptTrajectory={handleAcceptTrajectory}
+        onUpdateAltitude={(alt) => setOwnship(prev => ({ ...prev, altitude: alt }))}
+        onTriggerKinematicBreak={handleTriggerKinematicBreak}
+        bayesianHeatmapActive={bayesianHeatmapActive}
+        setBayesianHeatmapActive={setBayesianHeatmapActive}
+        metrics={solverMetrics}
+        setMetrics={setSolverMetrics}
+        deviationAlert={deviationAlert}
+        onDismissAlert={() => setDeviationAlert(null)}
+      />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
         <LeftSidebar
@@ -382,6 +528,7 @@ const App: React.FC = () => {
           stabMode={stabMode}
           setStabMode={handleSetStabMode}
           onResetStab={handleResetStab}
+          onOpenSolver={handleToggleSigma}
         />
       </div>
 
@@ -399,6 +546,7 @@ const App: React.FC = () => {
         openDocument={setOpenDoc}
         ownshipNavMode={ownshipNavMode}
         setOwnshipNavMode={setOwnshipNavMode}
+        openSolver={handleToggleSigma}
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
@@ -410,6 +558,8 @@ const App: React.FC = () => {
           setOwnship={setOwnship}
           gestureSettings={prototypeSettings}
           setGestureSettings={setPrototypeSettings}
+          onOpenSolver={handleToggleSigma}
+          isSolverActive={isSigmaOpen || !!activeTrajectory}
         />
       </div>
 
@@ -418,12 +568,13 @@ const App: React.FC = () => {
       </div>
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-0 right-0 pointer-events-none">
-        <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
+        <TargetPanel
+          ownship={ownship}
+          entity={entities.find(e => e.id === selectedEntityId) || null}
+          animationSpeed={prototypeSettings.animationSpeed}
+          onOpenSolver={() => handleOpenSigma('TRACK_CLASSIFICATION')}
+        />
       </div>
-
-
-
-
 
       {openDoc && (
         <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
@@ -435,3 +586,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+

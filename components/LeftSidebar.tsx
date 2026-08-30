@@ -3,7 +3,7 @@ import { MapMode, SystemStatus, PrototypeSettings, Entity, StabMode } from '../t
 import packageData from '../package.json';
 import changelogRaw from '../CHANGELOG.md?raw';
 import {
-  Menu, ArrowUp, Search, X, Info, BookOpen, Crosshair
+  Menu, ArrowUp, Search, X, Info, BookOpen, Crosshair, Sparkles
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -21,6 +21,7 @@ interface LeftSidebarProps {
   stabMode: StabMode;
   setStabMode: (m: StabMode) => void;
   onResetStab: () => void;
+  onOpenSolver?: () => void;
 }
 
 interface QakOption {
@@ -37,7 +38,7 @@ interface QakOption {
 interface SidebarButtonProps {
   label: string;
   subLabel?: string;
-  icon?: any;
+  icon: any;
   active?: boolean;
   onClick: () => void;
 }
@@ -97,7 +98,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
   gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
-  stabMode, setStabMode, onResetStab
+  stabMode, setStabMode, onResetStab, onOpenSolver
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -127,6 +128,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.GND),
       description: 'Toggle map stabilisation between Ground (GND) and Helicopter/Cursor (H/C) mode.'
     },
+    ...(onOpenSolver ? [{
+      id: 'solver',
+      label: 'SIGMA',
+      subLabel: 'IA',
+      icon: Sparkles,
+      action: onOpenSolver,
+      description: 'Assistant Tactique & Modules de Mission SIGMA (H160M Guépard).'
+    }] : []),
     {
       id: 'version',
       label: 'VER',

@@ -30,6 +30,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ filename, onClos
                     'docs/03-interface-guide.md': () => import('../docs/03-interface-guide.md?raw'),
                     'docs/04-configuration.md': () => import('../docs/04-configuration.md?raw'),
                     'docs/05-scratchpad-guide.md': () => import('../docs/05-scratchpad-guide.md?raw'),
+                    'docs/06-sigma-ai-conops.md': () => import('../docs/06-sigma-ai-conops.md?raw'),
                     'docs/README.md': () => import('../docs/README.md?raw')
                 };
 

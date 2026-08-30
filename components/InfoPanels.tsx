@@ -108,7 +108,17 @@ export const OwnshipPanel = React.memo(({
   );
 });
 
-export const TargetPanel = React.memo(({ ownship, entity, animationSpeed = 300 }: { ownship: Entity | null, entity: Entity | null, animationSpeed?: number }) => {
+export const TargetPanel = React.memo(({ 
+  ownship, 
+  entity, 
+  animationSpeed = 300,
+  onOpenSolver
+}: { 
+  ownship: Entity | null, 
+  entity: Entity | null, 
+  animationSpeed?: number,
+  onOpenSolver?: () => void
+}) => {
   if (!entity || !ownship) return null;
 
   // Real-time calculations
@@ -126,9 +136,11 @@ export const TargetPanel = React.memo(({ ownship, entity, animationSpeed = 300 }
   const latDisplay = `N${Math.floor(Math.abs(entity.position.lat))}°${(Math.abs(entity.position.lat) % 1 * 60).toFixed(3)}'`;
   const lonDisplay = `E${Math.floor(Math.abs(entity.position.lon))}°${(Math.abs(entity.position.lon) % 1 * 60).toFixed(3)}'`;
 
+  const isEnemy = entity.type === 'ENEMY' || entity.label.includes('SUSPECT') || entity.label.includes('GO-FAST');
+
   return (
     <div
-      className="absolute z-20 bg-slate-900 border-2 border-slate-600 rounded shadow-xl flex flex-col w-auto min-w-[280px] animate-in slide-in-from-right fade-in pointer-events-auto"
+      className="absolute z-20 bg-slate-900 border-2 border-slate-600 rounded shadow-xl flex flex-col w-auto min-w-[290px] max-w-[340px] animate-in slide-in-from-right fade-in pointer-events-auto"
       style={{
         bottom: 'calc(1rem + env(safe-area-inset-bottom))',
         right: 'calc(1rem + env(safe-area-inset-right))',
@@ -139,7 +151,12 @@ export const TargetPanel = React.memo(({ ownship, entity, animationSpeed = 300 }
       onTouchStart={stopProp}
     >
       <div className="bg-slate-800 px-3 py-1 flex items-center justify-between border-b border-slate-600">
-        <span className="text-[10px] text-amber-500 font-bold tracking-widest uppercase">FROM H/C</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-amber-500 font-bold tracking-widest uppercase">FROM H/C</span>
+          <span className="text-[10px] text-amber-300 font-mono uppercase truncate max-w-[150px]">
+            [{entity.label}]
+          </span>
+        </div>
         <Target size={12} className="text-amber-500" />
       </div>
 
@@ -148,7 +165,31 @@ export const TargetPanel = React.memo(({ ownship, entity, animationSpeed = 300 }
         <DataField label="DIST" value={distanceNm} unit="NM" />
         <DataField label="ALT" value={Math.round(entity.altitude || 0).toString().padStart(5, '0')} unit="ft" />
       </div>
-      <div className="px-2 pb-1 bg-slate-950/90">
+
+      {/* SOTA AI Classification & Intent Inspector */}
+      {isEnemy && (
+        <div className="px-2 py-1.5 bg-slate-900/90 border-t border-slate-800 flex flex-col gap-1 text-[10px]">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-red-400 uppercase font-mono">SIGMA AI : SUSPECT (4/5)</span>
+            <span className="px-1 py-0.2 bg-red-950 text-red-300 border border-red-700/60 rounded text-[9px] font-mono">
+              ANOMALIE POL / SER
+            </span>
+          </div>
+          <p className="text-slate-300 text-[9px] leading-tight">
+            Non-émission AIS. SER incohérente avec trafic civil déclaré. Trajectoire d'évasion.
+          </p>
+          {onOpenSolver && (
+            <button
+              onClick={onOpenSolver}
+              className="mt-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] uppercase transition-colors flex items-center justify-center gap-1 shadow-sm"
+            >
+              Levée de Doute (Solveur IA)
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="px-2 pb-1 bg-slate-950/90 border-t border-slate-900">
         <div className="text-right text-[10px] font-mono text-slate-400">
           {latDisplay} {lonDisplay}
         </div>
@@ -156,3 +197,4 @@ export const TargetPanel = React.memo(({ ownship, entity, animationSpeed = 300 }
     </div>
   );
 });
+
