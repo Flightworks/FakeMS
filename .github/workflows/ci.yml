@@ -39,4 +39,6 @@ jobs:
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
       - name: Build
+        env:
+          VITE_BUILD_ID: ${{ github.sha }}
         run: npm run build

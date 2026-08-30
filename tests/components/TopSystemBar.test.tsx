@@ -40,6 +40,12 @@ describe('TopSystemBar Component', () => {
   const mockProps = {
     systems: mockSystems,
     navMode: NavMode.REAL,
+    navigationState: {
+      source: 'GPS' as const,
+      validity: 'VALID' as const,
+      position: { lat: 0, lon: 0 },
+      updatedAt: 0,
+    },
     setNavMode: vi.fn(),
     ownship: { id: 'ownship', label: 'OWNSHIP', position: { lat: 0, lon: 0 }, heading: 0, speed: 0, type: 'FRIENDLY' as any },
     setOwnship: vi.fn(),

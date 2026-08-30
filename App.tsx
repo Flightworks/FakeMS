@@ -7,11 +7,15 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { CommandPalette } from './components/CommandPalette';
 import { DocumentViewer } from './components/DocumentViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
+import { SimulationBanner } from './components/SimulationBanner';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
+import { createNavigationState, markNavigationError, markNavigationUpdate, OwnshipNavigationState } from './domain/navigation';
+import { createBrowserGeolocationAdapter } from './adapters/geolocation';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
+const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
 
 const INITIAL_OWNSHIP: Entity = {
   id: 'ownship',
@@ -37,7 +41,8 @@ const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
 
-  const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);
+  const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.SIM);
+  const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
   const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
@@ -54,6 +59,11 @@ const App: React.FC = () => {
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
+  const ownshipPositionRef = useRef(INITIAL_OWNSHIP.position);
+
+  useEffect(() => {
+    ownshipPositionRef.current = ownship.position;
+  }, [ownship.position]);
 
   const [prototypeSettings, setPrototypeSettings] = useState<PrototypeSettings>({
     tapThreshold: 300,
@@ -102,41 +112,58 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [commandPaletteOpen]);
 
-  const navModeRef = useRef(ownshipNavMode);
-  useEffect(() => { navModeRef.current = ownshipNavMode; }, [ownshipNavMode]);
-
   useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          if (navModeRef.current === NavMode.SIM) return;
-          const loc = { lat: position.coords.latitude, lon: position.coords.longitude };
-          setOrigin(loc);
-          setOwnship(prev => ({ ...prev, position: loc }));
-
-          const actualDLat = loc.lat - lastOriginRef.current.lat;
-          const actualDLon = loc.lon - lastOriginRef.current.lon;
-
-          if (Math.abs(actualDLat) > 0.000001 || Math.abs(actualDLon) > 0.000001) {
-            setEntities(entitiesPrev => entitiesPrev.map(e => ({
-              ...e,
-              position: { lat: e.position.lat + actualDLat, lon: e.position.lon + actualDLon },
-              waypoints: e.waypoints?.map(wp => ({ lat: wp.lat + actualDLat, lon: wp.lon + actualDLon }))
-            })));
-            lastOriginRef.current = loc;
-          }
-        },
-        () => {
-          setOrigin(DEFAULT_ORIGIN);
-          setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      setOrigin(DEFAULT_ORIGIN);
-      setOwnship(prev => ({ ...prev, position: DEFAULT_ORIGIN }));
+    const currentPosition = ownshipPositionRef.current;
+    if (ownshipNavMode === NavMode.SIM) {
+      setNavigationState(prev => ({
+        ...prev,
+        source: 'SIM',
+        validity: 'SIMULATED',
+        position: currentPosition,
+        updatedAt: Date.now(),
+        accuracyMeters: undefined,
+      }));
+      return;
     }
-  }, []);
+
+    if (!('geolocation' in navigator)) {
+      setNavigationState(prev => markNavigationError(prev, 'DENIED', Date.now()));
+      return;
+    }
+
+    setNavigationState(prev => markNavigationError(prev, 'ACQUIRING', Date.now()));
+    lastOriginRef.current = currentPosition;
+    const geolocation = createBrowserGeolocationAdapter();
+
+    return geolocation.start(
+      update => {
+        const loc = update.position;
+        setNavigationState(prev => markNavigationUpdate(
+          prev,
+          loc,
+          update.timestamp,
+          update.accuracyMeters,
+        ));
+        setOrigin(loc);
+        setOwnship(prev => ({ ...prev, position: loc }));
+
+        const actualDLat = loc.lat - lastOriginRef.current.lat;
+        const actualDLon = loc.lon - lastOriginRef.current.lon;
+        if (Math.abs(actualDLat) > 0.000001 || Math.abs(actualDLon) > 0.000001) {
+          setEntities(entitiesPrev => entitiesPrev.map(e => ({
+            ...e,
+            position: { lat: e.position.lat + actualDLat, lon: e.position.lon + actualDLon },
+            waypoints: e.waypoints?.map(wp => ({ lat: wp.lat + actualDLat, lon: wp.lon + actualDLon }))
+          })));
+          lastOriginRef.current = loc;
+        }
+      },
+      error => {
+        const validity = error.code === 1 ? 'DENIED' : 'LOST';
+        setNavigationState(prev => markNavigationError(prev, validity, Date.now()));
+      },
+    );
+  }, [ownshipNavMode, setEntities]);
 
   const handleManualPan = React.useCallback((newOffset: { x: number, y: number }, newCenterLatLon?: { lat: number, lon: number }) => {
     // console.log('App: handleManualPan', newOffset);
@@ -405,6 +432,7 @@ const App: React.FC = () => {
         <TopSystemBar
           systems={systems}
           navMode={ownshipNavMode}
+          navigationState={navigationState}
           setNavMode={setOwnshipNavMode}
           ownship={ownship}
           setOwnship={setOwnship}
@@ -428,6 +456,8 @@ const App: React.FC = () => {
       {openDoc && (
         <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
       )}
+
+      <SimulationBanner buildId={BUILD_ID} />
 
       {/* Global vignette shadow removed */}
     </div>

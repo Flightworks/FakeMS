@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
+import { navigationStatusLabel, OwnshipNavigationState } from '../domain/navigation';
 import {
   X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
   MousePointer2, Timer, Fingerprint, Zap, Crosshair, ChevronRight, Info
@@ -8,6 +9,7 @@ import {
 interface TopSystemBarProps {
   systems: SystemStatus;
   navMode: NavMode;
+  navigationState: OwnshipNavigationState;
   setNavMode: (mode: NavMode) => void;
   ownship: Entity;
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
@@ -352,18 +354,21 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
 };
 
 // ── SIM CONTROL WIDGET ────────────────────────────────────────────────────────
-const SimControlWidget = ({ navMode, onToggle, isOpen }: {
-  navMode: NavMode;
+const SimControlWidget = ({ navigationState, onToggle, isOpen }: {
+  navigationState: OwnshipNavigationState;
   onToggle: () => void;
   isOpen: boolean;
 }) => {
+  const statusLabel = navigationStatusLabel(navigationState);
+  const status = navigationState.source === 'GPS' && navigationState.validity === 'VALID' ? 'active' : 'warning';
+
   return (
     <div className="relative">
       <div onPointerDown={onToggle} className="cursor-pointer transition-transform active:scale-95">
         <StatusBlock
           label="NAV"
-          value={navMode === NavMode.SIM ? 'SIM ⚠' : 'REAL'}
-          status={navMode === NavMode.SIM ? 'warning' : 'active'}
+          value={statusLabel}
+          status={status}
         />
       </div>
     </div>
@@ -548,7 +553,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
 
 // ── MAIN TOP SYSTEM BAR ────────────────────────────────────────────────────────
 export const TopSystemBar: React.FC<TopSystemBarProps> = ({
-  systems, navMode, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings
+  systems, navMode, navigationState, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings
 }) => {
   const [openToolboxes, setOpenToolboxes] = useState<Set<string>>(new Set());
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -582,7 +587,7 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
 
           <div className="flex space-x-1">
             <SimControlWidget
-              navMode={navMode}
+              navigationState={navigationState}
               isOpen={isSimOpen}
               onToggle={() => toggleToolbox('sim')}
             />
