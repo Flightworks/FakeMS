@@ -32,6 +32,9 @@ describe('TopSystemBar Component', () => {
     stabFreezeHeadingDrop: true,
     stabSnapRecenter: false,
     stabRecenterOnOrientSwitch: false,
+    stabAutoRecenterDelay: 0,
+    stabSmoothUnfreeze: false,
+    stabMaintainScreenPosOnOrient: true,
   };
 
   const mockProps = {

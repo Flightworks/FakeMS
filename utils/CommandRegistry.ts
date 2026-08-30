@@ -242,7 +242,9 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 });
             }
         }
-    } catch (e) { }
+    } catch {
+        // Invalid math expressions simply produce no calculator suggestion.
+    }
 
     // 2. Coordinate Parsing (Fuzzy + Suggestions)
     const coords = parseCoordinates(q);

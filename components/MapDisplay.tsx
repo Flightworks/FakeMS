@@ -14,12 +14,10 @@ import {
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix Leaflet's default icon path issues
-// @ts-ignore
 import icon from 'leaflet/dist/images/marker-icon.png';
-// @ts-ignore
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
-let DefaultIcon = L.icon({
+const DefaultIcon = L.icon({
   iconUrl: icon,
   shadowUrl: iconShadow,
   iconSize: [25, 41],

@@ -95,7 +95,10 @@ describe('MapDisplay Component', () => {
     stabAutoGndOnPan: false,
     stabFreezeHeadingDrop: true,
     stabSnapRecenter: false,
-    stabRecenterOnOrientSwitch: true
+    stabRecenterOnOrientSwitch: true,
+    stabAutoRecenterDelay: 0,
+    stabSmoothUnfreeze: false,
+    stabMaintainScreenPosOnOrient: true
   };
 
   const defaultProps = {

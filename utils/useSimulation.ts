@@ -30,7 +30,7 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
     let currentSpeed = entity.speed || 0;
     let currentHeading = entity.heading || 0;
     let targetHeading = entity.targetHeading ?? currentHeading;
-    let targetSpeed = entity.targetSpeed ?? currentSpeed;
+    const targetSpeed = entity.targetSpeed ?? currentSpeed;
 
     const turnRate = entity.turnRate || 3.0; // Standard rate turn: 3 deg/sec
     const acceleration = entity.acceleration || 5.0; // knots/sec
@@ -51,14 +51,14 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
 
     // --- 2. Heading / Turn Logic ---
     if (entity.continuousTurn) {
-        let change = turnRate * dtSeconds;
+        const change = turnRate * dtSeconds;
         currentHeading += (entity.continuousTurn === 'R' ? 1 : -1) * change;
         currentHeading = normalizeAngle(currentHeading);
         targetHeading = currentHeading; // Keep target in sync
     } else {
         const turnDiff = angleDifference(currentHeading, targetHeading);
         if (turnDiff !== 0) {
-            let change = turnRate * dtSeconds;
+        const change = turnRate * dtSeconds;
             if (Math.abs(turnDiff) < change) {
                 currentHeading = targetHeading;
             } else {
@@ -71,7 +71,7 @@ export const stepEntity = (entity: Entity, dtSeconds: number): Entity => {
     // --- 3. Speed / Acceleration Logic ---
     if (Math.abs(currentSpeed - targetSpeed) > 0.1) {
         const speedDir = Math.sign(targetSpeed - currentSpeed);
-        let speedChange = acceleration * dtSeconds;
+        const speedChange = acceleration * dtSeconds;
 
         if (Math.abs(targetSpeed - currentSpeed) < speedChange) {
             currentSpeed = targetSpeed;

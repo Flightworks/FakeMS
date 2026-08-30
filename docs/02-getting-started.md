@@ -15,17 +15,13 @@ Before you begin, make sure you have the following installed:
     ```bash
     npm install
     ```
-3.  **Configure API Key**:
-    - Locate the file named `.env.local` (or create it if it doesn't exist).
-    - Add your Gemini API key like this:
-      ```
-      GEMINI_API_KEY=your_key_here
-      ```
-4.  **Run the App**: Start the development server by running:
+3.  **Run the App**: Start the local simulation:
     ```bash
     npm run dev
     ```
-5.  **Open in Browser**: After running the command, you should see a link (usually `http://localhost:5173`). Open this link in your web browser.
+4.  **Open in Browser**: Open the local URL shown by Vite.
+
+Fake MS is a local interface simulation. It does not connect to an operational mission system and does not require an API key.
 
 ## Troubleshooting
 

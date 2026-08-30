@@ -79,11 +79,13 @@ Dive deeper into the design philosophy and technical setup:
     ```bash
     npm install
     ```
-2.  **API Config**: Create a `.env.local` and add your `GEMINI_API_KEY`.
-3.  **Launch Experiment**:
+2.  **Launch Experiment**: Start the development server:
     ```bash
     npm run dev
     ```
+3.  **Open the application**: Open the local URL shown by Vite in your browser.
+
+The application is a local simulation. It does not connect to an operational mission system and does not require an API key.
 
 ---
 <div align="center">

@@ -227,7 +227,7 @@ describe('Stabilisation & Orientation Math', () => {
             // This test simulates the MapDisplay's internal logic after an orientation switch
             // where the panOffset (in App state) HAS NOT CHANGED.
             
-            let panOffsetState = { x: 100, y: 0 }; // 100m East, 0m North
+            const panOffsetState = { x: 100, y: 0 }; // 100m East, 0m North
             
             // 1. Initial State: HUP at Heading 90 (rotation -90)
             // rotAtPanSet = -90. currentRotation = -90. delta = 0.

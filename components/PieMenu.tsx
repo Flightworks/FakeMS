@@ -99,7 +99,7 @@ export const PieMenu: React.FC<PieMenuProps> = ({ x, y, options, onClose, title,
     }
 
     // Angle (0 = Up/North, 90 = Right, 180 = Down)
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
 
     // Check Inner Ring Bounds
     if (dist >= INNER_R_IN && dist <= INNER_R_OUT + 5) {

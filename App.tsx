@@ -249,7 +249,7 @@ const App: React.FC = () => {
       const startFrozen = frozenHeading;
       const targetHeading = ownship.heading || 0;
       // shortest angular difference
-      let diff = ((targetHeading - startFrozen + 180) % 360 + 360) % 360 - 180;
+      const diff = ((targetHeading - startFrozen + 180) % 360 + 360) % 360 - 180;
       const animateHeading = (time: number) => {
         const elapsed = time - startTime;
         const progress = Math.min(elapsed / duration, 1);
