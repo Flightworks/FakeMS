@@ -1,0 +1,61 @@
+{
+  "id": "baseline-los-angeles",
+  "name": "Baseline local simulation",
+  "seed": 20260830,
+  "startTimeMs": 0,
+  "ownship": {
+    "id": "ownship",
+    "type": "OWNSHIP",
+    "position": { "lat": 34.0522, "lon": -118.2437 },
+    "label": "VIPER 1-1",
+    "heading": 0,
+    "speed": 120,
+    "altitude": 3428
+  },
+  "entities": [
+    {
+      "id": "wp-1",
+      "type": "WAYPOINT",
+      "position": { "lat": 34.1, "lon": -118.2 },
+      "label": "G01"
+    },
+    {
+      "id": "wp-2",
+      "type": "WAYPOINT",
+      "position": { "lat": 34.08, "lon": -118.15 },
+      "label": "BRAVO"
+    },
+    {
+      "id": "apt-1",
+      "type": "AIRPORT",
+      "position": { "lat": 33.94, "lon": -118.4 },
+      "label": "BASE"
+    },
+    {
+      "id": "en-1",
+      "type": "ENEMY",
+      "position": { "lat": 34.07, "lon": -118.1 },
+      "label": "HOSTILE 1",
+      "heading": 270,
+      "targetHeading": 270,
+      "speed": 60,
+      "targetSpeed": 60,
+      "turnRate": 3
+    },
+    {
+      "id": "en-2",
+      "type": "ENEMY",
+      "position": { "lat": 34.02, "lon": -118.12 },
+      "label": "HOSTILE 2",
+      "heading": 320,
+      "targetHeading": 320,
+      "speed": 180,
+      "targetSpeed": 180,
+      "turnRate": 5,
+      "waypoints": [
+        { "lat": 34.1, "lon": -118.2 },
+        { "lat": 34.08, "lon": -118.15 }
+      ]
+    }
+  ]
+}
