@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MapMode } from '../types';
+import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import { Menu, X, Compass, Crosshair, ZoomIn, ZoomOut, Settings, Map as MapIcon, ShieldAlert, Layers, Navigation } from 'lucide-react';
 
 interface SideMenuProps {
@@ -9,6 +10,7 @@ interface SideMenuProps {
   setMapMode: (mode: MapMode) => void;
   zoomLevel: number;
   onZoom: (val: number) => void;
+  onMissionAction?: (request: MissionActionRequest) => void;
 }
 
 interface MenuButtonProps {
@@ -43,8 +45,20 @@ const MenuButton: React.FC<MenuButtonProps> = ({
   </button>
 );
 
-export const SideMenu: React.FC<SideMenuProps> = React.memo(({ isOpen, setIsOpen, mapMode, setMapMode, zoomLevel, onZoom }) => {
+export const SideMenu: React.FC<SideMenuProps> = React.memo(({ isOpen, setIsOpen, mapMode, setMapMode, zoomLevel, onZoom, onMissionAction }) => {
   const [activeCategory, setActiveCategory] = useState<string | null>('map');
+
+  const requestMissionAction = (category: MissionActionCategory, actionId: string, label: string) => {
+    const issuedAt = Date.now();
+    onMissionAction?.({
+      id: `side-menu:${category.toLowerCase()}:${actionId}:${issuedAt}`,
+      label,
+      category,
+      issuedAt,
+      implementation: 'NOT_IMPLEMENTED',
+      requiresAuthorization: true,
+    });
+  };
 
   // Configuration for the cascading menu
   const categories = [
@@ -68,7 +82,7 @@ export const SideMenu: React.FC<SideMenuProps> = React.memo(({ isOpen, setIsOpen
         { 
           label: 'CLR', 
           icon: Crosshair, 
-          onClick: () => {} // Placeholder for declutter
+          onClick: () => requestMissionAction('VIEW', 'declutter', 'DECLUTTER')
         }
       ]
     },
@@ -89,13 +103,13 @@ export const SideMenu: React.FC<SideMenuProps> = React.memo(({ isOpen, setIsOpen
          { 
            label: 'EMG', 
            icon: ShieldAlert, 
-           danger: true, 
-           onClick: () => alert('EMERGENCY BEACON ACTIVATED') 
+           danger: true,
+           onClick: () => requestMissionAction('ENGAGE', 'emergency-beacon', 'EMERGENCY BEACON')
          },
          { 
            label: 'SET', 
-           icon: Settings, 
-           onClick: () => {} // Placeholder for settings
+           icon: Settings,
+           onClick: () => requestMissionAction('ADMIN', 'settings', 'MISSION SETTINGS')
          }
        ]
     }

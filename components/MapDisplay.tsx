@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
+import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
+import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
 import {
@@ -33,7 +35,7 @@ interface MapDisplayProps {
   zoomLevel: number;
   onZoom: (z: number) => void;
   panOffset: { x: number, y: number };
-  onPan: (offset: { x: number, y: number }, newCenter?: {lat: number, lon: number}) => void;
+  onPan: (offset: { x: number, y: number }) => void;
   selectedEntityId: string | null;
   onSelectEntity: (id: string | null) => void;
   origin: { lat: number; lon: number };
@@ -48,6 +50,7 @@ interface MapDisplayProps {
   setMapMode: (m: MapMode) => void;
   groundAnchor: {lat: number, lon: number} | null;
   onGhostEvent?: (isGhost: boolean) => void;
+  onMissionAction?: (request: MissionActionRequest) => void;
 }
 
 
@@ -277,7 +280,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onResetStab,
   setMapMode,
   groundAnchor,
-  onGhostEvent
+  onGhostEvent,
+  onMissionAction
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -349,12 +353,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const leafletZoom = Math.max(3, Math.min(18, Math.round(13 + Math.log2(Math.max(zoomLevel, 0.01)))));
 
   const handleMapMove = (newCenter: L.LatLng) => {
-    // Calculate new pan offset in meters relative to ownship
-    const dLat = newCenter.lat - ownship.position.lat;
-    const dLon = newCenter.lng - ownship.position.lon;
-    const newPanY = dLat * (Math.PI / 180) * EARTH_RADIUS;
-    const newPanX = dLon * (Math.PI / 180) * (EARTH_RADIUS * Math.cos(ownship.position.lat * Math.PI / 180));
-    onPan({ x: newPanX, y: newPanY }, { lat: newCenter.lat, lon: newCenter.lng });
+    const base = (stabMode === StabMode.GND && groundAnchor)
+      ? groundAnchor
+      : ownship.position;
+    const offset = positionToMeterOffset(base, { lat: newCenter.lat, lon: newCenter.lng });
+    onPan({ x: offset.eastMeters, y: offset.northMeters });
   };
 
   const handleMapZoom = (newZoom: number) => {
@@ -494,24 +497,138 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     return (Date.now() - menuOpenTimeRef.current < 350);
   };
 
+  const requestMissionAction = (
+    category: MissionActionCategory,
+    actionId: string,
+    label: string,
+    implementation: MissionActionImplementation = 'NOT_IMPLEMENTED',
+  ) => {
+    const issuedAt = Date.now();
+    const targetId = pieMenu?.entityId;
+    onMissionAction?.({
+      id: `menu:${category.toLowerCase()}:${actionId}:${targetId ?? 'map'}:${issuedAt}`,
+      label,
+      category,
+      ...(targetId ? { targetId } : {}),
+      issuedAt,
+      implementation,
+      requiresAuthorization: true,
+    });
+  };
+
+  const unavailableOption = (
+    category: MissionActionCategory,
+    actionId: string,
+    label: string,
+    icon: React.ElementType,
+    color?: 'danger' | 'primary' | 'default',
+  ): PieMenuOption => ({
+    label,
+    icon,
+    ...(color ? { color } : {}),
+    action: () => requestMissionAction(category, actionId, label),
+  });
+
   const getPieOptions = (): PieMenuOption[] => {
     if (!pieMenu) return [];
     if (pieMenu.type === 'ENTITY') {
       return [
-        { label: 'NAV', icon: Navigation, color: 'primary', subOptions: [{ label: 'DIRECT', icon: Crosshair, action: () => alert('NAV: Direct To Initiated'), color: 'primary' }, { label: 'HOLD', icon: CircleDashed, action: () => alert('NAV: Holding Pattern Established') }, { label: 'FPL', icon: FileText, action: () => alert('NAV: Added to Flight Plan') }, { label: 'OFFSET', icon: ArrowLeftRight, action: () => alert('NAV: 5nm Right Offset Applied') }] },
-        { label: 'ENGAGE', icon: Target, color: 'danger', subOptions: [{ label: 'AUTH', icon: Flame, action: () => alert('ENGAGE: Weapons Free - Authorized'), color: 'danger' }, { label: 'ABORT', icon: Shield, action: () => alert('ENGAGE: Attack Aborted') }, { label: 'SPI', icon: Crosshair, action: () => alert('ENGAGE: Sensor Point of Interest Set') }] },
-        { label: 'COMMS', icon: Router, subOptions: [{ label: 'TEXT', icon: FileText, action: () => alert('COMMS: Text Message Sent') }, { label: 'HANDOFF', icon: CornerUpRight, action: () => alert('COMMS: Handoff Initiated') }, { label: 'SQUAWK', icon: Lock, action: () => alert('COMMS: Squawk Code Interrogated') }, { label: 'DLINK', icon: Wifi, action: () => alert('COMMS: Datalink Connection Established') }] },
-        { label: 'SENSORS', icon: Scan, subOptions: [{ label: 'FLIR', icon: Video, action: () => alert('SENSORS: FLIR Slewed to Target') }, { label: 'STT', icon: Target, action: () => alert('SENSORS: Radar Single Target Track (STT)'), color: 'danger' }, { label: 'LSR', icon: Zap, action: () => alert('SENSORS: Laser Designator Active') }] },
-        { label: 'ADMIN', icon: Trash2, color: 'danger', subOptions: [{ label: 'DELETE', icon: Trash2, action: () => alert('ADMIN: Entity Deleted'), color: 'danger' }, { label: 'PROP', icon: Settings, action: () => alert('ADMIN: Properties Opened') }] }
-      ];
-    } else {
-      return [
-        { label: 'DROP', icon: MapPin, subOptions: [{ label: 'WPT', icon: MapPin, action: () => alert('MAP: Waypoint Added') }, { label: 'TGT', icon: Target, action: () => alert('MAP: Target Designated'), color: 'danger' }, { label: 'LZ', icon: Flag, action: () => alert('MAP: Landing Zone Marked') }, { label: 'FARP', icon: Anchor, action: () => alert('MAP: FARP Location Added') }] },
-        { label: 'TRACKS', icon: TrendingUp, subOptions: [{ label: 'VECTOR', icon: ArrowLeftRight, action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })), color: gestureSettings.showSpeedVectors ? 'primary' : 'default' }, { label: 'LABELS', icon: FileText, action: () => alert('TRACKS: Global Labels Toggled') }, { label: 'CLR ALL', icon: Trash2, action: () => alert('TRACKS: All Tracks Cleared'), color: 'danger' }] },
-        { label: 'TOOLS', icon: Settings, subOptions: [{ label: 'RULER', icon: Slash, action: () => alert('TOOLS: Measure Mode Active') }, { label: 'MARK', icon: Crosshair, action: () => alert('TOOLS: Mark Point Created') }, { label: 'ELEV', icon: Activity, action: () => alert('TOOLS: Elevation Profile') }] },
-        { label: 'VIEW', icon: Eye, subOptions: [{ label: 'CLR', icon: Eye, action: () => alert('VIEW: Declutter') }, { label: 'NVG', icon: Globe, action: () => alert('VIEW: Night Vision Mode') }, { label: 'THERM', icon: Thermometer, action: () => alert('VIEW: Thermal Mode') }] }
+        {
+          label: 'NAV',
+          icon: Navigation,
+          color: 'primary',
+          subOptions: [
+            unavailableOption('NAV', 'direct', 'DIRECT', Crosshair, 'primary'),
+            unavailableOption('NAV', 'hold', 'HOLD', CircleDashed),
+            unavailableOption('NAV', 'fpl', 'FPL', FileText),
+            unavailableOption('NAV', 'offset', 'OFFSET', ArrowLeftRight),
+          ],
+        },
+        {
+          label: 'ENGAGE',
+          icon: Target,
+          color: 'danger',
+          subOptions: [
+            unavailableOption('ENGAGE', 'auth', 'AUTH', Flame, 'danger'),
+            unavailableOption('ENGAGE', 'abort', 'ABORT', Shield),
+            unavailableOption('ENGAGE', 'spi', 'SPI', Crosshair),
+          ],
+        },
+        {
+          label: 'COMMS',
+          icon: Router,
+          subOptions: [
+            unavailableOption('COMMS', 'text', 'TEXT', FileText),
+            unavailableOption('COMMS', 'handoff', 'HANDOFF', CornerUpRight),
+            unavailableOption('COMMS', 'squawk', 'SQUAWK', Lock),
+            unavailableOption('COMMS', 'dlink', 'DLINK', Wifi),
+          ],
+        },
+        {
+          label: 'SENSORS',
+          icon: Scan,
+          subOptions: [
+            unavailableOption('SENSORS', 'flir', 'FLIR', Video),
+            unavailableOption('SENSORS', 'stt', 'STT', Target, 'danger'),
+            unavailableOption('SENSORS', 'lsr', 'LSR', Zap),
+          ],
+        },
+        {
+          label: 'ADMIN',
+          icon: Trash2,
+          color: 'danger',
+          subOptions: [
+            unavailableOption('ADMIN', 'delete', 'DELETE', Trash2, 'danger'),
+            unavailableOption('ADMIN', 'properties', 'PROP', Settings),
+          ],
+        },
       ];
     }
+
+    return [
+      {
+        label: 'DROP',
+        icon: MapPin,
+        subOptions: [
+          unavailableOption('DROP', 'waypoint', 'WPT', MapPin),
+          unavailableOption('DROP', 'target', 'TGT', Target, 'danger'),
+          unavailableOption('DROP', 'lz', 'LZ', Flag),
+          unavailableOption('DROP', 'farp', 'FARP', Anchor),
+        ],
+      },
+      {
+        label: 'TRACKS',
+        icon: TrendingUp,
+        subOptions: [
+          {
+            label: 'VECTOR',
+            icon: ArrowLeftRight,
+            action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })),
+            color: gestureSettings.showSpeedVectors ? 'primary' : 'default',
+          },
+          unavailableOption('VIEW', 'labels', 'LABELS', FileText),
+          unavailableOption('ADMIN', 'clear-tracks', 'CLR ALL', Trash2, 'danger'),
+        ],
+      },
+      {
+        label: 'TOOLS',
+        icon: Settings,
+        subOptions: [
+          unavailableOption('TOOLS', 'ruler', 'RULER', Slash),
+          unavailableOption('TOOLS', 'mark', 'MARK', Crosshair),
+          unavailableOption('TOOLS', 'elevation', 'ELEV', Activity),
+        ],
+      },
+      {
+        label: 'VIEW',
+        icon: Eye,
+        subOptions: [
+          unavailableOption('VIEW', 'declutter', 'CLR', Eye),
+          unavailableOption('VIEW', 'nvg', 'NVG', Globe),
+          unavailableOption('VIEW', 'thermal', 'THERM', Thermometer),
+        ],
+      },
+    ];
   };
 
   const createEntityIcon = (entity: Entity, rotation: number, isSelected: boolean) => {

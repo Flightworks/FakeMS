@@ -8,9 +8,18 @@ import { CommandPalette } from './components/CommandPalette';
 import { DocumentViewer } from './components/DocumentViewer';
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { SimulationBanner } from './components/SimulationBanner';
+import { ActionStatusPanel } from './components/ActionStatusPanel';
+import { MissionActionStatusPanel } from './components/MissionActionStatusPanel';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
 import { createNavigationState, markNavigationError, markNavigationUpdate, OwnshipNavigationState } from './domain/navigation';
 import { createBrowserGeolocationAdapter } from './adapters/geolocation';
+import { positionToMeterOffset } from './domain/mapCoordinates';
+import { bearingBetween } from './utils/geo';
+import { CommandIntent, CommandState } from './domain/commands';
+import { createCommandState, dispatchCommand } from './application/commandDispatcher';
+import { MissionActionIntent } from './application/missionActionReducer';
+import { createMissionActionState, dispatchMissionAction } from './application/missionActionReducer';
+import type { MissionActionRequest } from './domain/missionActions';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
@@ -43,6 +52,8 @@ const App: React.FC = () => {
 
   const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.SIM);
   const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
+  const [commandState, setCommandState] = useState<CommandState>(() => createCommandState());
+  const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
   const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
@@ -165,8 +176,7 @@ const App: React.FC = () => {
     );
   }, [ownshipNavMode, setEntities]);
 
-  const handleManualPan = React.useCallback((newOffset: { x: number, y: number }, newCenterLatLon?: { lat: number, lon: number }) => {
-    // console.log('App: handleManualPan', newOffset);
+  const handleManualPan = React.useCallback((newOffset: { x: number, y: number }) => {
     if (panAnimationRef.current) {
       cancelAnimationFrame(panAnimationRef.current);
       panAnimationRef.current = undefined;
@@ -175,6 +185,75 @@ const App: React.FC = () => {
     lastPanActivityRef.current = Date.now(); // Track activity for auto-recenter
     // Note: groundAnchor remains fixed during manual panning to preserve the reference point.
   }, []);
+
+  const issueCommand = React.useCallback((intent: CommandIntent) => {
+    setCommandState(prev => dispatchCommand(prev, intent));
+  }, []);
+
+  const issueMissionAction = React.useCallback((request: MissionActionRequest) => {
+    setMissionActionState(prev => dispatchMissionAction(prev, { type: 'PROPOSE', request }));
+  }, []);
+
+  const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
+    setMissionActionState(prev => dispatchMissionAction(prev, intent));
+  }, []);
+
+  const handleFocusMapAt = React.useCallback((position: { lat: number, lon: number }) => {
+    const reference = stabMode === StabMode.GND && groundAnchor
+      ? groundAnchor
+      : ownship.position;
+    const offset = positionToMeterOffset(reference, position);
+    handleManualPan({ x: offset.eastMeters, y: offset.northMeters });
+    issueCommand({ type: 'CENTER_MAP', position: { ...position }, issuedAt: Date.now() });
+  }, [groundAnchor, handleManualPan, issueCommand, ownship.position, stabMode]);
+
+  const handleProposeDirectTo = React.useCallback((target: Pick<Entity, 'id' | 'label' | 'position'>) => {
+    issueCommand({
+      type: 'PROPOSE_DIRECT_TO',
+      targetId: target.id,
+      targetLabel: target.label,
+      position: { ...target.position },
+      issuedAt: Date.now(),
+    });
+  }, [issueCommand]);
+
+  const handleAcceptProposal = React.useCallback(() => {
+    setCommandState(prev => {
+      if (!prev.directToProposal) return prev;
+      return dispatchCommand(prev, {
+        type: 'ACCEPT_ROUTE_PROPOSAL',
+        proposalId: prev.directToProposal.id,
+        authorizedAt: Date.now(),
+      });
+    });
+  }, []);
+
+  const handleRejectProposal = React.useCallback(() => {
+    setCommandState(prev => {
+      if (!prev.directToProposal) return prev;
+      return dispatchCommand(prev, {
+        type: 'REJECT_ROUTE_PROPOSAL',
+        proposalId: prev.directToProposal.id,
+        rejectedAt: Date.now(),
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    const route = commandState.route;
+    if (!route || ownshipNavMode !== NavMode.SIM) return;
+
+    setOwnship(prev => ({
+      ...prev,
+      targetHeading: bearingBetween(
+        prev.position.lat,
+        prev.position.lon,
+        route.position.lat,
+        route.position.lon,
+      ),
+      waypoints: [{ ...route.position }],
+    }));
+  }, [commandState.route, ownshipNavMode]);
 
   const handleSetStabMode = React.useCallback((mode: StabMode | ((prev: StabMode) => StabMode)) => {
     setStabMode(prev => {
@@ -236,18 +315,14 @@ const App: React.FC = () => {
   };
 
   const centerOnOwnship = React.useCallback(() => {
-    // console.log('App: centerOnOwnship Triggered');
     if (panAnimationRef.current) cancelAnimationFrame(panAnimationRef.current);
     if (headingUnfreezeRef.current) cancelAnimationFrame(headingUnfreezeRef.current);
 
     // If we are coming from GND stab, compute the current panOffset based on the fixed groundAnchor and current ownship
     let start = { ...panOffset };
     if (stabMode === StabMode.GND && groundAnchor) {
-      const dLat = groundAnchor.lat - ownship.position.lat;
-      const dLon = groundAnchor.lon - ownship.position.lon;
-      const panY = dLat * (Math.PI / 180) * 6378137;
-      const panX = dLon * (Math.PI / 180) * (6378137 * Math.cos(ownship.position.lat * Math.PI / 180));
-      start = { x: panX, y: panY };
+      const offset = positionToMeterOffset(groundAnchor, ownship.position);
+      start = { x: offset.eastMeters, y: offset.northMeters };
     }
 
     const end = { x: 0, y: 0 };
@@ -345,11 +420,9 @@ const App: React.FC = () => {
           history: [], // Stub history 
           setMapMode: handleMapModeChange,
           toggleSystem,
-          panTo: (lat, lon) => {
-            // Drop command might pass coords or x/y offset, 
-            // for now fallback to standard panning via offset
-            handleManualPan({ x: lat, y: lon })
-          },
+          focusMapAt: handleFocusMapAt,
+          proposeDirectTo: handleProposeDirectTo,
+          requestMissionAction: issueMissionAction,
           openDocument: setOpenDoc,
           ownshipNavMode,
           toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
@@ -395,6 +468,7 @@ const App: React.FC = () => {
             setMapMode={handleMapModeChange}
             groundAnchor={groundAnchor}
             onGhostEvent={handleGhostEvent}
+            onMissionAction={issueMissionAction}
           />
         )}
       </div>
@@ -415,17 +489,29 @@ const App: React.FC = () => {
       <CommandPalette
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
-        onPan={handleManualPan}
+        focusMapAt={handleFocusMapAt}
+        proposeDirectTo={handleProposeDirectTo}
+        requestMissionAction={issueMissionAction}
         entities={entities}
         systems={systems}
         toggleSystem={toggleSystem}
-        mapMode={mapMode}
         setMapMode={handleMapModeChange}
         ownship={ownship}
-        origin={origin || DEFAULT_ORIGIN}
         openDocument={setOpenDoc}
         ownshipNavMode={ownshipNavMode}
         setOwnshipNavMode={setOwnshipNavMode}
+      />
+
+      <ActionStatusPanel
+        proposal={commandState.directToProposal}
+        onAccept={handleAcceptProposal}
+        onReject={handleRejectProposal}
+      />
+
+      <MissionActionStatusPanel
+        action={missionActionState.active}
+        journal={missionActionState.journal}
+        onIntent={handleMissionActionIntent}
       />
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">

@@ -3,6 +3,7 @@ import React from 'react';
 import { Entity, PrototypeSettings } from '../types';
 import { Target, Navigation, Check } from 'lucide-react';
 import { distanceBetween, bearingBetween } from '../utils/geo';
+import { deriveHeightAboveTerrain } from '../domain/measurements';
 
 const DataField = ({ label, value, unit }: { label: string; value: string | number; unit?: string }) => (
   <div className="flex flex-col">
@@ -11,6 +12,12 @@ const DataField = ({ label, value, unit }: { label: string; value: string | numb
       {value}<span className="text-[10px] text-slate-400 ml-0.5 font-normal">{unit}</span>
     </span>
   </div>
+);
+
+const MeasurementMeta = ({ source, qualification }: { source: string; qualification: string }) => (
+  <span className="text-[8px] text-slate-500 font-mono uppercase" title={`Source: ${source}; qualification: ${qualification}`}>
+    {source} · {qualification}
+  </span>
 );
 
 const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -25,6 +32,7 @@ export const OwnshipPanel = React.memo(({
   prototypeSettings: PrototypeSettings
 }) => {
   const { animationSpeed, ownshipPanelPos, ownshipPanelScale, ownshipPanelOpacity, ownshipShowCoords, ownshipShowDetails } = prototypeSettings;
+  const hgt = deriveHeightAboveTerrain(ownship);
 
   const latDisplay = `N${Math.floor(origin.lat)}°${(origin.lat % 1 * 60).toFixed(2)}'`;
   const lonDisplay = `E${Math.floor(Math.abs(origin.lon))}°${(Math.abs(origin.lon) % 1 * 60).toFixed(2)}'`;
@@ -93,7 +101,10 @@ export const OwnshipPanel = React.memo(({
       {ownshipShowDetails && (
         <div className="p-2 grid grid-cols-4 gap-4 bg-slate-950/90 animate-in fade-in slide-in-from-top-2 duration-300">
           <DataField label="HDG" value={Math.round(ownship.heading || 0).toString().padStart(3, '0')} unit="°" />
-          <DataField label="HGT" value={Math.round((ownship.altitude || 0) * 0.8)} unit="ft" />
+          <div>
+            <DataField label="HGT" value={hgt.value === null ? 'N/A' : Math.round(hgt.value)} unit={hgt.value === null ? undefined : hgt.unit} />
+            <MeasurementMeta source={hgt.source} qualification={hgt.qualification} />
+          </div>
           <DataField label="TAS" value={Math.round(ownship.speed || 0)} unit="kt" />
           <DataField label="ALT" value={Math.round(ownship.altitude || 0)} unit="ft" />
         </div>

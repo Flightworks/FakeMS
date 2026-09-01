@@ -1,20 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
-import { Search, ChevronRight, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
+import { Search, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import type { MissionActionRequest } from '../domain/missionActions';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onPan: (offset: { x: number, y: number }) => void;
+  focusMapAt: (position: { lat: number, lon: number }) => void;
+  proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
+  requestMissionAction: (request: MissionActionRequest) => void;
   entities: Entity[];
   systems: SystemStatus;
   toggleSystem: (sys: keyof SystemStatus) => void;
-  mapMode: MapMode;
   setMapMode: (mode: MapMode) => void;
   ownship: Entity;
-  origin: { lat: number, lon: number };
   openDocument: (filename: string) => void;
   ownshipNavMode: NavMode;
   setOwnshipNavMode: (mode: NavMode) => void;
@@ -23,14 +24,14 @@ interface CommandPaletteProps {
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
-  onPan,
+  focusMapAt,
+  proposeDirectTo,
+  requestMissionAction,
   entities,
   systems,
   toggleSystem,
-  mapMode,
   setMapMode,
   ownship,
-  origin,
   openDocument,
   ownshipNavMode,
   setOwnshipNavMode
@@ -70,7 +71,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       window.addEventListener('keydown', handleGlobalKeyDown);
       return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     }
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   const addToHistory = (cmd: string) => {
     if (!cmd.trim()) return;
@@ -88,14 +89,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       systems,
       setMapMode,
       toggleSystem,
-      panTo: (x, y) => onPan({ x, y }),
+      focusMapAt,
+      proposeDirectTo,
+      requestMissionAction,
       history, // Pass history to registry
       openDocument,
       ownshipNavMode,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context);
-  }, [query, entities, ownship, systems, mapMode, history]);
+  }, [
+    query,
+    entities,
+    ownship,
+    systems,
+    history,
+    setMapMode,
+    toggleSystem,
+    focusMapAt,
+    proposeDirectTo,
+    requestMissionAction,
+    openDocument,
+    ownshipNavMode,
+    setOwnshipNavMode,
+  ]);
 
   useEffect(() => {
     setSelectedIndex(0);

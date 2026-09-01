@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { CommandPalette } from '../../components/CommandPalette';
-import { Entity, EntityType, MapMode, NavMode } from '../../types';
+import { Entity, EntityType, NavMode } from '../../types';
 
 describe('CommandPalette Component', () => {
   const mockOwnship: Entity = {
@@ -37,23 +37,21 @@ describe('CommandPalette Component', () => {
     },
     setMapMode: vi.fn(),
     toggleSystem: vi.fn(),
-    panTo: vi.fn(),
     history: [],
-    openDocument: vi.fn(),
-    mapMode: MapMode.NORTH_UP
+    openDocument: vi.fn()
   };
 
   const mockProps = {
     isOpen: true,
     onClose: vi.fn(),
-    onPan: vi.fn(),
+    focusMapAt: vi.fn(),
+    proposeDirectTo: vi.fn(),
+    requestMissionAction: vi.fn(),
     entities: mockContext.entities,
     systems: mockContext.systems,
     toggleSystem: mockContext.toggleSystem,
-    mapMode: mockContext.mapMode,
     setMapMode: mockContext.setMapMode,
     ownship: mockContext.ownship,
-    origin: { lat: 0, lon: 0 },
     openDocument: mockContext.openDocument,
     ownshipNavMode: NavMode.REAL,
     toggleNavMode: vi.fn(),

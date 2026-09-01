@@ -74,6 +74,8 @@ describe('InfoPanels Components', () => {
 
       expect(screen.getByText('TAS')).toBeInTheDocument();
       expect(screen.getByText('250')).toBeInTheDocument();
+      expect(screen.getByText('N/A')).toBeInTheDocument();
+      expect(screen.getByText('UNAVAILABLE · UNAVAILABLE')).toBeInTheDocument();
     });
 
     it('respects declutter settings', () => {

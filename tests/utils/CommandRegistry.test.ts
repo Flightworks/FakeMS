@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getCommands, CommandContext } from '../../utils/CommandRegistry';
-import { Entity, MapMode, EntityType, NavMode } from '../../types';
+import { Entity, EntityType, NavMode } from '../../types';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -35,11 +35,13 @@ describe('CommandRegistry', () => {
     },
     setMapMode: vi.fn(),
     toggleSystem: vi.fn(),
-    panTo: vi.fn(),
     history: [],
     openDocument: vi.fn(),
     ownshipNavMode: NavMode.REAL,
-    toggleNavMode: vi.fn()
+    toggleNavMode: vi.fn(),
+    focusMapAt: vi.fn(),
+    proposeDirectTo: vi.fn(),
+    requestMissionAction: vi.fn()
   };
 
   describe('getCommands', () => {
@@ -89,10 +91,35 @@ describe('CommandRegistry', () => {
       expect(targetCmd?.label).toBe('TARGET1');
     });
 
-    it('should create direct-to commands', () => {
+    it('creates direct-to commands', () => {
         const commands = getCommands('dct target', mockContext);
         const dctCmd = commands.find(c => c.id === 'dct-target1');
         expect(dctCmd).toBeDefined();
+    });
+
+    it('focuses a track without creating a direct-to proposal', () => {
+      const focus = getCommands('focus target', mockContext).find(c => c.id === 'focus-target1');
+      expect(focus).toBeDefined();
+      focus?.action();
+      expect(mockContext.focusMapAt).toHaveBeenCalledWith({ lat: 10, lon: 10 });
+      expect(mockContext.proposeDirectTo).not.toHaveBeenCalled();
+    });
+
+    it('keeps map focus separate from direct-to proposals', () => {
+      const focusContext = { ...mockContext, focusMapAt: vi.fn() };
+      const focus = getCommands('N45E006', focusContext).find(c => c.id === 'fly-to-coords');
+      focus?.action();
+
+      expect(focusContext.focusMapAt).toHaveBeenCalledWith({ lat: 45, lon: 6 });
+
+      const dctContext = { ...mockContext, proposeDirectTo: vi.fn() };
+      const dct = getCommands('dct target', dctContext).find(c => c.id === 'dct-target1');
+      dct?.action();
+
+      expect(dctContext.proposeDirectTo).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'target1',
+        label: 'TARGET1',
+      }));
     });
 
     it('should create save text fallback for unmatched queries', () => {

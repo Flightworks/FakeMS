@@ -1,8 +1,10 @@
-import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
+import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
 import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
-import { getDestinationPoint } from './geo';
+import { getDestinationPoint, distanceBetween } from './geo';
+import { calculateEta } from '../domain/measurements';
+import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 
 // Configure mathjs to use degrees
 const math = create(all);
@@ -22,7 +24,9 @@ export interface CommandContext {
     systems: SystemStatus;
     setMapMode: (mode: MapMode) => void;
     toggleSystem: (sys: keyof SystemStatus) => void;
-    panTo: (x: number, y: number) => void;
+    focusMapAt: (position: Position) => void;
+    proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
+    requestMissionAction: (request: MissionActionRequest) => void;
     history: HistoryEntry[]; // Added History to Context
     openDocument: (filename: string) => void;
     ownshipNavMode: NavMode;
@@ -157,8 +161,26 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, panTo, history, openDocument } = context;
+    const { entities, ownship, systems, setMapMode, toggleSystem, focusMapAt, proposeDirectTo, requestMissionAction, history, openDocument } = context;
     const commands: CommandOption[] = [];
+
+    const proposeUnavailableAction = (
+        category: MissionActionCategory,
+        actionId: string,
+        label: string,
+        targetId?: string,
+    ) => {
+        const issuedAt = Date.now();
+        requestMissionAction({
+            id: `command:${category.toLowerCase()}:${actionId}:${targetId ?? 'none'}:${issuedAt}`,
+            label,
+            category,
+            ...(targetId ? { targetId } : {}),
+            issuedAt,
+            implementation: 'NOT_IMPLEMENTED',
+            requiresAuthorization: true,
+        });
+    };
 
     // --- 0. HISTORY INJECTION (When query is empty) ---
     if (q === '') {
@@ -286,14 +308,36 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 label: `FLY TO: ${q.toUpperCase()}`,
                 subLabel: 'Coordinate Navigation',
                 icon: MapPin,
-                action: () => panTo(coords.lat, coords.lon),
+                action: () => focusMapAt(coords),
                 keywords: ['fly', 'goto', 'coord'],
                 isPreview: true
             });
         }
     }
 
-    // 3. Entity Projection
+    // 3. Explicit map focus: it never creates a navigation proposal.
+  const focusMatch = q.match(/^focus(?:\s+track)?\s+(.+)$/i);
+  if (focusMatch) {
+    const focusTarget = new Fuse(entities, {
+      keys: ['label', 'id'],
+      threshold: 0.4,
+      distance: 10,
+    }).search(focusMatch[1])[0]?.item;
+
+    if (focusTarget) {
+      commands.push({
+        id: `focus-${focusTarget.id}`,
+        label: `FOCUS ${focusTarget.label}`,
+        subLabel: 'Map focus only',
+        icon: Crosshair,
+        action: () => focusMapAt({ ...focusTarget.position }),
+        keywords: ['focus', 'center', focusTarget.label],
+        historyValue: `FOCUS ${focusTarget.label}`,
+      });
+    }
+  }
+
+  // 4. Entity Projection
     const proj = parseProjection(q, entities, ownship);
     if (proj) {
         commands.push({
@@ -301,8 +345,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             label: proj.label,
             subLabel: 'Projection Focus',
             icon: Crosshair,
-            // Pass native Lat/Lon to panTo
-            action: () => panTo(proj.target.lat, proj.target.lon),
+            action: () => focusMapAt(proj.target),
             keywords: ['proj'],
             isPreview: true
         });
@@ -395,7 +438,11 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     subLabel: 'Direct To',
                     icon: Target,
                     action: () => {
-                        panTo(e.position.lat, e.position.lon);
+                        proposeDirectTo({
+                            id: e.id,
+                            label: e.label,
+                            position: { ...e.position },
+                        });
                     },
                     keywords: ['dct', 'goto', 'direct', e.label],
                     type: 'command',
@@ -420,27 +467,30 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             const targetName = etaMatch[1].toLowerCase();
             const target = entities.find(e => e.label.toLowerCase().includes(targetName));
             if (target) {
-                // Using spherical distance for ETA
-                const distMeters = getDestinationPoint ?
-                    Math.hypot(target.position.lat - ownship.position.lat, target.position.lon - ownship.position.lon) * 111000 : // rough fallback
-                    0; // actual distanceBetween needs importing if accurate ETA wanted, skipped for brevity or use direct formula
+                const eta = calculateEta(
+                    ownship.position,
+                    target.position,
+                    ownship.speed || 0,
+                );
+                const distanceKm = distanceBetween(
+                    ownship.position.lat,
+                    ownship.position.lon,
+                    target.position.lat,
+                    target.position.lon,
+                ) / 1000;
+                const timeString = eta.value === null
+                    ? 'N/A (SPEED UNAVAILABLE)'
+                    : `${Math.round(eta.value)} MIN`;
 
-                const speedMps = (ownship.speed || 1) * 0.5144;
-                let timeString = "N/A";
-                if (ownship.speed && ownship.speed > 0) {
-                    const timeSec = distMeters / speedMps;
-                    const timeMin = Math.round(timeSec / 60);
-                    timeString = `${timeMin} MIN`;
-                } else {
-                    timeString = "Inf (Speed 0)";
-                }
-
+                const etaLabel = `ETA ${target.label}`;
                 commands.unshift({ // Add to top
                     id: `eta-${target.id}`,
-                    label: `ETA ${target.label}`,
-                    subLabel: `ETE: ${timeString} (${(distMeters / 1000).toFixed(1)} km)`,
+                    label: etaLabel,
+                    subLabel: `ETE: ${timeString} (${distanceKm.toFixed(1)} km) · SRC: ${eta.source} · QUAL: ${eta.qualification}`,
                     icon: Calculator,
-                    action: () => { },
+                    action: () => {
+                        if (navigator.clipboard) void navigator.clipboard.writeText(`${etaLabel}: ${timeString}`);
+                    },
                     keywords: ['eta'],
                     isPreview: true
                 });
@@ -483,9 +533,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     label: `SET HDG: ${targetHdg}°`,
                     subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
                     icon: Compass,
-                    action: () => {
-                        // Action handled by event dispatch or specific context updater in further refactor
-                    },
+                    action: () => proposeUnavailableAction('NAV', 'set-heading', `SET HDG: ${targetHdg}°`),
                     keywords: ['hdg', 'heading', 'steer'],
                     isPreview: true
                 });
@@ -501,7 +549,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     label: `SET SPD: ${targetSpd} KTS`,
                     subLabel: context.ownshipNavMode === NavMode.SIM ? 'SIM Kinematics' : 'WARN: Simulation Mode Off',
                     icon: Zap,
-                    action: () => { },
+                    action: () => proposeUnavailableAction('NAV', 'set-speed', `SET SPD: ${targetSpd} KTS`),
                     keywords: ['spd', 'speed', 'throttle'],
                     isPreview: true
                 });
@@ -514,7 +562,9 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             label: `SAVE: "${q}"`,
             subLabel: 'Save text to history',
             icon: FileText,
-            action: () => { },
+            action: () => {
+                if (navigator.clipboard) void navigator.clipboard.writeText(q);
+            },
             keywords: [],
             isHistory: false
         });
@@ -523,6 +573,5 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
         // If empty, append system commands after history
         commands.push(...systemCommands);
     }
-    console.log("getCommands output for query: ", query, commands);
     return commands;
 };
