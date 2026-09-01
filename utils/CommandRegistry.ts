@@ -5,6 +5,7 @@ import Fuse from 'fuse.js';
 import { getDestinationPoint, distanceBetween } from './geo';
 import { calculateEta } from '../domain/measurements';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
+import type { MissionObjective } from '../domain/intent';
 
 // Configure mathjs to use degrees
 const math = create(all);
@@ -26,6 +27,7 @@ export interface CommandContext {
     toggleSystem: (sys: keyof SystemStatus) => void;
     focusMapAt: (position: Position) => void;
     proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
+    proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
     requestMissionAction: (request: MissionActionRequest) => void;
     history: HistoryEntry[]; // Added History to Context
     openDocument: (filename: string) => void;
@@ -161,7 +163,7 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
 export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, focusMapAt, proposeDirectTo, requestMissionAction, history, openDocument } = context;
+    const { entities, ownship, systems, setMapMode, toggleSystem, focusMapAt, proposeDirectTo, proposeRoute, requestMissionAction, history, openDocument } = context;
     const commands: CommandOption[] = [];
 
     const proposeUnavailableAction = (
@@ -448,7 +450,35 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     type: 'command',
                     historyValue: `DCT ${e.label}`
                     // No autocompleteValue -> Click executes immediately
-                }
+                },
+                {
+                    id: `plan-${e.id}`,
+                    label: `PLAN ${e.label}`,
+                    subLabel: 'Two deterministic route proposals · THREAT',
+                    icon: Calculator,
+                    action: () => proposeRoute({
+                        id: e.id,
+                        label: e.label,
+                        position: { ...e.position },
+                    }, 'THREAT_PRIORITY'),
+                    keywords: ['plan', 'route', 'proposal', e.label],
+                    type: 'command',
+                    historyValue: `PLAN ${e.label}`
+                },
+                ...( ['THREAT_PRIORITY', 'COVERAGE', 'ENDURANCE'] as MissionObjective[]).map(objective => ({
+                    id: `plan-${objective.toLowerCase()}-${e.id}`,
+                    label: `PLAN ${objective === 'THREAT_PRIORITY' ? 'THREAT' : objective} ${e.label}`,
+                    subLabel: 'Two deterministic route proposals',
+                    icon: Calculator,
+                    action: () => proposeRoute({
+                        id: e.id,
+                        label: e.label,
+                        position: { ...e.position },
+                    }, objective),
+                    keywords: ['plan', 'route', 'proposal', objective.toLowerCase(), e.label],
+                    type: 'command' as const,
+                    historyValue: `PLAN ${objective} ${e.label}`
+                }))
             ])
         ];
 

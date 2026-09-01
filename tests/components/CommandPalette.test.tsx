@@ -46,6 +46,7 @@ describe('CommandPalette Component', () => {
     onClose: vi.fn(),
     focusMapAt: vi.fn(),
     proposeDirectTo: vi.fn(),
+    proposeRoute: vi.fn(),
     requestMissionAction: vi.fn(),
     entities: mockContext.entities,
     systems: mockContext.systems,

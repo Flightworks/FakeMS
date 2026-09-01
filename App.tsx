@@ -10,6 +10,8 @@ import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { SimulationBanner } from './components/SimulationBanner';
 import { ActionStatusPanel } from './components/ActionStatusPanel';
 import { MissionActionStatusPanel } from './components/MissionActionStatusPanel';
+import { ProposalComparisonPanel } from './components/ProposalComparisonPanel';
+import { JustificationPanel } from './components/JustificationPanel';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
 import { createNavigationState, markNavigationError, markNavigationUpdate, OwnshipNavigationState } from './domain/navigation';
 import { createBrowserGeolocationAdapter } from './adapters/geolocation';
@@ -20,6 +22,9 @@ import { createCommandState, dispatchCommand } from './application/commandDispat
 import { MissionActionIntent } from './application/missionActionReducer';
 import { createMissionActionState, dispatchMissionAction } from './application/missionActionReducer';
 import type { MissionActionRequest } from './domain/missionActions';
+import type { MissionObjective } from './domain/intent';
+import type { RouteProposal, RouteProposalSet } from './domain/proposals';
+import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
 import { getCommands, CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
@@ -54,6 +59,12 @@ const App: React.FC = () => {
   const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
   const [commandState, setCommandState] = useState<CommandState>(() => createCommandState());
   const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
+  const [routeProposalSet, setRouteProposalSet] = useState<RouteProposalSet | null>(null);
+  const [acceptedRouteProposalId, setAcceptedRouteProposalId] = useState<string | null>(null);
+  const [justificationPair, setJustificationPair] = useState<{
+    preferred: RouteProposal;
+    alternative: RouteProposal;
+  } | null>(null);
   const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
@@ -196,6 +207,70 @@ const App: React.FC = () => {
 
   const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
     setMissionActionState(prev => dispatchMissionAction(prev, intent));
+  }, []);
+
+  const handleProposeRoute = React.useCallback((
+    target: Pick<Entity, 'id' | 'label' | 'position'>,
+    objective: MissionObjective = 'THREAT_PRIORITY',
+  ) => {
+    const createdAt = Date.now();
+    const intent = {
+      id: `intent:${target.id}:${objective}:${createdAt}`,
+      objective,
+      target: { ...target.position },
+      createdAt,
+    };
+    const result = solveSimpleRouteProposals({
+      ownshipPosition: { ...ownship.position },
+      intent,
+      constraints: {
+        fuelAvailableUnits: 100,
+        fuelReserveUnits: 20,
+        fuelBurnUnitsPerNm: 1,
+        returnPolicy: 'PREFERRED',
+        returnTo: { ...ownship.position },
+      },
+      speedKnots: ownship.speed ?? 0,
+      altitudeFt: ownship.altitude ?? 0,
+    });
+    setRouteProposalSet(result);
+    setAcceptedRouteProposalId(null);
+    setJustificationPair(null);
+  }, [ownship.altitude, ownship.position, ownship.speed]);
+
+  const handleAcceptRouteProposal = React.useCallback((proposal: RouteProposal) => {
+    if (proposal.status === 'PROHIBITED' || proposal.waypoints.length === 0) return;
+    const waypoints = proposal.waypoints.map(position => ({ ...position }));
+    const firstWaypoint = waypoints[0];
+    setOwnship(prev => ({
+      ...prev,
+      targetHeading: bearingBetween(
+        prev.position.lat,
+        prev.position.lon,
+        firstWaypoint.lat,
+        firstWaypoint.lon,
+      ),
+      waypoints,
+    }));
+    setAcceptedRouteProposalId(proposal.id);
+    setJustificationPair(null);
+  }, []);
+
+  const handleRejectRouteProposals = React.useCallback(() => {
+    setRouteProposalSet(null);
+    setAcceptedRouteProposalId(null);
+    setJustificationPair(null);
+  }, []);
+
+  const handleExplainRouteProposals = React.useCallback((preferred: RouteProposal, alternative: RouteProposal) => {
+    setJustificationPair({ preferred, alternative });
+  }, []);
+
+  const handleModifyRouteIntent = React.useCallback(() => {
+    setRouteProposalSet(null);
+    setAcceptedRouteProposalId(null);
+    setJustificationPair(null);
+    setCommandPaletteOpen(true);
   }, []);
 
   const handleFocusMapAt = React.useCallback((position: { lat: number, lon: number }) => {
@@ -422,6 +497,7 @@ const App: React.FC = () => {
           toggleSystem,
           focusMapAt: handleFocusMapAt,
           proposeDirectTo: handleProposeDirectTo,
+          proposeRoute: handleProposeRoute,
           requestMissionAction: issueMissionAction,
           openDocument: setOpenDoc,
           ownshipNavMode,
@@ -491,6 +567,7 @@ const App: React.FC = () => {
         onClose={() => setCommandPaletteOpen(false)}
         focusMapAt={handleFocusMapAt}
         proposeDirectTo={handleProposeDirectTo}
+        proposeRoute={handleProposeRoute}
         requestMissionAction={issueMissionAction}
         entities={entities}
         systems={systems}
@@ -500,6 +577,21 @@ const App: React.FC = () => {
         openDocument={setOpenDoc}
         ownshipNavMode={ownshipNavMode}
         setOwnshipNavMode={setOwnshipNavMode}
+      />
+
+      <ProposalComparisonPanel
+        result={routeProposalSet}
+        acceptedProposalId={acceptedRouteProposalId}
+        onWhy={handleExplainRouteProposals}
+        onAccept={handleAcceptRouteProposal}
+        onReject={handleRejectRouteProposals}
+        onModify={handleModifyRouteIntent}
+      />
+
+      <JustificationPanel
+        preferred={justificationPair?.preferred ?? null}
+        alternative={justificationPair?.alternative ?? null}
+        onClose={() => setJustificationPair(null)}
       />
 
       <ActionStatusPanel

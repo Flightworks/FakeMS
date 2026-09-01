@@ -4,12 +4,14 @@ import { Search, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
+import type { MissionObjective } from '../domain/intent';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   focusMapAt: (position: { lat: number, lon: number }) => void;
   proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
+  proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
   requestMissionAction: (request: MissionActionRequest) => void;
   entities: Entity[];
   systems: SystemStatus;
@@ -26,6 +28,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   focusMapAt,
   proposeDirectTo,
+  proposeRoute,
   requestMissionAction,
   entities,
   systems,
@@ -91,6 +94,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       toggleSystem,
       focusMapAt,
       proposeDirectTo,
+      proposeRoute,
       requestMissionAction,
       history, // Pass history to registry
       openDocument,
@@ -108,6 +112,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     toggleSystem,
     focusMapAt,
     proposeDirectTo,
+    proposeRoute,
     requestMissionAction,
     openDocument,
     ownshipNavMode,
