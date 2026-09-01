@@ -41,6 +41,7 @@ describe('CommandRegistry', () => {
     toggleNavMode: vi.fn(),
     focusMapAt: vi.fn(),
     proposeDirectTo: vi.fn(),
+    proposeRoute: vi.fn(),
     requestMissionAction: vi.fn()
   };
 
@@ -120,6 +121,13 @@ describe('CommandRegistry', () => {
         id: 'target1',
         label: 'TARGET1',
       }));
+    });
+
+    it('creates a deterministic planning command with an explicit objective', () => {
+      const plan = getCommands('plan coverage target', mockContext).find(c => c.id === 'plan-coverage-target1');
+      expect(plan).toBeDefined();
+      plan?.action();
+      expect(mockContext.proposeRoute).toHaveBeenCalledWith(expect.objectContaining({ id: 'target1' }), 'COVERAGE');
     });
 
     it('should create save text fallback for unmatched queries', () => {
