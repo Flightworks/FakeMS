@@ -20,4 +20,14 @@ describe('map coordinate contract', () => {
     expect(restored.lat).toBeCloseTo(target.lat, 8);
     expect(restored.lon).toBeCloseTo(target.lon, 8);
   });
+
+  it('uses the shortest longitude delta across the antimeridian', () => {
+    const reference = { lat: 0, lon: 179.9 };
+    const target = { lat: 0, lon: -179.9 };
+    const offset = positionToMeterOffset(reference, target);
+
+    expect(offset.eastMeters).toBeGreaterThan(0);
+    expect(offset.eastMeters).toBeLessThan(30_000);
+    expect(meterOffsetToPosition(reference, offset).lon).toBeCloseTo(-179.9, 8);
+  });
 });

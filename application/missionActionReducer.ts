@@ -13,6 +13,16 @@ export type MissionActionIntent =
   | { type: 'REJECT'; at: number; reason?: string }
   | { type: 'CANCEL'; at: number; reason?: string };
 
+export type SimulatedEffectResult =
+  | { ok: true; detail?: string }
+  | { ok: false; reason: string };
+
+export type SimulatedEffectExecutor = (action: MissionActionRecord) => SimulatedEffectResult;
+
+export interface MissionActionDispatchOptions {
+  executeSimulatedEffect?: SimulatedEffectExecutor;
+}
+
 export interface MissionActionState {
   active: MissionActionRecord | null;
   journal: MissionActionJournalEntry[];
@@ -53,6 +63,7 @@ const withStatus = (
 export const dispatchMissionAction = (
   state: MissionActionState,
   intent: MissionActionIntent,
+  options: MissionActionDispatchOptions = {},
 ): MissionActionState => {
   switch (intent.type) {
     case 'PROPOSE': {
@@ -75,7 +86,7 @@ export const dispatchMissionAction = (
       if (!state.active || state.active.status !== 'AUTHORIZED') return state;
       const executing = withStatus(state.active, 'EXECUTING_SIM');
       const executingState = appendJournal(state, executing, 'EXECUTING_SIM', intent.at);
-      if (state.active.implementation === 'NOT_IMPLEMENTED') {
+      if (executing.implementation === 'NOT_IMPLEMENTED') {
         return appendJournal(
           executingState,
           withStatus(executing, 'NOT_IMPLEMENTED', {
@@ -87,11 +98,40 @@ export const dispatchMissionAction = (
         );
       }
 
+      if (!options.executeSimulatedEffect) {
+        const failureReason = 'No simulated effect executor was provided';
+        return appendJournal(
+          executingState,
+          withStatus(executing, 'FAILED_SIM', { failureReason }),
+          'FAILED_SIM',
+          intent.at,
+          failureReason,
+        );
+      }
+
+      let effectResult: SimulatedEffectResult;
+      try {
+        effectResult = options.executeSimulatedEffect(executing);
+      } catch {
+        effectResult = { ok: false, reason: 'Simulated effect executor threw an error' };
+      }
+
+      if (effectResult.ok === false) {
+        return appendJournal(
+          executingState,
+          withStatus(executing, 'FAILED_SIM', { failureReason: effectResult.reason }),
+          'FAILED_SIM',
+          intent.at,
+          effectResult.reason,
+        );
+      }
+
       return appendJournal(
         executingState,
         withStatus(executing, 'COMPLETED_SIM', { completedAt: intent.at }),
         'COMPLETED_SIM',
         intent.at,
+        effectResult.detail,
       );
     }
 

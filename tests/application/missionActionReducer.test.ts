@@ -3,7 +3,7 @@ import {
   createMissionActionState,
   dispatchMissionAction,
 } from '../../application/missionActionReducer';
-import { MissionActionRequest } from '../../domain/missionActions';
+import type { MissionActionRequest } from '../../domain/missionActions';
 
 const implementedRequest: MissionActionRequest = {
   id: 'sensor:stt:track-1',
@@ -15,23 +15,23 @@ const implementedRequest: MissionActionRequest = {
   requiresAuthorization: true,
 };
 
-const unavailableRequest: MissionActionRequest = {
-  ...implementedRequest,
-  id: 'engage:auth:track-1',
-  label: 'Engage authorization',
-  category: 'ENGAGE',
-  implementation: 'NOT_IMPLEMENTED',
+const preparedAction = () => {
+  const proposed = dispatchMissionAction(createMissionActionState(), {
+    type: 'PROPOSE',
+    request: implementedRequest,
+  });
+  const previewed = dispatchMissionAction(proposed, { type: 'PREVIEW', at: 150 });
+  return dispatchMissionAction(previewed, { type: 'AUTHORIZE', at: 200 });
 };
 
 describe('mission action lifecycle', () => {
   it('records propose, preview, authorize, execute and result as separate events', () => {
-    const proposed = dispatchMissionAction(createMissionActionState(), {
-      type: 'PROPOSE',
-      request: implementedRequest,
-    });
-    const previewed = dispatchMissionAction(proposed, { type: 'PREVIEW', at: 150 });
-    const authorized = dispatchMissionAction(previewed, { type: 'AUTHORIZE', at: 200 });
-    const completed = dispatchMissionAction(authorized, { type: 'EXECUTE_SIM', at: 300 });
+    const authorized = preparedAction();
+    const completed = dispatchMissionAction(
+      authorized,
+      { type: 'EXECUTE_SIM', at: 300 },
+      { executeSimulatedEffect: () => ({ ok: true, detail: 'STT state updated in simulation' }) },
+    );
 
     expect(completed.active?.status).toBe('COMPLETED_SIM');
     expect(completed.journal.map(event => event.status)).toEqual([
@@ -42,7 +42,35 @@ describe('mission action lifecycle', () => {
       'COMPLETED_SIM',
     ]);
     expect(completed.journal[1]).toMatchObject({ at: 150, status: 'PREVIEWED' });
-    expect(completed.journal.at(-1)).toMatchObject({ at: 300, status: 'COMPLETED_SIM' });
+    expect(completed.journal.at(-1)).toMatchObject({
+      at: 300,
+      status: 'COMPLETED_SIM',
+      reason: 'STT state updated in simulation',
+    });
+  });
+
+  it('fails safely when a simulated effect is declared but no executor is provided', () => {
+    const result = dispatchMissionAction(preparedAction(), { type: 'EXECUTE_SIM', at: 300 });
+
+    expect(result.active?.status).toBe('FAILED_SIM');
+    expect(result.journal.at(-1)).toMatchObject({
+      status: 'FAILED_SIM',
+      reason: 'No simulated effect executor was provided',
+    });
+  });
+
+  it('records an effect failure instead of claiming completion', () => {
+    const result = dispatchMissionAction(
+      preparedAction(),
+      { type: 'EXECUTE_SIM', at: 300 },
+      { executeSimulatedEffect: () => ({ ok: false, reason: 'Simulation effect rejected the input' }) },
+    );
+
+    expect(result.active?.status).toBe('FAILED_SIM');
+    expect(result.journal.at(-1)).toMatchObject({
+      status: 'FAILED_SIM',
+      reason: 'Simulation effect rejected the input',
+    });
   });
 
   it('does not authorize before the explicit preview step', () => {
@@ -66,6 +94,13 @@ describe('mission action lifecycle', () => {
   });
 
   it('records a safe unavailable result instead of pretending to execute', () => {
+    const unavailableRequest: MissionActionRequest = {
+      ...implementedRequest,
+      id: 'engage:auth:track-1',
+      label: 'Engage authorization',
+      category: 'ENGAGE',
+      implementation: 'NOT_IMPLEMENTED',
+    };
     const proposed = dispatchMissionAction(createMissionActionState(), {
       type: 'PROPOSE',
       request: unavailableRequest,

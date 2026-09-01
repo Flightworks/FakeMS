@@ -8,6 +8,8 @@ export interface MeterOffset {
 
 const degreesToRadians = (degrees: number): number => degrees * Math.PI / 180;
 const radiansToDegrees = (radians: number): number => radians * 180 / Math.PI;
+const normalizeLongitude = (longitude: number): number => ((longitude + 180) % 360 + 360) % 360 - 180;
+const shortestLongitudeDelta = (delta: number): number => normalizeLongitude(delta);
 
 /**
  * Convert a geographic target to a local east/north offset from a reference.
@@ -19,7 +21,7 @@ export const positionToMeterOffset = (
 ): MeterOffset => {
   const referenceLatitudeRadians = degreesToRadians(reference.lat);
   return {
-    eastMeters: degreesToRadians(target.lon - reference.lon)
+    eastMeters: degreesToRadians(shortestLongitudeDelta(target.lon - reference.lon))
       * EARTH_RADIUS
       * Math.cos(referenceLatitudeRadians),
     northMeters: degreesToRadians(target.lat - reference.lat) * EARTH_RADIUS,
@@ -39,6 +41,6 @@ export const meterOffsetToPosition = (
 
   return {
     lat: reference.lat + radiansToDegrees(offset.northMeters / EARTH_RADIUS),
-    lon: reference.lon + radiansToDegrees(offset.eastMeters / (EARTH_RADIUS * cosLatitude)),
+    lon: normalizeLongitude(reference.lon + radiansToDegrees(offset.eastMeters / (EARTH_RADIUS * cosLatitude))),
   };
 };
