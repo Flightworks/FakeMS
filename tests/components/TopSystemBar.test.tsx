@@ -51,6 +51,14 @@ describe('TopSystemBar Component', () => {
     setOwnship: vi.fn(),
     gestureSettings: mockGestureSettings,
     setGestureSettings: vi.fn(),
+    simulationControls: {
+      isRunning: true,
+      status: 'RUNNING' as const,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      reset: vi.fn(),
+      replay: vi.fn(),
+    },
   };
 
 

@@ -1,21 +1,24 @@
 {
   "name": "Fake MS - Tactical Mission System",
   "short_name": "FakeMS",
-  "start_url": ".",
+  "start_url": "./",
+  "scope": "./",
   "display": "fullscreen",
   "background_color": "#020617",
   "theme_color": "#020617",
   "orientation": "any",
   "icons": [
     {
-      "src": "https://placehold.co/192x192/020617/10b981.png?text=FMS&font=roboto",
+      "src": "./icons/fakems-192.svg",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     },
     {
-      "src": "https://placehold.co/512x512/020617/10b981.png?text=FMS&font=roboto",
+      "src": "./icons/fakems-512.svg",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

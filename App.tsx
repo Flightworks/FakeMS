@@ -1,17 +1,19 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 
-import { MapDisplay } from './components/MapDisplay';
-import { TopSystemBar } from './components/TopSystemBar';
-import { LeftSidebar } from './components/LeftSidebar';
-import { CommandPalette } from './components/CommandPalette';
-import { DocumentViewer } from './components/DocumentViewer';
+const MapDisplay = React.lazy(() => import('./components/MapDisplay').then(module => ({ default: module.MapDisplay })));
+const CommandPalette = React.lazy(() => import('./components/CommandPalette').then(module => ({ default: module.CommandPalette })));
+const DocumentViewer = React.lazy(() => import('./components/DocumentViewer').then(module => ({ default: module.DocumentViewer })));
+const TopSystemBar = React.lazy(() => import('./components/TopSystemBar').then(module => ({ default: module.TopSystemBar })));
+const LeftSidebar = React.lazy(() => import('./components/LeftSidebar').then(module => ({ default: module.LeftSidebar })));
+const ActionStatusPanel = React.lazy(() => import('./components/ActionStatusPanel').then(module => ({ default: module.ActionStatusPanel })));
+const MissionActionStatusPanel = React.lazy(() => import('./components/MissionActionStatusPanel').then(module => ({ default: module.MissionActionStatusPanel })));
+const ProposalComparisonPanel = React.lazy(() => import('./components/ProposalComparisonPanel').then(module => ({ default: module.ProposalComparisonPanel })));
+const JustificationPanel = React.lazy(() => import('./components/JustificationPanel').then(module => ({ default: module.JustificationPanel })));
+
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { SimulationBanner } from './components/SimulationBanner';
-import { ActionStatusPanel } from './components/ActionStatusPanel';
-import { MissionActionStatusPanel } from './components/MissionActionStatusPanel';
-import { ProposalComparisonPanel } from './components/ProposalComparisonPanel';
-import { JustificationPanel } from './components/JustificationPanel';
+import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
 import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
 import { createNavigationState, markNavigationError, markNavigationUpdate, OwnshipNavigationState } from './domain/navigation';
 import { createBrowserGeolocationAdapter } from './adapters/geolocation';
@@ -25,7 +27,7 @@ import type { MissionActionRequest } from './domain/missionActions';
 import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
 import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
-import { getCommands, CommandContext } from './utils/CommandRegistry';
+import type { CommandContext } from './utils/CommandRegistry';
 import { useSimulation } from './utils/useSimulation';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
@@ -69,7 +71,7 @@ const App: React.FC = () => {
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
 
-  const { entities, setEntities } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
+  const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
 
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [mapModeBeforeGhost, setMapModeBeforeGhost] = useState<MapMode | null>(null);
@@ -78,6 +80,8 @@ const App: React.FC = () => {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const [controlsReady, setControlsReady] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
@@ -116,9 +120,51 @@ const App: React.FC = () => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
   };
 
+  const closeCommandPalette = React.useCallback(() => {
+    setCommandPaletteOpen(false);
+  }, []);
+
   const panAnimationRef = useRef<number | undefined>(undefined);
   const lastPanActivityRef = useRef<number>(Date.now());
   const headingUnfreezeRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const revealControls = () => {
+      if (!cancelled) setControlsReady(true);
+    };
+    const idleHandle = idleWindow.requestIdleCallback?.(revealControls, { timeout: 750 });
+    const timeoutHandle = window.setTimeout(revealControls, 750);
+
+    return () => {
+      cancelled = true;
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+      window.clearTimeout(timeoutHandle);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const revealMap = () => {
+      if (!cancelled) setMapReady(true);
+    };
+    const idleHandle = idleWindow.requestIdleCallback?.(revealMap, { timeout: 1500 });
+    const timeoutHandle = window.setTimeout(revealMap, 1500);
+
+    return () => {
+      cancelled = true;
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+      window.clearTimeout(timeoutHandle);
+    };
+  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -484,10 +530,11 @@ const App: React.FC = () => {
     centerOnOwnship(); // This now sets stabMode to HELICO and animates
   }, [centerOnOwnship, handleSetStabMode]);
 
-  const handleDropCommand = (e: React.DragEvent) => {
+  const handleDropCommand = async (e: React.DragEvent) => {
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data && data.type === 'command' && data.query) {
+        const { getCommands } = await import('./utils/CommandRegistry');
         const context: CommandContext = {
           entities,
           ownship,
@@ -508,7 +555,7 @@ const App: React.FC = () => {
         const matched = cmds.find(c => c.id === data.id) || cmds[0];
 
         if (matched) {
-          matched.action();
+          matched.action?.();
           // Feedback?
           if (prototypeSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(50);
         }
@@ -528,7 +575,15 @@ const App: React.FC = () => {
         style={{ opacity: prototypeSettings.mapDim }}
       >
         {origin && (
-          <MapDisplay
+          mapReady ? (
+            <React.Suspense
+              fallback={
+                <div className="flex h-full w-full items-center justify-center bg-slate-950/80 font-mono text-xs text-cyan-300" role="status">
+                  LOADING SIMULATION MAP…
+                </div>
+              }
+            >
+              <MapDisplay
             ownship={ownship} entities={entities} systems={systems} mapMode={mapMode} zoomLevel={zoomLevel}
             onZoom={(val) => setZoomLevel(Math.min(Math.max(val, 0.0001), 5))}
             panOffset={panOffset} onPan={handleManualPan}
@@ -545,79 +600,114 @@ const App: React.FC = () => {
             groundAnchor={groundAnchor}
             onGhostEvent={handleGhostEvent}
             onMissionAction={issueMissionAction}
-          />
+              />
+            </React.Suspense>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950/80 font-mono text-xs text-cyan-300" role="status">
+              LOADING SIMULATION MAP…
+            </div>
+          )
         )}
       </div>
 
-      <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
-        <LeftSidebar
-          mapMode={mapMode} setMapMode={handleMapModeChange} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
-          isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
-          gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
-          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-          ownship={ownship}
-          stabMode={stabMode}
-          setStabMode={handleSetStabMode}
-          onResetStab={handleResetStab}
-        />
-      </div>
+      {controlsReady && (
+        <React.Suspense fallback={null}>
+          <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
+            <LeftSidebar
+              mapMode={mapMode} setMapMode={handleMapModeChange} toggleLayer={() => { }} systems={systems} toggleSystem={toggleSystem}
+              isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
+              gestureSettings={prototypeSettings} setGestureSettings={setPrototypeSettings}
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              ownship={ownship}
+              stabMode={stabMode}
+              setStabMode={handleSetStabMode}
+              onResetStab={handleResetStab}
+            />
+          </div>
+        </React.Suspense>
+      )}
 
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        focusMapAt={handleFocusMapAt}
-        proposeDirectTo={handleProposeDirectTo}
-        proposeRoute={handleProposeRoute}
-        requestMissionAction={issueMissionAction}
-        entities={entities}
-        systems={systems}
-        toggleSystem={toggleSystem}
-        setMapMode={handleMapModeChange}
-        ownship={ownship}
-        openDocument={setOpenDoc}
-        ownshipNavMode={ownshipNavMode}
-        setOwnshipNavMode={setOwnshipNavMode}
-      />
+      {commandPaletteOpen && (
+        <React.Suspense fallback={null}>
+          <CommandPalette
+            isOpen={commandPaletteOpen}
+            onClose={closeCommandPalette}
+            focusMapAt={handleFocusMapAt}
+            proposeDirectTo={handleProposeDirectTo}
+            proposeRoute={handleProposeRoute}
+            requestMissionAction={issueMissionAction}
+            entities={entities}
+            systems={systems}
+            toggleSystem={toggleSystem}
+            setMapMode={handleMapModeChange}
+            ownship={ownship}
+            openDocument={setOpenDoc}
+            ownshipNavMode={ownshipNavMode}
+            setOwnshipNavMode={setOwnshipNavMode}
+          />
+        </React.Suspense>
+      )}
 
-      <ProposalComparisonPanel
-        result={routeProposalSet}
-        acceptedProposalId={acceptedRouteProposalId}
-        onWhy={handleExplainRouteProposals}
-        onAccept={handleAcceptRouteProposal}
-        onReject={handleRejectRouteProposals}
-        onModify={handleModifyRouteIntent}
-      />
+      {routeProposalSet && (
+        <React.Suspense fallback={null}>
+          <ProposalComparisonPanel
+            result={routeProposalSet}
+            acceptedProposalId={acceptedRouteProposalId}
+            onWhy={handleExplainRouteProposals}
+            onAccept={handleAcceptRouteProposal}
+            onReject={handleRejectRouteProposals}
+            onModify={handleModifyRouteIntent}
+          />
+        </React.Suspense>
+      )}
 
-      <JustificationPanel
-        preferred={justificationPair?.preferred ?? null}
-        alternative={justificationPair?.alternative ?? null}
-        onClose={() => setJustificationPair(null)}
-      />
+      {justificationPair && (
+        <React.Suspense fallback={null}>
+          <JustificationPanel
+            preferred={justificationPair.preferred}
+            alternative={justificationPair.alternative}
+            onClose={() => setJustificationPair(null)}
+          />
+        </React.Suspense>
+      )}
 
-      <ActionStatusPanel
-        proposal={commandState.directToProposal}
-        onAccept={handleAcceptProposal}
-        onReject={handleRejectProposal}
-      />
+      {commandState.directToProposal && (
+        <React.Suspense fallback={null}>
+          <ActionStatusPanel
+            proposal={commandState.directToProposal}
+            onAccept={handleAcceptProposal}
+            onReject={handleRejectProposal}
+          />
+        </React.Suspense>
+      )}
 
-      <MissionActionStatusPanel
-        action={missionActionState.active}
-        journal={missionActionState.journal}
-        onIntent={handleMissionActionIntent}
-      />
+      {missionActionState.active && (
+        <React.Suspense fallback={null}>
+          <MissionActionStatusPanel
+            action={missionActionState.active}
+            journal={missionActionState.journal}
+            onIntent={handleMissionActionIntent}
+          />
+        </React.Suspense>
+      )}
 
-      <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
-        <TopSystemBar
-          systems={systems}
-          navMode={ownshipNavMode}
-          navigationState={navigationState}
-          setNavMode={setOwnshipNavMode}
-          ownship={ownship}
-          setOwnship={setOwnship}
-          gestureSettings={prototypeSettings}
-          setGestureSettings={setPrototypeSettings}
-        />
-      </div>
+      {controlsReady && (
+        <React.Suspense fallback={null}>
+          <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top center' }} className="absolute top-0 left-0 right-0 pointer-events-none">
+            <TopSystemBar
+              systems={systems}
+              navMode={ownshipNavMode}
+              navigationState={navigationState}
+              setNavMode={setOwnshipNavMode}
+              ownship={ownship}
+              setOwnship={setOwnship}
+              gestureSettings={prototypeSettings}
+              setGestureSettings={setPrototypeSettings}
+              simulationControls={simulationControls}
+            />
+          </div>
+        </React.Suspense>
+      )}
 
       <div style={{ transformOrigin: 'bottom left' }} className="absolute inset-0 pointer-events-none">
         {origin && <OwnshipPanel ownship={ownship} origin={origin} prototypeSettings={prototypeSettings} />}
@@ -632,10 +722,13 @@ const App: React.FC = () => {
 
 
       {openDoc && (
-        <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
+        <React.Suspense fallback={null}>
+          <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
+        </React.Suspense>
       )}
 
       <SimulationBanner buildId={BUILD_ID} />
+      <UpdateAvailableBanner />
 
       {/* Global vignette shadow removed */}
     </div>

@@ -678,12 +678,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     });
   };
 
+  const isMarkerTarget = (target: EventTarget | null): boolean =>
+    target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
+
+  const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isMarkerTarget(event.target)) return;
+    startInteraction(event.clientX, event.clientY, 'MAP', undefined, event.pointerType as 'mouse' | 'touch' | 'pen');
+  };
+
   return (
     <div
       className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
-      onPointerDown={(e) => startInteraction(e.clientX, e.clientY, 'MAP', undefined, e.pointerType as any)}
-      onPointerMove={(e) => moveInteraction(e.clientX, e.clientY)}
-      onPointerUp={(e) => endInteraction(e.clientX, e.clientY)}
+      onPointerDownCapture={handleMapPointerDownCapture}
+      onPointerMoveCapture={(e) => moveInteraction(e.clientX, e.clientY)}
+      onPointerUpCapture={(e) => endInteraction(e.clientX, e.clientY)}
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       // PointerCancel needed?
       onPointerCancel={() => setLongPressIndicator(null)}
@@ -819,6 +827,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         <button
           onClick={(e) => { e.stopPropagation(); onResetStab(); }}
           className="absolute bottom-6 right-6 z-30 w-14 h-14 flex items-center justify-center bg-slate-900/90 border-2 border-emerald-500 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] text-emerald-400 hover:bg-emerald-900 transition-all active:scale-90 pointer-events-auto group"
+          aria-label="Recenter map on ownship"
           title="Recenter Map on Ownship"
         >
           <Crosshair size={28} className="group-hover:scale-110 transition-transform" />

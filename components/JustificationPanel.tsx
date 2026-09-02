@@ -13,6 +13,8 @@ export const JustificationPanel = ({ preferred, alternative, onClose }: Justific
     <aside
       className="pointer-events-auto fixed bottom-4 left-1/2 z-[85] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-violet-500/60 bg-slate-950/95 p-4 font-mono text-xs text-slate-100 shadow-2xl"
       aria-label="Contrastive justification"
+      role="dialog"
+      aria-modal="false"
       aria-live="polite"
     >
       <div className="flex items-center justify-between gap-3">

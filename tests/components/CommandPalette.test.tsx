@@ -61,6 +61,8 @@ describe('CommandPalette Component', () => {
 
   it('renders input field when open', () => {
     render(<CommandPalette {...mockProps} />);
+    expect(screen.getByRole('dialog', { name: 'Tactical command palette' })).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Command results' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Type a command (e.g., 'DCT', 'TK2 180 5')...")).toBeInTheDocument();
   });
 

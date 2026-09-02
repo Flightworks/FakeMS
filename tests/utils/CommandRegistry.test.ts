@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getCommands, CommandContext } from '../../utils/CommandRegistry';
+import { createMathCommandProvider } from '../../utils/mathEvaluator';
 import { Entity, EntityType, NavMode } from '../../types';
 
 describe('CommandRegistry', () => {
@@ -59,7 +60,7 @@ describe('CommandRegistry', () => {
     });
 
     it('should calculate math expressions', () => {
-      const commands = getCommands('2 + 2', mockContext);
+      const commands = getCommands('2 + 2', mockContext, createMathCommandProvider());
       const mathCmd = commands.find(c => c.id === 'calc-result');
       expect(mathCmd).toBeDefined();
       expect(mathCmd?.label).toBe('2 + 2 = 4');
@@ -101,7 +102,7 @@ describe('CommandRegistry', () => {
     it('focuses a track without creating a direct-to proposal', () => {
       const focus = getCommands('focus target', mockContext).find(c => c.id === 'focus-target1');
       expect(focus).toBeDefined();
-      focus?.action();
+      focus?.action?.();
       expect(mockContext.focusMapAt).toHaveBeenCalledWith({ lat: 10, lon: 10 });
       expect(mockContext.proposeDirectTo).not.toHaveBeenCalled();
     });
@@ -109,13 +110,13 @@ describe('CommandRegistry', () => {
     it('keeps map focus separate from direct-to proposals', () => {
       const focusContext = { ...mockContext, focusMapAt: vi.fn() };
       const focus = getCommands('N45E006', focusContext).find(c => c.id === 'fly-to-coords');
-      focus?.action();
+      focus?.action?.();
 
       expect(focusContext.focusMapAt).toHaveBeenCalledWith({ lat: 45, lon: 6 });
 
       const dctContext = { ...mockContext, proposeDirectTo: vi.fn() };
       const dct = getCommands('dct target', dctContext).find(c => c.id === 'dct-target1');
-      dct?.action();
+      dct?.action?.();
 
       expect(dctContext.proposeDirectTo).toHaveBeenCalledWith(expect.objectContaining({
         id: 'target1',
@@ -126,7 +127,7 @@ describe('CommandRegistry', () => {
     it('creates a deterministic planning command with an explicit objective', () => {
       const plan = getCommands('plan coverage target', mockContext).find(c => c.id === 'plan-coverage-target1');
       expect(plan).toBeDefined();
-      plan?.action();
+      plan?.action?.();
       expect(mockContext.proposeRoute).toHaveBeenCalledWith(expect.objectContaining({ id: 'target1' }), 'COVERAGE');
     });
 

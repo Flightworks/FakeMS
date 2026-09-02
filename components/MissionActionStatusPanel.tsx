@@ -26,6 +26,8 @@ export const MissionActionStatusPanel = ({ action, journal = [], onIntent }: Mis
   return (
     <aside
       className="pointer-events-auto fixed bottom-32 left-1/2 z-[89] w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-cyan-500/60 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-2xl"
+      role="dialog"
+      aria-modal="false"
       aria-live="polite"
       aria-label="Mission action status"
     >

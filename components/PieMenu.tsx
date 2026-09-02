@@ -289,6 +289,9 @@ export const PieMenu: React.FC<PieMenuProps> = ({ x, y, options, onClose, title,
   return (
     <div
       className="fixed inset-0 z-[60] overflow-hidden touch-none select-none pointer-events-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title ? `${title} radial menu` : 'Tactical radial menu'}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

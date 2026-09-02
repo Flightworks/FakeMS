@@ -70,6 +70,9 @@ Dive deeper into the design philosophy and technical setup:
 - [📁 **Interface Guide**](./docs/03-interface-guide.md) — Map mechanics, Pie Menus, and Telemetry.
 - [📁 **Command Bar Guide**](./docs/05-scratchpad-guide.md) — Mastery of coordinates, math, and tactical tools.
 - [📁 **Local Configuration**](./docs/04-configuration.md) — Tuning the visual and tactile engine.
+- [📁 **Mission Domain**](./docs/architecture/mission-domain.md) — Simulation layers, tracks, proposals and authority.
+- [📁 **Simulation Boundary**](./docs/architecture/simulation-boundary.md) — SIM/GPS semantics and PWA limits.
+- [📁 **Qualification**](./docs/testing/qualification.md) — Unit, browser, security and release checks.
 
 ---
 

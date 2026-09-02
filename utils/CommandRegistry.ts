@@ -1,23 +1,13 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
-import { create, all } from 'mathjs';
 import Fuse from 'fuse.js';
 import { getDestinationPoint, distanceBetween } from './geo';
 import { calculateEta } from '../domain/measurements';
+import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
 
-// Configure mathjs to use degrees
-const math = create(all);
-
-const degreeScope = {
-    sin: (angle: number | any) => Math.sin((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
-    cos: (angle: number | any) => Math.cos((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
-    tan: (angle: number | any) => Math.tan((typeof angle === 'number' ? angle : parseFloat(angle)) * Math.PI / 180),
-    asin: (val: number | any) => Math.asin(val) * 180 / Math.PI,
-    acos: (val: number | any) => Math.acos(val) * 180 / Math.PI,
-    atan: (val: number | any) => Math.atan(val) * 180 / Math.PI,
-};
+// Configure math evaluation in the lazy-loaded `mathEvaluator` module.
 
 export interface CommandContext {
     entities: Entity[];
@@ -40,7 +30,7 @@ export interface CommandOption {
     label: string;
     subLabel?: string;
     icon: any;
-    action: () => void;
+    action?: () => void;
     keywords: string[];
     isPreview?: boolean;
     isHistory?: boolean;
@@ -161,7 +151,11 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
     return null;
 }
 
-export const getCommands = (query: string, context: CommandContext): CommandOption[] => {
+export const getCommands = (
+    query: string,
+    context: CommandContext,
+    mathProvider?: MathCommandProvider,
+): CommandOption[] => {
     const q = query.trim();
     const { entities, ownship, systems, setMapMode, toggleSystem, focusMapAt, proposeDirectTo, proposeRoute, requestMissionAction, history, openDocument } = context;
     const commands: CommandOption[] = [];
@@ -196,10 +190,7 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     label: entry.original,
                     subLabel: timeStr,
                     icon: History,
-                    action: () => { /* No-op, UI handles selection acting as typing? Or execute immediately? execute immediately usually */ },
-                    // To handle execute vs paste, usually history selection executes.
-                    // But if it's a calculator value, maybe paste?
-                    // Let's assume execute for now as per "History Stack repopulated".
+                    // Selecting a history entry only repopulates the input.
                     keywords: ['history'],
                     isHistory: true,
                     autocompleteValue: entry.original
@@ -231,7 +222,6 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     label: `${funcHint}(`,
                     subLabel: 'Math Function',
                     icon: Calculator,
-                    action: () => { /* maybe autocomplete? */ },
                     keywords: ['math', funcHint],
                     isPreview: true,
                     autocompleteValue: `${funcHint}(`
@@ -243,24 +233,14 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
             // Check if it's a pure number or just a function name before evaluating
             // to avoid "sin" erroring or "12" being boring.
             // But "cos(45)" is good.
-            const result = math.evaluate(evalQ, degreeScope);
-            if (typeof result === 'number' || (typeof result === 'object' && result.type === 'Unit')) {
-                let label = '';
-                let subLabel = 'Calculation';
-
-                if (typeof result === 'number') {
-                    label = math.format(result, { precision: 14 });
-                } else {
-                    label = result.toString();
-                    subLabel = 'Unit Conversion';
-                }
-
+            const mathResult = mathProvider?.evaluate(evalQ);
+            if (mathResult) {
                 commands.push({
                     id: 'calc-result',
-                    label: `${evalQ} = ${label}`,
-                    subLabel: subLabel,
+                    label: `${evalQ} = ${mathResult.label}`,
+                    subLabel: mathResult.subLabel,
                     icon: Calculator,
-                    action: () => { navigator.clipboard.writeText(label); },
+                    action: () => { void navigator.clipboard?.writeText(mathResult.label); },
                     keywords: ['calc', 'math'],
                     isPreview: true
                 });
@@ -279,7 +259,6 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                 label: coords.suggestion,
                 subLabel: 'Format Hint',
                 icon: MapPin,
-                action: () => { /* maybe focus input? */ },
                 keywords: ['hint'],
                 isPreview: true
             });
@@ -428,7 +407,6 @@ export const getCommands = (query: string, context: CommandContext): CommandOpti
                     label: e.label,
                     subLabel: 'Select Track',
                     icon: Crosshair,
-                    action: () => { /* Select/Focus logic handled by autocomplete */ },
                     keywords: [e.label, e.type, 'track'],
                     type: 'entity',
                     autocompleteValue: e.label + ' '

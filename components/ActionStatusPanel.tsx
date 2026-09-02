@@ -22,6 +22,8 @@ export const ActionStatusPanel = ({
   return (
     <aside
       className="pointer-events-auto fixed bottom-4 left-1/2 z-[90] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-amber-500/60 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-2xl"
+      role="dialog"
+      aria-modal="false"
       aria-live="polite"
       aria-label="Direct-to route proposal status"
     >

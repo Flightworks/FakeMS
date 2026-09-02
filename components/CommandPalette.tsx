@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode } from '../types';
 import { Search, History, MoveRight, CornerDownLeft, Copy } from 'lucide-react';
 import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegistry';
+import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
@@ -58,6 +59,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     } catch { return []; }
   });
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
+  const [mathProvider, setMathProvider] = useState<MathCommandProvider | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -75,6 +77,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     }
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    const needsMathProvider = trimmedQuery.length > 1 && (
+      /^[-+]?\d|^[.(]/.test(trimmedQuery)
+      || /^(sin|cos|tan|asin|acos|atan|sqrt|log|abs|exp)/i.test(trimmedQuery)
+      || /\b(?:to|in)\b/i.test(trimmedQuery)
+    );
+    if (!needsMathProvider || mathProvider) return;
+
+    let cancelled = false;
+    void import('../utils/mathEvaluator').then(({ createMathCommandProvider }) => {
+      if (!cancelled) setMathProvider(createMathCommandProvider());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [query, mathProvider]);
 
   const addToHistory = (cmd: string) => {
     if (!cmd.trim()) return;
@@ -101,7 +121,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ownshipNavMode,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
-    return getCommands(query, context);
+    return getCommands(query, context, mathProvider ?? undefined);
   }, [
     query,
     entities,
@@ -117,6 +137,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     openDocument,
     ownshipNavMode,
     setOwnshipNavMode,
+    mathProvider,
   ]);
 
   useEffect(() => {
@@ -157,8 +178,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       e.preventDefault();
       if (commands[selectedIndex]) {
         const cmd = commands[selectedIndex];
+        if (cmd.isHistory) {
+          setQuery(cmd.label);
+          inputRef.current?.focus();
+          return;
+        }
+        if (cmd.autocompleteValue) {
+          setQuery(cmd.autocompleteValue);
+          inputRef.current?.focus();
+          return;
+        }
         addToHistory(cmd.historyValue || query);
-        cmd.action();
+        cmd.action?.();
         onClose();
       }
     } else if (e.key === 'Escape') {
@@ -185,7 +216,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
       // Trigger Action
       addToHistory(cmd.historyValue || query);
-      cmd.action();
+      cmd.action?.();
       onClose();
     }
   };
@@ -196,6 +227,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     <div className="fixed inset-0 z-[100] flex items-end justify-center pb-8 lg:pb-12 animate-in fade-in duration-200" onClick={onClose}>
       <div
         className="w-[600px] max-w-[90vw] h-[60vh] min-h-[400px] max-h-[500px] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tactical command palette"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center px-4 py-3 border-b border-slate-800 bg-slate-900/50">
@@ -203,6 +237,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <input
             ref={inputRef}
             className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 font-medium h-6"
+            aria-label="Command input"
             placeholder="Type a command (e.g., 'DCT', 'TK2 180 5')..."
             value={query}
             onChange={e => {
@@ -222,7 +257,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 <Copy size={16} />
               </div>
             )}
-            <kbd onClick={onClose} className="px-2 py-1 flex items-center justify-center rounded bg-slate-800 text-[10px] font-mono border border-slate-700 hover:bg-slate-700 active:bg-slate-600 transition-colors cursor-pointer min-h-[30px] min-w-[40px]">ESC</kbd>
+            <button
+              type="button"
+              aria-label="Close command palette"
+              onClick={onClose}
+              className="px-2 py-1 flex items-center justify-center rounded bg-slate-800 text-[10px] font-mono border border-slate-700 hover:bg-slate-700 active:bg-slate-600 transition-colors cursor-pointer min-h-[30px] min-w-[40px]"
+            >
+              ESC
+            </button>
           </div>
         </div>
 
@@ -245,7 +287,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {historyIndex > -1 && <span className="flex items-center gap-1 text-slate-400"><History size={10} /> HISTORY ({historyIndex + 1})</span>}
         </div>
 
-        <ul ref={listRef} className="max-h-[400px] overflow-y-auto py-2 overflow-x-hidden">
+        <ul ref={listRef} className="max-h-[400px] overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results">
           {commands.length === 0 ? (
             <li className="px-4 py-8 text-center text-slate-500 text-sm">
               No commands found for "{query}"
@@ -267,6 +309,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     dragElastic={{ right: 0.5, left: 0.1 }} // Allow drag right
                     onDragEnd={(e, info) => handleSwipe(e, info, cmd)}
                     draggable="true"
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-label={cmd.subLabel ? `${cmd.label} · ${cmd.subLabel}` : cmd.label}
                     onDragStart={(e: any) => handleDragStart(e, cmd)}
                     className={`
                      group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
@@ -281,7 +326,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         inputRef.current?.focus();
                       } else {
                         addToHistory(cmd.historyValue || query);
-                        cmd.action();
+                        cmd.action?.();
                         onClose();
                       }
                     }}

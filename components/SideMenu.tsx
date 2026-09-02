@@ -143,7 +143,9 @@ export const SideMenu: React.FC<SideMenuProps> = React.memo(({ isOpen, setIsOpen
       {/* Column 1: Main Controls */}
       <div className="flex flex-col gap-3">
         {/* Burger / Toggle */}
-        <button 
+        <button
+          type="button"
+          aria-label={isOpen ? 'Close tactical menu' : 'Open tactical menu'}
           onClick={handleMainToggle}
           className={`
             w-16 h-16 flex items-center justify-center rounded-2xl border-2 transition-all duration-200 shadow-xl mb-2

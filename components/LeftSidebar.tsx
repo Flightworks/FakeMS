@@ -50,6 +50,8 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
   onClick
 }) => (
   <button
+    type="button"
+    aria-label={label || 'Toggle tactical menu'}
     onClick={onClick}
     className={`
       w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto

@@ -35,6 +35,8 @@ export const ProposalComparisonPanel = ({
     <section
       className="pointer-events-auto fixed inset-x-4 top-24 z-[80] mx-auto max-w-4xl rounded-lg border border-cyan-500/60 bg-slate-950/95 p-4 font-mono text-xs text-slate-100 shadow-2xl"
       aria-label="Proposal comparison"
+      role="dialog"
+      aria-modal="false"
       aria-live="polite"
     >
       <div className="flex items-center justify-between gap-3">

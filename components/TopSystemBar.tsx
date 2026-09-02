@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
+import type { SimulationControls } from '../utils/useSimulation';
 import { navigationStatusLabel, OwnshipNavigationState } from '../domain/navigation';
 import {
   X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
@@ -15,6 +16,7 @@ interface TopSystemBarProps {
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+  simulationControls: SimulationControls;
 }
 
 const StatusBlock = ({
@@ -28,17 +30,19 @@ const StatusBlock = ({
   status?: 'default' | 'active' | 'warning';
   onClick?: () => void;
 }) => (
-  <div
+  <button
+    type="button"
+    disabled={!onClick}
     onClick={onClick}
     className={`
       h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
       ${status === 'active' ? 'border-emerald-600' : status === 'warning' ? 'border-amber-600' : 'border-slate-600'}
-      ${onClick ? 'cursor-pointer hover:bg-slate-700 transition-colors active:scale-95' : ''}
+      ${onClick ? 'cursor-pointer hover:bg-slate-700 transition-colors active:scale-95' : 'cursor-default'}
     `}
   >
     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
     {value && <span className="text-sm font-bold text-white leading-none">{value}</span>}
-  </div>
+  </button>
 );
 
 const ClockWidget = () => {
@@ -89,9 +93,7 @@ const StabControlWidget = ({ gestureSettings, setGestureSettings, isOpen, onTogg
 
   return (
     <div className="relative">
-      <div onPointerDown={onToggle} className="cursor-pointer transition-transform active:scale-95">
-        <StatusBlock label="STABLN" value="CFG" status={isOpen ? 'active' : 'default'} />
-      </div>
+      <StatusBlock label="STABLN" value="CFG" status={isOpen ? 'active' : 'default'} onClick={onToggle} />
     </div>
   );
 };
@@ -129,7 +131,7 @@ const StabToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
         <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
           <Crosshair size={14} className="text-indigo-400" /> Stab Options
         </span>
-        <button onPointerDown={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
       </div>
       <div className="flex flex-col gap-1 pt-1 border-t border-slate-700">
         {toggles.map(p => (
@@ -145,8 +147,9 @@ const StabToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
               </span>
             </div>
             <button
+              aria-label={`Toggle ${p.label}`}
               className={`px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors ${gestureSettings[p.key] ? 'bg-indigo-600 text-white' : 'text-slate-400 bg-slate-800 hover:bg-slate-700'}`}
-              onPointerDown={(e) => { e.stopPropagation(); toggleStabParam(p.key); }}
+              onClick={(e) => { e.stopPropagation(); toggleStabParam(p.key); }}
             >
               {gestureSettings[p.key] ? 'ON' : 'OFF'}
             </button>
@@ -169,8 +172,9 @@ const StabToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
             </span>
           </div>
           <button
+            aria-label="Cycle automatic recenter delay"
             className="px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors text-emerald-400 bg-slate-800 hover:bg-slate-700 font-mono"
-            onPointerDown={(e) => { e.stopPropagation(); cycleDelay(); }}
+            onClick={(e) => { e.stopPropagation(); cycleDelay(); }}
           >
             {delayLabel(gestureSettings.stabAutoRecenterDelay)}
           </button>
@@ -206,9 +210,7 @@ const HmiControlWidget = ({ isOpen, onToggle }: {
 }) => {
   return (
     <div className="relative">
-      <div onPointerDown={onToggle} className="cursor-pointer transition-transform active:scale-95">
-        <StatusBlock label="HMI" value="CFG" status={isOpen ? 'active' : 'default'} />
-      </div>
+      <StatusBlock label="HMI" value="CFG" status={isOpen ? 'active' : 'default'} onClick={onToggle} />
     </div>
   );
 };
@@ -316,7 +318,7 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
         <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
           <Layout size={14} className="text-indigo-400" /> HMI Config
         </span>
-        <button onPointerDown={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
       </div>
 
       <div className="flex">
@@ -324,7 +326,7 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
           {categories.map(cat => (
             <button
               key={cat.id}
-              onPointerDown={(e) => { e.stopPropagation(); setActiveCat(activeCat === cat.id ? null : cat.id); }}
+              onClick={(e) => { e.stopPropagation(); setActiveCat(activeCat === cat.id ? null : cat.id); }}
               className={`flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase transition-colors ${activeCat === cat.id ? 'bg-indigo-700 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
             >
               {cat.label}
@@ -338,7 +340,7 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
             {activeCategory.children.map(opt => (
               <button
                 key={opt.id}
-                onPointerDown={(e) => { e.stopPropagation(); opt.action(); }}
+                onClick={(e) => { e.stopPropagation(); opt.action(); }}
                 className="flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase text-slate-200 hover:bg-slate-800 transition-colors group"
                 title={opt.description}
               >
@@ -364,23 +366,23 @@ const SimControlWidget = ({ navigationState, onToggle, isOpen }: {
 
   return (
     <div className="relative">
-      <div onPointerDown={onToggle} className="cursor-pointer transition-transform active:scale-95">
-        <StatusBlock
-          label="NAV"
-          value={statusLabel}
-          status={status}
-        />
-      </div>
+      <StatusBlock
+        label="NAV"
+        value={statusLabel}
+        status={status}
+        onClick={onToggle}
+      />
     </div>
   );
 };
 
-const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
+const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulationControls }: {
   navMode: NavMode;
   setNavMode: (mode: NavMode) => void;
   ownship: Entity;
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
   onClose: () => void;
+  simulationControls: SimulationControls;
 }) => {
   const [tempHdg, setTempHdg] = useState<string>('0');
   const [tempSpd, setTempSpd] = useState<string>('120');
@@ -434,10 +436,47 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
   const spdIndicator = Math.abs(targetSpd - actualSpd) < 1 ? '—' : targetSpd > actualSpd ? '▲' : '▼';
 
   return (
-    <div className="w-64 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto">
+    <div
+      className="w-64 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto"
+      role="region"
+      aria-label="Simulation toolbox"
+    >
       <div className="flex justify-between items-center mb-2">
         <span className="text-white font-bold text-sm uppercase">Sim Toolbox</span>
-        <button onPointerDown={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+      </div>
+      <div className="flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-950/30 px-2 py-2" aria-live="polite">
+        <span className="text-[10px] font-bold uppercase text-amber-200">SIM CLOCK</span>
+        <span className="text-[10px] font-mono font-bold text-amber-300">{simulationControls.status}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1" aria-label="Simulation playback controls">
+        {simulationControls.isRunning ? (
+          <button
+            type="button"
+            aria-label="Pause simulation"
+            onClick={(e) => { e.stopPropagation(); simulationControls.pause(); }}
+            className="min-h-10 rounded border border-amber-500/70 bg-amber-950/40 px-2 py-2 text-[10px] font-bold text-amber-200 hover:bg-amber-900"
+          >PAUSE</button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Resume simulation"
+            onClick={(e) => { e.stopPropagation(); simulationControls.resume(); }}
+            className="min-h-10 rounded border border-emerald-500/70 bg-emerald-950/40 px-2 py-2 text-[10px] font-bold text-emerald-200 hover:bg-emerald-900"
+          >RESUME</button>
+        )}
+        <button
+          type="button"
+          aria-label="Reset simulation"
+          onClick={(e) => { e.stopPropagation(); simulationControls.reset(); }}
+          className="min-h-10 rounded border border-slate-500/70 bg-slate-800 px-2 py-2 text-[10px] font-bold text-slate-200 hover:bg-slate-700"
+        >RESET</button>
+        <button
+          type="button"
+          aria-label="Replay simulation"
+          onClick={(e) => { e.stopPropagation(); simulationControls.replay(); }}
+          className="min-h-10 rounded border border-cyan-500/70 bg-cyan-950/40 px-2 py-2 text-[10px] font-bold text-cyan-200 hover:bg-cyan-900"
+        >REPLAY</button>
       </div>
 
       <div className="flex items-center justify-between">
@@ -445,11 +484,11 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
         <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
           <button
             className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.REAL ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-            onPointerDown={(e) => { e.stopPropagation(); setNavMode(NavMode.REAL); }}
+            onClick={(e) => { e.stopPropagation(); setNavMode(NavMode.REAL); }}
           >REAL</button>
           <button
             className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.SIM ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-            onPointerDown={(e) => { e.stopPropagation(); setNavMode(NavMode.SIM); }}
+            onClick={(e) => { e.stopPropagation(); setNavMode(NavMode.SIM); }}
           >SIM</button>
         </div>
       </div>
@@ -463,6 +502,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
           </span>
         </div>
         <input
+          aria-label="Simulation target heading"
           value={tempHdg}
           onChange={e => setTempHdg(e.target.value)}
           className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
@@ -473,7 +513,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
           {[{label: '+90', delta: 90}, {label: '+180', delta: 180}, {label: 'RCPL', delta: 180}].map(p => (
             <button
               key={p.label}
-              onPointerDown={(e) => { e.stopPropagation(); applyHeadingPreset(p.delta); }}
+              onClick={(e) => { e.stopPropagation(); applyHeadingPreset(p.delta); }}
               disabled={navMode !== NavMode.SIM}
               className="flex-1 py-0.5 text-[10px] font-bold rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-300 transition-colors"
             >{p.label}</button>
@@ -485,17 +525,17 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
         <span className="text-slate-400 text-[10px] font-bold uppercase">Continuous Turn</span>
         <div className="flex gap-1">
           <button
-            onPointerDown={() => setContinuousTurn('L')}
+            onClick={() => setContinuousTurn('L')}
             disabled={navMode !== NavMode.SIM}
             className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'L' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >↺ L</button>
           <button
-            onPointerDown={() => setContinuousTurn(null)}
+            onClick={() => setContinuousTurn(null)}
             disabled={navMode !== NavMode.SIM}
             className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${!ownship.continuousTurn ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >OFF</button>
           <button
-            onPointerDown={() => setContinuousTurn('R')}
+            onClick={() => setContinuousTurn('R')}
             disabled={navMode !== NavMode.SIM}
             className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'R' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >↻ R</button>
@@ -503,7 +543,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
       </div>
 
       <button
-        onPointerDown={(e) => { e.stopPropagation(); setIsHeadingLocked(v => !v); }}
+        onClick={(e) => { e.stopPropagation(); setIsHeadingLocked(v => !v); }}
         disabled={navMode !== NavMode.SIM}
         className={`w-full py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-40 ${
           isHeadingLocked
@@ -523,6 +563,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
           </span>
         </div>
         <input
+          aria-label="Simulation target speed"
           value={tempSpd}
           onChange={e => setTempSpd(e.target.value)}
           className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
@@ -534,6 +575,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
       <div className="flex flex-col gap-1">
         <span className="text-slate-400 text-[10px] font-bold uppercase">Turn Rate (°/S)</span>
         <input
+          aria-label="Simulation turn rate"
           value={tempTrn}
           onChange={e => setTempTrn(e.target.value)}
           className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-sm disabled:opacity-50"
@@ -543,7 +585,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
       </div>
 
       <button
-        onPointerDown={(e) => { e.stopPropagation(); applyParams(); }}
+        onClick={(e) => { e.stopPropagation(); applyParams(); }}
         className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded font-bold text-xs text-white transition-colors uppercase tracking-wider"
         disabled={navMode !== NavMode.SIM}
       >Apply All</button>
@@ -553,7 +595,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose }: {
 
 // ── MAIN TOP SYSTEM BAR ────────────────────────────────────────────────────────
 export const TopSystemBar: React.FC<TopSystemBarProps> = ({
-  systems, navMode, navigationState, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings
+  systems, navMode, navigationState, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings, simulationControls
 }) => {
   const [openToolboxes, setOpenToolboxes] = useState<Set<string>>(new Set());
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -619,6 +661,7 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
               setNavMode={setNavMode}
               ownship={ownship}
               setOwnship={setOwnship}
+              simulationControls={simulationControls}
               onClose={() => toggleToolbox('sim')}
             />
           )}
