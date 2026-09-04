@@ -24,6 +24,29 @@ interface CommandPaletteProps {
   setOwnshipNavMode: (mode: NavMode) => void;
 }
 
+interface VisualViewportRect {
+  width: number;
+  height: number;
+  offsetTop: number;
+  offsetLeft: number;
+}
+
+const COMPACT_VIEWPORT_HEIGHT = 520;
+
+const readVisualViewportRect = (): VisualViewportRect => {
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0, offsetTop: 0, offsetLeft: 0 };
+  }
+
+  const visualViewport = window.visualViewport;
+  return {
+    width: visualViewport?.width ?? window.innerWidth,
+    height: visualViewport?.height ?? window.innerHeight,
+    offsetTop: visualViewport?.offsetTop ?? 0,
+    offsetLeft: visualViewport?.offsetLeft ?? 0,
+  };
+};
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -44,6 +67,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const [visualViewportRect, setVisualViewportRect] = useState<VisualViewportRect>(readVisualViewportRect);
+  const isViewportConstrained = visualViewportRect.height < COMPACT_VIEWPORT_HEIGHT;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updateVisualViewport = () => {
+      setVisualViewportRect(readVisualViewportRect());
+    };
+    const visualViewport = window.visualViewport;
+
+    updateVisualViewport();
+    if (visualViewport) {
+      visualViewport.addEventListener('resize', updateVisualViewport);
+      visualViewport.addEventListener('scroll', updateVisualViewport);
+      return () => {
+        visualViewport.removeEventListener('resize', updateVisualViewport);
+        visualViewport.removeEventListener('scroll', updateVisualViewport);
+      };
+    }
+
+    window.addEventListener('resize', updateVisualViewport);
+    return () => window.removeEventListener('resize', updateVisualViewport);
+  }, [isOpen]);
 
   // History State
   const [history, setHistory] = useState<HistoryEntry[]>(() => {
@@ -224,19 +271,40 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center pb-8 lg:pb-12 animate-in fade-in duration-200" onClick={onClose}>
+    <div
+      className={`fixed z-[100] flex justify-center animate-in fade-in duration-200 ${
+        isViewportConstrained
+          ? 'items-start p-2'
+          : 'items-end pb-8 lg:pb-12'
+      }`}
+      style={{
+        top: visualViewportRect.offsetTop,
+        left: visualViewportRect.offsetLeft,
+        width: visualViewportRect.width,
+        height: visualViewportRect.height,
+        ...(isViewportConstrained ? {
+          paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
+          paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+        } : {}),
+      }}
+      onClick={onClose}
+    >
       <div
-        className="w-[600px] max-w-[90vw] h-[60vh] min-h-[400px] max-h-[500px] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 mb-safe"
+        className={`w-[600px] max-w-[90vw] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 ${
+          isViewportConstrained
+            ? 'h-full max-h-full min-h-0'
+            : 'h-[60vh] min-h-[400px] max-h-[500px] mb-safe'
+        }`}
         role="dialog"
         aria-modal="true"
         aria-label="Tactical command palette"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center px-4 py-3 border-b border-slate-800 bg-slate-900/50">
+        <div className="shrink-0 flex items-center px-4 py-3 border-b border-slate-800 bg-slate-900/50">
           <Search className="text-emerald-500 mr-3" size={20} />
           <input
             ref={inputRef}
-            className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 font-medium h-6"
+            className="flex-1 bg-transparent border-none outline-none text-base text-slate-100 placeholder-slate-500 font-medium h-6"
             aria-label="Command input"
             placeholder="Type a command (e.g., 'DCT', 'TK2 180 5')..."
             value={query}
@@ -271,23 +339,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
 
         {/* Suggestion / Tip Area */}
-        <div className="px-4 py-2 bg-slate-900/30 border-b border-slate-800 text-[10px] text-emerald-500/70 font-mono flex justify-between">
-          <span>
-            {commands.length > 0 && (commands[0].id === 'coord-suggestion' || commands[0].id === 'calc-hint') ? (
-              <span className="text-emerald-400 font-bold animate-pulse">{commands[0].label}</span>
-            ) : (
-              <>
-                {query === '' && "TYPE TO SEARCH COMMANDS OR ENTITIES"}
-                {query.length > 0 && !query.includes('/') && !query.match(/^\d/) && !query.match(/^[a-z]/i) && "TRY: '12*5', '10km to nm', 'TK2 180 5'"}
-                {(query.match(/^\d/) || (query.length > 0 && commands.some(c => c.id === 'calc-result'))) && "CALCULATOR MODE ACTIVE"}
-                {query.includes('/') && "BEARING/RANGE PROJECTION MODE"}
-              </>
-            )}
-          </span>
-          {historyIndex > -1 && <span className="flex items-center gap-1 text-slate-400"><History size={10} /> HISTORY ({historyIndex + 1})</span>}
-        </div>
+        {!isViewportConstrained && (
+          <div className="shrink-0 px-4 py-2 bg-slate-900/30 border-b border-slate-800 text-[10px] text-emerald-500/70 font-mono flex justify-between">
+            <span>
+              {commands.length > 0 && (commands[0].id === 'coord-suggestion' || commands[0].id === 'calc-hint') ? (
+                <span className="text-emerald-400 font-bold animate-pulse">{commands[0].label}</span>
+              ) : (
+                <>
+                  {query === '' && "TYPE TO SEARCH COMMANDS OR ENTITIES"}
+                  {query.length > 0 && !query.includes('/') && !query.match(/^\d/) && !query.match(/^[a-z]/i) && "TRY: '12*5', '10km to nm', 'TK2 180 5'"}
+                  {(query.match(/^\d/) || (query.length > 0 && commands.some(c => c.id === 'calc-result'))) && "CALCULATOR MODE ACTIVE"}
+                  {query.includes('/') && "BEARING/RANGE PROJECTION MODE"}
+                </>
+              )}
+            </span>
+            {historyIndex > -1 && <span className="flex items-center gap-1 text-slate-400"><History size={10} /> HISTORY ({historyIndex + 1})</span>}
+          </div>
+        )}
 
-        <ul ref={listRef} className="max-h-[400px] overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results">
+        <ul ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results">
           {commands.length === 0 ? (
             <li className="px-4 py-8 text-center text-slate-500 text-sm">
               No commands found for "{query}"
@@ -381,10 +451,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </ul>
 
-        <div className="px-4 py-2 bg-slate-950 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between">
-          <span>PRO TIP: Swipe Right to Execute • Drag to Map</span>
-          <span>TACTICAL COMMAND PALETTE</span>
-        </div>
+        {!isViewportConstrained && (
+          <div className="shrink-0 px-4 py-2 bg-slate-950 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between">
+            <span>PRO TIP: Swipe Right to Execute • Drag to Map</span>
+            <span>TACTICAL COMMAND PALETTE</span>
+          </div>
+        )}
       </div>
     </div>
   );
