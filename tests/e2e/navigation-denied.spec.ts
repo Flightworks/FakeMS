@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 test('represents a denied GPS permission without promoting SIM data to real', async ({ page, context }) => {
   await context.clearPermissions();
   await page.goto('/');
+  await expect(page.getByRole('button', { name: /NAV GPS DENIED/ })).toBeVisible({ timeout: 15_000 });
   await page.keyboard.press('Control+k');
 
   const input = page.getByRole('textbox', { name: 'Command input' });

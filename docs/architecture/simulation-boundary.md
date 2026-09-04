@@ -2,12 +2,12 @@
 
 ## Mode par défaut
 
-FakeMS démarre en `SIM`. La bannière permanente `SIMULATION · NOT FOR OPERATIONAL USE` reste visible, y compris dans la vue tablette et le shell PWA.
+FakeMS démarre en `REAL` et demande la position GPS via le navigateur. La bannière permanente `SIMULATION · NOT FOR OPERATIONAL USE` reste visible, y compris dans la vue tablette et le shell PWA.
 
 ## Sources de navigation
 
-- `SIM` : position issue de la cinématique locale du scénario.
-- `GPS` : source navigateur demandée uniquement après sélection explicite de `NAV REAL`.
+- `SIM` : position issue de la cinématique locale du scénario, activée après sélection explicite de `SIM`.
+- `GPS` : source navigateur demandée au démarrage lorsque le mode `REAL` est actif.
 
 Les états GPS sont distincts : `ACQUIRING`, `VALID`, `DENIED`, `LOST` et `STALE`. Un refus GPS ne transforme pas une position SIM en position réelle.
 

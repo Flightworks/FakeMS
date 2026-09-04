@@ -57,7 +57,7 @@ const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
 
-  const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.SIM);
+  const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);
   const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
   const [commandState, setCommandState] = useState<CommandState>(() => createCommandState());
   const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
