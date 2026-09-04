@@ -304,6 +304,16 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   const indTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeTouchPointersRef = useRef(new Set<number>());
+  const isPinchingRef = useRef(false);
+
+  const cancelCustomInteraction = () => {
+    if (indTimer.current) clearTimeout(indTimer.current);
+    if (hldTimer.current) clearTimeout(hldTimer.current);
+    setLongPressIndicator(null);
+    interactionRef.current = null;
+    isDraggingRef.current = false;
+  };
 
   // Rotation
   const mapRotation = mapMode === MapMode.HEADING_UP 
@@ -484,10 +494,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const openMenu = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
-    if (indTimer.current) clearTimeout(indTimer.current);
-    if (hldTimer.current) clearTimeout(hldTimer.current);
-    interactionRef.current = null;
-    isDraggingRef.current = false;
+    cancelCustomInteraction();
     setPieMenu({ x, y, type, entityId });
     setLongPressIndicator(null);
     menuOpenTimeRef.current = Date.now();
@@ -686,18 +693,47 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pieMenu || isMarkerTarget(event.target)) return;
+    if (pieMenu) return;
+
+    if (event.pointerType === 'touch') {
+      activeTouchPointersRef.current.add(event.pointerId);
+      if (activeTouchPointersRef.current.size > 1) {
+        isPinchingRef.current = true;
+        cancelCustomInteraction();
+        return;
+      }
+    }
+
+    if (isPinchingRef.current || isMarkerTarget(event.target)) return;
     startInteraction(event.clientX, event.clientY, 'MAP', undefined, event.pointerType as 'mouse' | 'touch' | 'pen');
   };
 
   const handleMapPointerMoveCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pieMenu) return;
+    if (pieMenu || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
     moveInteraction(event.clientX, event.clientY);
   };
 
   const handleMapPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') {
+      activeTouchPointersRef.current.delete(event.pointerId);
+      if (isPinchingRef.current) {
+        if (activeTouchPointersRef.current.size === 0) isPinchingRef.current = false;
+        cancelCustomInteraction();
+        return;
+      }
+      if (activeTouchPointersRef.current.size > 0) return;
+    }
+
     if (pieMenu) return;
     endInteraction(event.clientX, event.clientY);
+  };
+
+  const handleMapPointerCancelCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') {
+      activeTouchPointersRef.current.delete(event.pointerId);
+      if (activeTouchPointersRef.current.size === 0) isPinchingRef.current = false;
+    }
+    cancelCustomInteraction();
   };
 
   return (
@@ -707,8 +743,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       onPointerMoveCapture={handleMapPointerMoveCapture}
       onPointerUpCapture={handleMapPointerUpCapture}
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
-      // PointerCancel needed?
-      onPointerCancel={() => setLongPressIndicator(null)}
+      onPointerCancelCapture={handleMapPointerCancelCapture}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
       onDrop={(e) => { e.preventDefault(); onMapDrop?.(e); }}
     >
@@ -722,7 +757,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         zoomSnap={0}
         zoomDelta={0.1}
         dragging={false}
-        touchZoom={true}
+        touchZoom="center"
         doubleClickZoom={false}
         scrollWheelZoom={true}
       >
