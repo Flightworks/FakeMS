@@ -19,7 +19,7 @@ describe('MissionActionStatusPanel', () => {
     render(<MissionActionStatusPanel action={action} journal={[
       { actionId: 'old-action', status: 'COMPLETED_SIM', at: 90, label: 'Old action' },
       { actionId: action.id, status: 'PROPOSED', at: 100, label: action.label },
-    ]} onIntent={onIntent} />);
+    ]} onIntent={onIntent} onDismiss={vi.fn()} />);
 
     expect(screen.getByText('AWAITING AUTHORIZATION')).toBeInTheDocument();
     expect(screen.getByText('Radar single target track')).toBeInTheDocument();
@@ -38,11 +38,26 @@ describe('MissionActionStatusPanel', () => {
       <MissionActionStatusPanel
         action={{ ...action, status: 'NOT_IMPLEMENTED', failureReason: 'No simulator effect is available for this action' }}
         onIntent={vi.fn()}
+        onDismiss={vi.fn()}
       />,
     );
 
     expect(screen.getByText('NOT IMPLEMENTED')).toBeInTheDocument();
     expect(screen.getByText('No simulator effect is available for this action')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Execute simulated action' })).not.toBeInTheDocument();
+  });
+
+  it('allows the operator to dismiss the panel without changing the action lifecycle', () => {
+    const onDismiss = vi.fn();
+    render(
+      <MissionActionStatusPanel
+        action={action}
+        onIntent={vi.fn()}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close mission action panel' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

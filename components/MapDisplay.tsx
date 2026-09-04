@@ -484,6 +484,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const openMenu = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
+    if (indTimer.current) clearTimeout(indTimer.current);
+    if (hldTimer.current) clearTimeout(hldTimer.current);
+    interactionRef.current = null;
+    isDraggingRef.current = false;
     setPieMenu({ x, y, type, entityId });
     setLongPressIndicator(null);
     menuOpenTimeRef.current = Date.now();
@@ -682,16 +686,26 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isMarkerTarget(event.target)) return;
+    if (pieMenu || isMarkerTarget(event.target)) return;
     startInteraction(event.clientX, event.clientY, 'MAP', undefined, event.pointerType as 'mouse' | 'touch' | 'pen');
+  };
+
+  const handleMapPointerMoveCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) return;
+    moveInteraction(event.clientX, event.clientY);
+  };
+
+  const handleMapPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) return;
+    endInteraction(event.clientX, event.clientY);
   };
 
   return (
     <div
       className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
       onPointerDownCapture={handleMapPointerDownCapture}
-      onPointerMoveCapture={(e) => moveInteraction(e.clientX, e.clientY)}
-      onPointerUpCapture={(e) => endInteraction(e.clientX, e.clientY)}
+      onPointerMoveCapture={handleMapPointerMoveCapture}
+      onPointerUpCapture={handleMapPointerUpCapture}
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       // PointerCancel needed?
       onPointerCancel={() => setLongPressIndicator(null)}

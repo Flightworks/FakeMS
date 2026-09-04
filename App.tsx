@@ -61,6 +61,7 @@ const App: React.FC = () => {
   const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
   const [commandState, setCommandState] = useState<CommandState>(() => createCommandState());
   const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
+  const [missionActionPanelOpen, setMissionActionPanelOpen] = useState(false);
   const [routeProposalSet, setRouteProposalSet] = useState<RouteProposalSet | null>(null);
   const [acceptedRouteProposalId, setAcceptedRouteProposalId] = useState<string | null>(null);
   const [justificationPair, setJustificationPair] = useState<{
@@ -248,7 +249,12 @@ const App: React.FC = () => {
   }, []);
 
   const issueMissionAction = React.useCallback((request: MissionActionRequest) => {
+    setMissionActionPanelOpen(true);
     setMissionActionState(prev => dispatchMissionAction(prev, { type: 'PROPOSE', request }));
+  }, []);
+
+  const dismissMissionActionPanel = React.useCallback(() => {
+    setMissionActionPanelOpen(false);
   }, []);
 
   const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
@@ -681,12 +687,13 @@ const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      {missionActionState.active && (
+      {missionActionPanelOpen && missionActionState.active && (
         <React.Suspense fallback={null}>
           <MissionActionStatusPanel
             action={missionActionState.active}
             journal={missionActionState.journal}
             onIntent={handleMissionActionIntent}
+            onDismiss={dismissMissionActionPanel}
           />
         </React.Suspense>
       )}

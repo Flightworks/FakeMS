@@ -5,6 +5,7 @@ interface MissionActionStatusPanelProps {
   action: MissionActionRecord | null;
   journal?: MissionActionJournalEntry[];
   onIntent: (intent: MissionActionIntent) => void;
+  onDismiss: () => void;
 }
 
 const statusLabels: Record<MissionActionStatus, string> = {
@@ -18,7 +19,7 @@ const statusLabels: Record<MissionActionStatus, string> = {
   NOT_IMPLEMENTED: 'NOT IMPLEMENTED',
 };
 
-export const MissionActionStatusPanel = ({ action, journal = [], onIntent }: MissionActionStatusPanelProps) => {
+export const MissionActionStatusPanel = ({ action, journal = [], onIntent, onDismiss }: MissionActionStatusPanelProps) => {
   if (!action) return null;
 
   const actionJournal = journal.filter(entry => entry.actionId === action.id);
@@ -33,7 +34,17 @@ export const MissionActionStatusPanel = ({ action, journal = [], onIntent }: Mis
     >
       <div className="flex items-center justify-between gap-3">
         <span className="font-bold tracking-wider text-cyan-300">MISSION ACTION</span>
-        <span className="text-[10px] text-slate-400">{statusLabels[action.status]}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-right text-[10px] text-slate-400">{statusLabels[action.status]}</span>
+          <button
+            type="button"
+            aria-label="Close mission action panel"
+            onClick={onDismiss}
+            className="flex min-h-10 min-w-10 items-center justify-center rounded border border-slate-600 px-2 text-lg leading-none text-slate-300 hover:border-cyan-400 hover:text-white"
+          >
+            ×
+          </button>
+        </div>
       </div>
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <span className="text-sm text-white">{action.label}</span>
