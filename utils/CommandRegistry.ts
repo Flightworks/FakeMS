@@ -13,6 +13,11 @@ import {
     resolveEntityReference,
     type EntityReferenceResolution,
 } from '../domain/entityResolution';
+import {
+    calculateTacticalMeasurement,
+    formatTacticalMeasurement,
+    type TacticalPositionFreshness,
+} from '../domain/tacticalMeasurements';
 import { createProjectionPreview } from '../domain/designations';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
@@ -45,6 +50,7 @@ export interface CommandContext {
     renameDesignation?: (designationId: string, label: string) => void;
     deleteDesignation?: (designationId: string) => void;
     proposeClearDesignations?: () => void;
+    measurementPositionFreshness?: (entity: Entity) => TacticalPositionFreshness;
 }
 
 export interface CommandOption {
@@ -604,6 +610,76 @@ export const getCommands = (
                 },
             });
         });
+    }
+
+    // 5. Tactical BRG/RNG measurements. These results are pure, local
+    // calculations and never create navigation, route, or designation state.
+    const parsedMeasurement = parseCommand(q);
+    const measurementCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    if (parsedMeasurement.type === 'MEASUREMENT'
+        && (measurementCommand === 'BRG' || measurementCommand === 'RNG' || measurementCommand === 'BRG/RNG')
+        && parsedMeasurement.errors.length === 0) {
+        const fromReference = typeof parsedMeasurement.parameters.fromReference === 'string'
+            ? parsedMeasurement.parameters.fromReference
+            : undefined;
+        const toReference = typeof parsedMeasurement.parameters.toReference === 'string'
+            ? parsedMeasurement.parameters.toReference
+            : undefined;
+
+        if (fromReference && toReference) {
+            const fromResolution = resolveEntityReference(fromReference, entities, ownship);
+            const toResolution = resolveEntityReference(toReference, entities, ownship);
+            const failedResolution = [fromResolution, toResolution]
+                .find(resolution => resolution.status !== 'RESOLVED');
+
+            if (failedResolution) {
+                commands.push({
+                    id: `measurement-reference-status-${failedResolution.status.toLowerCase()}`,
+                    label: `${failedResolution.status}: ${failedResolution.reference}`,
+                    subLabel: `${measurementCommand} blocked · choose an unambiguous reference`,
+                    icon: Calculator,
+                    keywords: ['brg', 'rng', 'reference', failedResolution.status.toLowerCase()],
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_PARTIAL',
+                        completeness: 2,
+                        match: 'EXACT',
+                        intent: 'MEASUREMENT',
+                    },
+                });
+            } else if (fromResolution.entity && toResolution.entity) {
+                const kind = measurementCommand as 'BRG' | 'RNG' | 'BRG/RNG';
+                const measurement = calculateTacticalMeasurement(
+                    fromResolution.entity,
+                    toResolution.entity,
+                    {
+                        fromFreshness: context.measurementPositionFreshness?.(fromResolution.entity),
+                        toFreshness: context.measurementPositionFreshness?.(toResolution.entity),
+                    },
+                );
+                const referenceLabel = fromReference === 'OWNSHIP'
+                    ? toResolution.entity.label
+                    : `${fromResolution.entity.label} ${toResolution.entity.label}`;
+
+                commands.push({
+                    id: `measurement-result-${kind.toLowerCase().replace('/', '-')}-${fromResolution.entity.id}-${toResolution.entity.id}`,
+                    label: `${kind} ${referenceLabel}`,
+                    subLabel: formatTacticalMeasurement(measurement, kind),
+                    icon: Calculator,
+                    keywords: ['brg', 'rng', fromResolution.entity.label, toResolution.entity.label],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                        intent: 'MEASUREMENT',
+                    },
+                });
+            }
+        }
     }
 
     // Define Static System Commands

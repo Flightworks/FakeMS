@@ -14,7 +14,7 @@ export interface CommandRankingMetadata {
   category: CommandRankingCategory;
   completeness: number;
   match: CommandRankingMatch;
-  intent?: 'PROJECTION';
+  intent?: 'PROJECTION' | 'MEASUREMENT';
 }
 
 export interface CommandRankingItem {
@@ -84,10 +84,15 @@ export const rankCommandOptions = <T extends CommandRankingItem>(
   query: string,
   options: readonly T[],
 ): T[] => {
-  const isProjectionQuery = parseCommand(query).type === 'PROJECTION';
+  const parsed = parseCommand(query);
+  const isProjectionQuery = parsed.type === 'PROJECTION';
+  const isTacticalMeasurementQuery = parsed.type === 'MEASUREMENT'
+    && ['BRG', 'RNG', 'BRG/RNG'].includes(String(parsed.parameters.command));
   const eligibleOptions = isProjectionQuery
     ? options.filter(option => option.ranking?.intent === 'PROJECTION')
-    : options;
+    : isTacticalMeasurementQuery
+      ? options.filter(option => option.ranking?.intent === 'MEASUREMENT')
+      : options;
 
   return [...eligibleOptions].sort(compareCommands);
 };

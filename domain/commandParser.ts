@@ -344,6 +344,37 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
   return createResult('PROJECTION', tokens, parameters, warnings, errors, assumptions);
 };
 
+const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const normalizedInput = normalizeText(input);
+  const match = normalizedInput.match(/^(BRG\/RNG|BRG|RNG)(?:\s+(.*))?$/);
+  const command = match?.[1] ?? tokens[0]?.normalized ?? '';
+  const query = match?.[2]?.trim() ?? '';
+  const parameters: Record<string, string | number | null> = {
+    command,
+    query,
+  };
+  const errors: CommandParseError[] = [];
+
+  if (!query) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires at least one entity reference.`,
+    });
+  } else {
+    const references = query.split(/\s+/).filter(Boolean);
+    if (command === 'BRG/RNG' && references.length >= 2) {
+      parameters.fromReference = references[0];
+      parameters.toReference = references.slice(1).join(' ');
+    } else {
+      parameters.fromReference = 'OWNSHIP';
+      parameters.toReference = query;
+    }
+  }
+
+  if (errors.length > 0) return createResult('MEASUREMENT', tokens, parameters, ['EXECUTION_NOT_ATTEMPTED'], errors);
+  return createResult('MEASUREMENT', tokens, parameters);
+};
+
 const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIntentType => {
   if (looksLikeProjection(normalizedInput, tokens)) return 'PROJECTION';
 
@@ -380,6 +411,11 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'MEASUREMENT') {
+    const normalizedCommand = normalizedInput.split(/\s+/)[0] ?? '';
+    if (normalizedCommand === 'BRG/RNG' || normalizedCommand === 'BRG' || normalizedCommand === 'RNG') {
+      return parseMeasurement(input, tokens);
+    }
+
     return createResult('MEASUREMENT', tokens, {
       command: tokens[0].normalized,
       query: tokens.slice(1).map(token => token.normalized).join(' '),

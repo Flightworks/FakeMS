@@ -395,5 +395,50 @@ describe('CommandRegistry', () => {
       expect(getCommands('dct hostile-1', context).find(command => command.id === 'dct-hostile-1')).toBeDefined();
       expect(getCommands('focus hostile-1', context).find(command => command.id === 'focus-hostile-1')).toBeDefined();
     });
+
+    it('shows calculated BRG/RNG measurements without a mission action', () => {
+      const context = {
+        ...mockContext,
+        proposeDirectTo: vi.fn(),
+        proposeRoute: vi.fn(),
+      };
+      const commands = getCommands('BRG/RNG TARGET1', context);
+      const measurement = commands.find(command => command.id.startsWith('measurement-'));
+
+      expect(measurement).toBeDefined();
+      expect(measurement?.label).toContain('BRG/RNG');
+      expect(measurement?.subLabel).toContain('TARGET1');
+      expect(measurement?.subLabel).toContain('ENTITY_POSITIONS');
+      expect(measurement?.subLabel).toContain('CALCULATED');
+      expect(measurement?.isPreview).toBe(true);
+      expect(context.proposeDirectTo).not.toHaveBeenCalled();
+      expect(context.proposeRoute).not.toHaveBeenCalled();
+    });
+
+    it('supports single BRG and RNG measurements from the ownship', () => {
+      for (const input of ['BRG TARGET1', 'RNG TARGET1']) {
+        const measurement = getCommands(input, mockContext)
+          .find(command => command.id.startsWith('measurement-'));
+
+        expect(measurement, input).toBeDefined();
+        expect(measurement?.subLabel, input).toContain('OWNSHIP');
+        expect(measurement?.subLabel, input).toContain('TARGET1');
+      }
+    });
+
+    it('blocks an ambiguous measurement reference instead of calculating it', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { ...mockEntities[1], id: 'bravo-1', label: 'BRAVO' },
+          { ...mockEntities[1], id: 'bravo-2', label: 'BRAVO', position: { lat: 11, lon: 11 } },
+        ],
+      };
+      const commands = getCommands('RNG BRAVO', context);
+
+      expect(commands.some(command => command.label.includes('AMBIGUOUS_REFERENCE'))).toBe(true);
+      expect(commands.filter(command => command.id.startsWith('measurement-result-'))).toHaveLength(0);
+    });
   });
 });

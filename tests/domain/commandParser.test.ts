@@ -95,4 +95,29 @@ describe('typed tactical command parser', () => {
       errors: [],
     });
   });
+
+  it('parses BRG/RNG measurement references without executing them', () => {
+    const parsed = parseCommand('BRG/RNG G01 BRAVO');
+
+    expect(parsed.type).toBe('MEASUREMENT');
+    expect(parsed.parameters).toMatchObject({
+      command: 'BRG/RNG',
+      fromReference: 'G01',
+      toReference: 'BRAVO',
+    });
+    expect(parsed.errors).toEqual([]);
+  });
+
+  it('defaults single-reference BRG and RNG measurements to the ownship', () => {
+    for (const input of ['BRG BRAVO', 'RNG BRAVO']) {
+      const parsed = parseCommand(input);
+
+      expect(parsed.type, input).toBe('MEASUREMENT');
+      expect(parsed.parameters, input).toMatchObject({
+        fromReference: 'OWNSHIP',
+        toReference: 'BRAVO',
+      });
+      expect(parsed.errors, input).toEqual([]);
+    }
+  });
 });
