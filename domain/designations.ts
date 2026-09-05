@@ -16,10 +16,35 @@ export interface ProjectionPreview {
   method: typeof TACTICAL_PROJECTION_METHOD;
 }
 
+export interface SimulatedDesignation {
+  type: 'SIMULATED_DESIGNATION';
+  id: string;
+  label: string;
+  position: Position;
+  source: 'PROJECTION_PREVIEW';
+}
+
 const copyPosition = (position: Position): Position => ({
   lat: position.lat,
   lon: position.lon,
 });
+
+export const createSimulatedDesignation = (
+  preview: ProjectionPreview,
+  sequence: number,
+): SimulatedDesignation => {
+  if (!Number.isInteger(sequence) || sequence < 1) {
+    throw new Error('Designation sequence must be a positive integer');
+  }
+
+  return {
+    type: 'SIMULATED_DESIGNATION',
+    id: `designation-${sequence}`,
+    label: `P${sequence}`,
+    position: copyPosition(preview.targetPosition),
+    source: 'PROJECTION_PREVIEW',
+  };
+};
 
 export const createProjectionPreview = (
   referenceLabel: string,

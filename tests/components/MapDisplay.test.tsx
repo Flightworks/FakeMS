@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapDisplay } from '../../components/MapDisplay';
 import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
 import { createProjectionPreview } from '../../domain/designations';
+import type { SimulatedDesignation } from '../../domain/designations';
 
 // Mock Framer motion completely since useGesture and react-spring have complex internal physics
 vi.mock('@use-gesture/react', () => ({
@@ -197,6 +198,34 @@ describe('MapDisplay Component', () => {
 
     screen.getByRole('button', { name: 'Cancel projection preview' }).click();
     expect(onClearProjectionPreview).toHaveBeenCalledOnce();
+  });
+
+  it('offers confirmation and renders confirmed simulated designations separately', () => {
+    const onConfirmDesignation = vi.fn();
+    const confirmedDesignation: SimulatedDesignation = {
+      type: 'SIMULATED_DESIGNATION',
+      id: 'designation-1',
+      label: 'P1',
+      position: { lat: 34.91682, lon: -120 },
+      source: 'PROJECTION_PREVIEW',
+    };
+    const preview = createProjectionPreview('BRAVO', mockOwnship.position, 180, 5);
+
+    render(
+      <MapDisplay
+        {...defaultProps}
+        projectionPreview={preview}
+        confirmedDesignations={[confirmedDesignation]}
+        onConfirmDesignation={onConfirmDesignation}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm designation' })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Confirmed simulated designations' })).toHaveTextContent('P1');
+    expect(screen.getByTestId('confirmed-designation-P1')).toHaveTextContent('34.91682, -120.00000');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm designation' }));
+    expect(onConfirmDesignation).toHaveBeenCalledOnce();
   });
 
   it('cancels a pending map interaction when the pointer enters the preview panel', () => {

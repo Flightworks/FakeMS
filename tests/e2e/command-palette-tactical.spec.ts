@@ -47,3 +47,33 @@ test('shows and clears a temporary projection preview', async ({ page }) => {
   await page.getByRole('button', { name: 'Close command palette' }).click();
   await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
 });
+
+test('confirms a simulated designation without creating a route or track', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('BRAVO 180/5');
+  await page.getByRole('option', { name: /PROJ: BRAVO.*180.*5NM/ }).first().click();
+
+  const preview = page.getByRole('region', { name: 'Projection preview' });
+  await expect(preview).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm designation' }).click();
+
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toContainText('P1');
+  const designationPaths = page.locator('.simulated-designation-pane path');
+  await expect(designationPaths).toHaveCount(1);
+  await expect(page.locator('.simulated-designation-pane .leaflet-interactive')).toHaveCount(0);
+
+  await page.keyboard.press('Control+k');
+  await expect(input).toBeVisible();
+  await input.fill('BRAVO 180/5');
+  await page.getByRole('option', { name: /PROJ: BRAVO.*180.*5NM/ }).first().click();
+  await page.getByRole('button', { name: 'Confirm designation' }).click();
+
+  await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toContainText('P1');
+  await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toContainText('P2');
+  await expect(designationPaths).toHaveCount(2);
+});

@@ -4,7 +4,7 @@ import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
 import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
-import type { ProjectionPreview } from '../domain/designations';
+import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -53,6 +53,8 @@ interface MapDisplayProps {
   onGhostEvent?: (isGhost: boolean) => void;
   onMissionAction?: (request: MissionActionRequest) => void;
   projectionPreview?: ProjectionPreview | null;
+  confirmedDesignations?: SimulatedDesignation[];
+  onConfirmDesignation?: () => void;
   onClearProjectionPreview?: () => void;
 }
 
@@ -286,6 +288,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onGhostEvent,
   onMissionAction,
   projectionPreview,
+  confirmedDesignations = [],
+  onConfirmDesignation,
   onClearProjectionPreview,
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
@@ -698,7 +702,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const isProjectionPreviewTarget = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane'));
+    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane, .simulated-designation-pane'));
 
   const cancelProjectionPreviewInteraction = (event: React.PointerEvent<HTMLDivElement>): boolean => {
     if (!isProjectionPreviewTarget(event.target)) return false;
@@ -877,6 +881,30 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             />
           ))}
 
+        {confirmedDesignations.length > 0 && (
+          <Pane
+            name="simulatedDesignationPane"
+            className="simulated-designation-pane"
+            style={{ pointerEvents: 'auto' }}
+          >
+            {confirmedDesignations.map((designation) => (
+              <CircleMarker
+                key={designation.id}
+                center={[designation.position.lat, designation.position.lon]}
+                radius={7}
+                interactive={false}
+                pane="simulatedDesignationPane"
+                pathOptions={{
+                  color: '#a78bfa',
+                  fillColor: '#a78bfa',
+                  fillOpacity: 0.9,
+                  weight: 2,
+                }}
+              />
+            ))}
+          </Pane>
+        )}
+
         {projectionPreview && (
           <Pane
             name="projectionPreviewPane"
@@ -911,6 +939,24 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
       </MapContainer>
 
+      {confirmedDesignations.length > 0 && (
+        <section
+          className="absolute bottom-4 left-4 z-[90] rounded-lg border border-violet-400/70 bg-slate-950/90 p-3 font-mono text-xs text-slate-100 shadow-xl pointer-events-none"
+          role="status"
+          aria-label="Confirmed simulated designations"
+          aria-live="polite"
+        >
+          <div className="mb-2 border-b border-slate-800 pb-1 text-violet-300">
+            CONFIRMED SIMULATED DESIGNATIONS
+          </div>
+          {confirmedDesignations.map((designation) => (
+            <div key={designation.id} data-testid={`confirmed-designation-${designation.label}`}>
+              {designation.label} {designation.position.lat.toFixed(5)}, {designation.position.lon.toFixed(5)}
+            </div>
+          ))}
+        </section>
+      )}
+
       {projectionPreview && (
         <section
           className="projection-preview-overlay absolute top-4 left-4 z-[110] w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-cyan-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
@@ -935,6 +981,19 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             </div>
             <div className="text-slate-400">METHOD {projectionPreview.method}</div>
           </div>
+          {onConfirmDesignation && (
+            <button
+              type="button"
+              className="mt-3 min-h-[32px] w-full rounded border border-violet-400/70 px-2 py-1 text-violet-300 hover:bg-violet-400/10"
+              aria-label="Confirm designation"
+              onClick={(event) => {
+                event.stopPropagation();
+                onConfirmDesignation();
+              }}
+            >
+              CONFIRM DESIGNATION
+            </button>
+          )}
           {onClearProjectionPreview && (
             <button
               type="button"
