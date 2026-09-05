@@ -7,6 +7,10 @@ import { METERS_PER_NAUTICAL_MILE } from '../domain/tacticalUnits';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
+import {
+    rankCommandOptions,
+    type CommandRankingMetadata,
+} from '../domain/commandRanking';
 
 // Configure math evaluation in the lazy-loaded `mathEvaluator` module.
 
@@ -37,6 +41,7 @@ export interface CommandOption {
     isHistory?: boolean;
     autocompleteValue?: string;
     historyValue?: string;
+    ranking?: CommandRankingMetadata;
 }
 
 // Improved Fuzzy Coordinate Parser
@@ -152,6 +157,58 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
     return null;
 }
 
+const normalizeRankingText = (value: string): string => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+const createStructuredRanking = (
+    query: string,
+    label: string,
+    completeness = 3,
+): CommandRankingMetadata => {
+    const normalizedQuery = normalizeRankingText(query);
+    const normalizedLabel = normalizeRankingText(label);
+    const exact = normalizedQuery.length > 0 && normalizedQuery === normalizedLabel;
+    const prefix = normalizedQuery.length > 0 && normalizedLabel.startsWith(normalizedQuery);
+    const match = exact ? 'EXACT' : prefix ? 'PREFIX' : 'FUZZY';
+
+    return {
+        category: exact ? 'STRUCTURED_EXACT' : prefix ? 'STRUCTURED_PARTIAL' : 'FUZZY',
+        completeness: exact ? completeness : Math.max(0, completeness - 1),
+        match,
+    };
+};
+
+const createEntityRanking = (query: string, entity: Entity): CommandRankingMetadata => {
+    const normalizedQuery = normalizeRankingText(query);
+    const candidates = [normalizeRankingText(entity.label), normalizeRankingText(entity.id)];
+    const exact = normalizedQuery.length > 0 && candidates.includes(normalizedQuery);
+    const prefix = normalizedQuery.length > 0
+        && candidates.some(candidate => candidate.startsWith(normalizedQuery));
+
+    return {
+        category: exact ? 'ENTITY_EXACT' : prefix ? 'ENTITY_AMBIGUOUS' : 'FUZZY',
+        completeness: exact ? 3 : prefix ? 2 : 0,
+        match: exact ? 'EXACT' : prefix ? 'PREFIX' : 'FUZZY',
+    };
+};
+
+const projectionRanking = (): CommandRankingMetadata => ({
+    category: 'STRUCTURED_EXACT',
+    completeness: 3,
+    match: 'EXACT',
+    intent: 'PROJECTION',
+});
+
+const saveRanking = (): CommandRankingMetadata => ({
+    category: 'SAVE',
+    completeness: 0,
+    match: 'FUZZY',
+});
+
 export const getCommands = (
     query: string,
     context: CommandContext,
@@ -225,7 +282,12 @@ export const getCommands = (
                     icon: Calculator,
                     keywords: ['math', funcHint],
                     isPreview: true,
-                    autocompleteValue: `${funcHint}(`
+                    autocompleteValue: `${funcHint}(`,
+                    ranking: {
+                        category: 'STRUCTURED_PARTIAL',
+                        completeness: 1,
+                        match: 'PREFIX',
+                    },
                 });
             }
         }
@@ -243,7 +305,12 @@ export const getCommands = (
                     icon: Calculator,
                     action: () => { void navigator.clipboard?.writeText(mathResult.label); },
                     keywords: ['calc', 'math'],
-                    isPreview: true
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
                 });
             }
         }
@@ -261,7 +328,12 @@ export const getCommands = (
                 subLabel: 'Format Hint',
                 icon: MapPin,
                 keywords: ['hint'],
-                isPreview: true
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_PARTIAL',
+                    completeness: 1,
+                    match: 'PREFIX',
+                },
             });
         } else {
             // Add option to copy coordinates
@@ -272,7 +344,12 @@ export const getCommands = (
                 icon: Copy,
                 action: () => { navigator.clipboard.writeText(`${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`); },
                 keywords: ['copy', 'coord', 'pos'],
-                isPreview: false
+                isPreview: false,
+                ranking: {
+                    category: 'STRUCTURED_PARTIAL',
+                    completeness: 1,
+                    match: 'EXACT',
+                },
             });
             // Add option to copy original text
             commands.push({
@@ -282,7 +359,12 @@ export const getCommands = (
                 icon: Copy,
                 action: () => { navigator.clipboard.writeText(q); },
                 keywords: ['copy', 'text'],
-                isPreview: false
+                isPreview: false,
+                ranking: {
+                    category: 'STRUCTURED_PARTIAL',
+                    completeness: 1,
+                    match: 'EXACT',
+                },
             });
 
             commands.push({
@@ -292,7 +374,12 @@ export const getCommands = (
                 icon: MapPin,
                 action: () => focusMapAt(coords),
                 keywords: ['fly', 'goto', 'coord'],
-                isPreview: true
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
             });
         }
     }
@@ -315,6 +402,7 @@ export const getCommands = (
         action: () => focusMapAt({ ...focusTarget.position }),
         keywords: ['focus', 'center', focusTarget.label],
         historyValue: `FOCUS ${focusTarget.label}`,
+        ranking: createStructuredRanking(q, `FOCUS ${focusTarget.label}`),
       });
     }
   }
@@ -329,7 +417,8 @@ export const getCommands = (
             icon: Crosshair,
             action: () => focusMapAt(proj.target),
             keywords: ['proj'],
-            isPreview: true
+            isPreview: true,
+            ranking: projectionRanking(),
         });
     }
 
@@ -343,7 +432,8 @@ export const getCommands = (
             icon,
             action: () => toggleSystem(key),
             keywords,
-            historyValue: label
+            historyValue: label,
+            ranking: createStructuredRanking(q, label),
         });
     };
 
@@ -359,7 +449,8 @@ export const getCommands = (
         icon: Navigation,
         action: () => setMapMode(MapMode.NORTH_UP),
         keywords: ['north', 'nup', 'map'],
-        historyValue: 'North Up'
+        historyValue: 'North Up',
+        ranking: createStructuredRanking(q, 'North Up'),
     });
 
     systemCommands.push({
@@ -369,7 +460,8 @@ export const getCommands = (
         icon: Compass,
         action: () => setMapMode(MapMode.HEADING_UP),
         keywords: ['heading', 'hup', 'map'],
-        historyValue: 'Heading Up'
+        historyValue: 'Heading Up',
+        ranking: createStructuredRanking(q, 'Heading Up'),
     });
 
     // 3. Fuzzy Search
@@ -410,7 +502,8 @@ export const getCommands = (
                     icon: Crosshair,
                     keywords: [e.label, e.type, 'track'],
                     type: 'entity',
-                    autocompleteValue: e.label + ' '
+                    autocompleteValue: e.label + ' ',
+                    ranking: createEntityRanking(q, e),
                 },
                 // 2. Direct To Item (for Execution)
                 {
@@ -427,7 +520,8 @@ export const getCommands = (
                     },
                     keywords: ['dct', 'goto', 'direct', e.label],
                     type: 'command',
-                    historyValue: `DCT ${e.label}`
+                    historyValue: `DCT ${e.label}`,
+                    ranking: createStructuredRanking(q, `DCT ${e.label}`),
                     // No autocompleteValue -> Click executes immediately
                 },
                 {
@@ -442,7 +536,8 @@ export const getCommands = (
                     }, 'THREAT_PRIORITY'),
                     keywords: ['plan', 'route', 'proposal', e.label],
                     type: 'command',
-                    historyValue: `PLAN ${e.label}`
+                    historyValue: `PLAN ${e.label}`,
+                    ranking: createStructuredRanking(q, `PLAN ${e.label}`),
                 },
                 ...( ['THREAT_PRIORITY', 'COVERAGE', 'ENDURANCE'] as MissionObjective[]).map(objective => ({
                     id: `plan-${objective.toLowerCase()}-${e.id}`,
@@ -456,7 +551,11 @@ export const getCommands = (
                     }, objective),
                     keywords: ['plan', 'route', 'proposal', objective.toLowerCase(), e.label],
                     type: 'command' as const,
-                    historyValue: `PLAN ${objective} ${e.label}`
+                    historyValue: `PLAN ${objective} ${e.label}`,
+                    ranking: createStructuredRanking(
+                        q,
+                        `PLAN ${objective === 'THREAT_PRIORITY' ? 'THREAT' : objective} ${e.label}`,
+                    ),
                 }))
             ])
         ];
@@ -501,7 +600,8 @@ export const getCommands = (
                         if (navigator.clipboard) void navigator.clipboard.writeText(`${etaLabel}: ${timeString}`);
                     },
                     keywords: ['eta'],
-                    isPreview: true
+                    isPreview: true,
+                    ranking: createStructuredRanking(q, etaLabel),
                 });
             }
         }
@@ -516,7 +616,12 @@ export const getCommands = (
                 icon: Navigation,
                 action: () => { if (context.ownshipNavMode !== NavMode.REAL) context.toggleNavMode(); },
                 keywords: ['nav', 'real', 'gps'],
-                historyValue: 'NAV REAL'
+                historyValue: 'NAV REAL',
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
             });
         }
         const navSimMatch = q.match(/^nav\s+sim$/i);
@@ -528,7 +633,12 @@ export const getCommands = (
                 icon: Compass,
                 action: () => { if (context.ownshipNavMode !== NavMode.SIM) context.toggleNavMode(); },
                 keywords: ['nav', 'sim', 'dr', 'simulation'],
-                historyValue: 'NAV SIM'
+                historyValue: 'NAV SIM',
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
             });
         }
 
@@ -544,7 +654,12 @@ export const getCommands = (
                     icon: Compass,
                     action: () => proposeUnavailableAction('NAV', 'set-heading', `SET HDG: ${targetHdg}°`),
                     keywords: ['hdg', 'heading', 'steer'],
-                    isPreview: true
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
                 });
             }
         }
@@ -560,7 +675,12 @@ export const getCommands = (
                     icon: Zap,
                     action: () => proposeUnavailableAction('NAV', 'set-speed', `SET SPD: ${targetSpd} KTS`),
                     keywords: ['spd', 'speed', 'throttle'],
-                    isPreview: true
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
                 });
             }
         }
@@ -575,12 +695,13 @@ export const getCommands = (
                 if (navigator.clipboard) void navigator.clipboard.writeText(q);
             },
             keywords: [],
-            isHistory: false
+            isHistory: false,
+            ranking: saveRanking(),
         });
 
     } else {
         // If empty, append system commands after history
         commands.push(...systemCommands);
     }
-    return commands;
+    return q.length > 0 ? rankCommandOptions(q, commands) : commands;
 };

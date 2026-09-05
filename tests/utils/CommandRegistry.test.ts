@@ -66,6 +66,12 @@ describe('CommandRegistry', () => {
       expect(mathCmd?.label).toBe('2 + 2 = 4');
     });
 
+    it('puts the exact cos45 calculation first', () => {
+      const commands = getCommands('cos45', mockContext, createMathCommandProvider());
+
+      expect(commands[0]?.id).toBe('calc-result');
+    });
+
     it('should parse coordinate inputs', () => {
       const commands = getCommands('N45E006', mockContext);
       const flyCmd = commands.find(c => c.id === 'fly-to-coords');
@@ -91,6 +97,12 @@ describe('CommandRegistry', () => {
       const targetCmd = commands.find(c => c.id === 'sel-target1');
       expect(targetCmd).toBeDefined();
       expect(targetCmd?.label).toBe('TARGET1');
+    });
+
+    it('puts an exact entity selector before fuzzy results', () => {
+      const commands = getCommands('TARGET1', mockContext);
+
+      expect(commands[0]?.id).toBe('sel-target1');
     });
 
     it('creates direct-to commands', () => {
@@ -136,6 +148,31 @@ describe('CommandRegistry', () => {
         const saveCmd = commands.find(c => c.id === 'save-text-note');
         expect(saveCmd).toBeDefined();
         expect(saveCmd?.label).toBe('SAVE: "some random text"');
+    });
+
+    it('puts an exact projection first and excludes unrelated fallbacks', () => {
+      const bravoContext = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            id: 'bravo',
+            label: 'BRAVO',
+          },
+        ],
+      };
+      const commands = getCommands('BRAVO 180/5', bravoContext);
+
+      expect(commands[0]?.id).toBe('proj-focus');
+      expect(commands.some(command => command.id === 'save-text-note')).toBe(false);
+      expect(commands.some(command => command.id.startsWith('sys-'))).toBe(false);
+    });
+
+    it('puts the exact coordinate action before copy and save fallbacks', () => {
+      const commands = getCommands('N45E006', mockContext);
+
+      expect(commands[0]?.id).toBe('fly-to-coords');
     });
   });
 });
