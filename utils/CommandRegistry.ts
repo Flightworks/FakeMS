@@ -1,5 +1,5 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2 } from 'lucide-react';
 import Fuse from 'fuse.js';
 import { distanceBetween } from './geo';
 import { calculateEta } from '../domain/measurements';
@@ -9,7 +9,7 @@ import {
 } from '../domain/tacticalUnits';
 import { parseCommand } from '../domain/commandParser';
 import { createProjectionPreview } from '../domain/designations';
-import type { ProjectionPreview } from '../domain/designations';
+import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
@@ -35,6 +35,11 @@ export interface CommandContext {
     openDocument: (filename: string) => void;
     ownshipNavMode: NavMode;
     toggleNavMode: () => void;
+    designations?: SimulatedDesignation[];
+    listDesignations?: () => void;
+    renameDesignation?: (designationId: string, label: string) => void;
+    deleteDesignation?: (designationId: string) => void;
+    proposeClearDesignations?: () => void;
 }
 
 export interface CommandOption {
@@ -217,7 +222,24 @@ export const getCommands = (
     mathProvider?: MathCommandProvider,
 ): CommandOption[] => {
     const q = query.trim();
-    const { entities, ownship, systems, setMapMode, toggleSystem, focusMapAt, proposeDirectTo, proposeRoute, requestMissionAction, history, openDocument } = context;
+    const {
+        entities,
+        ownship,
+        systems,
+        setMapMode,
+        toggleSystem,
+        focusMapAt,
+        proposeDirectTo,
+        proposeRoute,
+        requestMissionAction,
+        history,
+        openDocument,
+        designations = [],
+        listDesignations,
+        renameDesignation,
+        deleteDesignation,
+        proposeClearDesignations,
+    } = context;
     const commands: CommandOption[] = [];
 
     const proposeUnavailableAction = (
@@ -386,7 +408,105 @@ export const getCommands = (
         }
     }
 
-    // 3. Explicit map focus: it never creates a navigation proposal.
+    // 3. Designated simulated points. These commands only call local intent
+    // callbacks; they never mutate entities, tracks, routes, or mission state.
+    const findDesignation = (reference: string): SimulatedDesignation | undefined => {
+        const normalizedReference = normalizeRankingText(reference);
+        return designations.find(designation => (
+            normalizeRankingText(designation.label) === normalizedReference
+            || normalizeRankingText(designation.id) === normalizedReference
+        ));
+    };
+
+    if (normalizeRankingText(q) === 'LIST POINTS') {
+        commands.push({
+            id: 'list-points',
+            label: 'LIST POINTS',
+            subLabel: designations.length === 0
+                ? 'No designated points'
+                : `${designations.length} designated point${designations.length === 1 ? '' : 's'}`,
+            icon: FileText,
+            action: () => listDesignations?.(),
+            keywords: ['list', 'points', 'designations'],
+            historyValue: 'LIST POINTS',
+            ranking: {
+                category: 'STRUCTURED_EXACT',
+                completeness: 3,
+                match: 'EXACT',
+            },
+        });
+    }
+
+    const pointFocusMatch = q.match(/^focus(?:\s+point)?\s+(.+)$/i);
+    if (pointFocusMatch) {
+        const designation = findDesignation(pointFocusMatch[1]);
+        if (designation) {
+            commands.push({
+                id: `focus-point-${designation.id}`,
+                label: `FOCUS ${designation.label}`,
+                subLabel: 'Map focus only · Designated point',
+                icon: Crosshair,
+                action: () => focusMapAt({ ...designation.position }),
+                keywords: ['focus', 'point', 'center', designation.label],
+                historyValue: `FOCUS ${designation.label}`,
+                ranking: createStructuredRanking(q, `FOCUS ${designation.label}`),
+            });
+        }
+    }
+
+    const renameMatch = q.match(/^rename\s+(\S+)\s+(.+)$/i);
+    if (renameMatch) {
+        const designation = findDesignation(renameMatch[1]);
+        const label = renameMatch[2].trim();
+        if (designation && label) {
+            commands.push({
+                id: `rename-point-${designation.id}`,
+                label: `RENAME ${designation.label} ${label}`,
+                subLabel: 'Rename designated point',
+                icon: FileText,
+                action: () => renameDesignation?.(designation.id, label),
+                keywords: ['rename', 'point', designation.label, label],
+                historyValue: `RENAME ${designation.label} ${label}`,
+                ranking: createStructuredRanking(q, `RENAME ${designation.label} ${label}`),
+            });
+        }
+    }
+
+    const deleteMatch = q.match(/^delete\s+(.+)$/i);
+    if (deleteMatch) {
+        const designation = findDesignation(deleteMatch[1]);
+        if (designation) {
+            commands.push({
+                id: `delete-point-${designation.id}`,
+                label: `DELETE ${designation.label}`,
+                subLabel: 'Delete designated point only',
+                icon: Trash2,
+                action: () => deleteDesignation?.(designation.id),
+                keywords: ['delete', 'point', designation.label],
+                historyValue: `DELETE ${designation.label}`,
+                ranking: createStructuredRanking(q, `DELETE ${designation.label}`),
+            });
+        }
+    }
+
+    if (normalizeRankingText(q) === 'CLEAR POINTS') {
+        commands.push({
+            id: 'clear-points',
+            label: 'CLEAR POINTS',
+            subLabel: 'Propose clear · explicit confirmation required',
+            icon: Trash2,
+            action: () => proposeClearDesignations?.(),
+            keywords: ['clear', 'points', 'designations'],
+            historyValue: 'CLEAR POINTS',
+            ranking: {
+                category: 'STRUCTURED_EXACT',
+                completeness: 3,
+                match: 'EXACT',
+            },
+        });
+    }
+
+    // 4. Explicit map focus: it never creates a navigation proposal.
   const focusMatch = q.match(/^focus(?:\s+track)?\s+(.+)$/i);
   if (focusMatch) {
     const focusTarget = new Fuse(entities, {

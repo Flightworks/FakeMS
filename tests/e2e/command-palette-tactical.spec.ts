@@ -77,3 +77,65 @@ test('confirms a simulated designation without creating a route or track', async
   await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toContainText('P2');
   await expect(designationPaths).toHaveCount(2);
 });
+
+test('manages named designated points through the command palette', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+
+  const confirmProjection = async () => {
+    await page.keyboard.press('Control+k');
+    await expect(input).toBeVisible();
+    await input.fill('BRAVO 180/5');
+    await page.getByRole('option', { name: /PROJ: BRAVO.*180.*5NM/ }).first().click();
+    await page.getByRole('button', { name: 'Confirm designation' }).click();
+  };
+
+  await confirmProjection();
+  await expect(page.getByTestId('confirmed-designation-P1')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await input.fill('LIST POINTS');
+  await page.getByRole('option', { name: /LIST POINTS/ }).first().click();
+  await expect(page.getByTestId('confirmed-designation-P1')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await input.fill('FOCUS P1');
+  await page.getByRole('option', { name: /FOCUS P1/ }).first().click();
+  await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toContainText('P1');
+  await expect(page.getByRole('dialog', { name: 'Route proposal' })).toHaveCount(0);
+
+  await page.keyboard.press('Control+k');
+  await input.fill('RENAME P1 ALPHA');
+  await page.getByRole('option', { name: /RENAME P1 ALPHA/ }).first().click();
+  await expect(page.getByTestId('confirmed-designation-ALPHA')).toContainText('ALPHA 33.99682, -118.15000');
+  await expect(page.getByTestId('confirmed-designation-P1')).toHaveCount(0);
+
+  await confirmProjection();
+  await expect(page.getByTestId('confirmed-designation-P2')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await input.fill('CLEAR POINTS');
+  await page.getByRole('option', { name: /CLEAR POINTS/ }).first().click();
+  const clearDialog = page.getByRole('dialog', { name: 'Clear designated points' });
+  await expect(clearDialog).toBeVisible();
+  await expect(page.getByTestId('confirmed-designation-ALPHA')).toBeVisible();
+  await clearDialog.getByRole('button', { name: 'Cancel clear points' }).click();
+  await expect(clearDialog).toHaveCount(0);
+  await expect(page.getByTestId('confirmed-designation-ALPHA')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await input.fill('DELETE ALPHA');
+  await page.getByRole('option', { name: /DELETE ALPHA/ }).first().click();
+  await expect(page.getByTestId('confirmed-designation-ALPHA')).toHaveCount(0);
+  await expect(page.getByTestId('confirmed-designation-P2')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await input.fill('CLEAR POINTS');
+  await page.getByRole('option', { name: /CLEAR POINTS/ }).first().click();
+  await page.getByRole('dialog', { name: 'Clear designated points' })
+    .getByRole('button', { name: 'Confirm clear points' }).click();
+  await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toHaveCount(0);
+});

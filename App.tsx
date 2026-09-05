@@ -84,6 +84,7 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [designationState, setDesignationState] = useState(() => createDesignationState());
+  const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
   const [mapReady, setMapReady] = useState(false);
   const [controlsReady, setControlsReady] = useState(false);
@@ -146,6 +147,44 @@ const App: React.FC = () => {
 
   const cancelDesignation = React.useCallback(() => {
     setDesignationState(prev => designationReducer(prev, { type: 'CANCEL_DESIGNATION' }));
+  }, []);
+
+  const listDesignations = React.useCallback(() => {
+    setDesignationListRequested(true);
+  }, []);
+
+  const renameDesignation = React.useCallback((designationId: string, label: string) => {
+    setDesignationState(prev => designationReducer(prev, {
+      type: 'RENAME_DESIGNATION',
+      designationId,
+      label,
+    }));
+  }, []);
+
+  const deleteDesignation = React.useCallback((designationId: string) => {
+    setDesignationState(prev => designationReducer(prev, {
+      type: 'DELETE_DESIGNATION',
+      designationId,
+    }));
+  }, []);
+
+  const proposeClearDesignations = React.useCallback(() => {
+    setDesignationState(prev => designationReducer(prev, {
+      type: 'PROPOSE_CLEAR_DESIGNATIONS',
+    }));
+  }, []);
+
+  const confirmClearDesignations = React.useCallback(() => {
+    setDesignationState(prev => designationReducer(prev, {
+      type: 'CONFIRM_CLEAR_DESIGNATIONS',
+    }));
+    setDesignationListRequested(false);
+  }, []);
+
+  const cancelClearDesignations = React.useCallback(() => {
+    setDesignationState(prev => designationReducer(prev, {
+      type: 'CANCEL_CLEAR_DESIGNATIONS',
+    }));
   }, []);
 
   const panAnimationRef = useRef<number | undefined>(undefined);
@@ -576,6 +615,11 @@ const App: React.FC = () => {
           proposeDirectTo: handleProposeDirectTo,
           proposeRoute: handleProposeRoute,
           requestMissionAction: issueMissionAction,
+          designations: designationState.confirmedDesignations,
+          listDesignations,
+          renameDesignation,
+          deleteDesignation,
+          proposeClearDesignations,
           openDocument: setOpenDoc,
           ownshipNavMode,
           toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
@@ -632,6 +676,7 @@ const App: React.FC = () => {
             onMissionAction={issueMissionAction}
             projectionPreview={projectionPreview}
             confirmedDesignations={designationState.confirmedDesignations}
+            showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
             onClearProjectionPreview={cancelDesignation}
               />
@@ -668,6 +713,11 @@ const App: React.FC = () => {
             onClose={closeCommandPalette}
             focusMapAt={handleFocusMapAt}
             previewProjection={previewProjection}
+            designations={designationState.confirmedDesignations}
+            listDesignations={listDesignations}
+            renameDesignation={renameDesignation}
+            deleteDesignation={deleteDesignation}
+            proposeClearDesignations={proposeClearDesignations}
             proposeDirectTo={handleProposeDirectTo}
             proposeRoute={handleProposeRoute}
             requestMissionAction={issueMissionAction}
@@ -681,6 +731,41 @@ const App: React.FC = () => {
             setOwnshipNavMode={setOwnshipNavMode}
           />
         </React.Suspense>
+      )}
+
+      {designationState.clearProposal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Clear designated points"
+        >
+          <div className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-amber-400/70 bg-slate-950 p-5 font-mono text-sm text-slate-100 shadow-2xl">
+            <div className="mb-2 text-amber-300">CLEAR DESIGNATED POINTS?</div>
+            <p className="mb-4 text-xs text-slate-400">
+              This removes {designationState.clearProposal.designationIds.length} simulated point(s) only.
+              Entities, tracks, routes, Bullseye, and past trajectory remain unchanged.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-amber-400/70 px-3 py-2 text-amber-300 hover:bg-amber-400/10"
+                aria-label="Confirm clear points"
+                onClick={confirmClearDesignations}
+              >
+                CONFIRM CLEAR POINTS
+              </button>
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-slate-600 px-3 py-2 text-slate-300 hover:bg-slate-800"
+                aria-label="Cancel clear points"
+                onClick={cancelClearDesignations}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {routeProposalSet && (

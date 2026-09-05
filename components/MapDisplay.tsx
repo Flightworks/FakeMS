@@ -54,6 +54,7 @@ interface MapDisplayProps {
   onMissionAction?: (request: MissionActionRequest) => void;
   projectionPreview?: ProjectionPreview | null;
   confirmedDesignations?: SimulatedDesignation[];
+  showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
   onClearProjectionPreview?: () => void;
 }
@@ -289,6 +290,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onMissionAction,
   projectionPreview,
   confirmedDesignations = [],
+  showDesignationList = false,
   onConfirmDesignation,
   onClearProjectionPreview,
 }) => {
@@ -939,7 +941,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
       </MapContainer>
 
-      {confirmedDesignations.length > 0 && (
+      {(confirmedDesignations.length > 0 || showDesignationList) && (
         <section
           className="absolute bottom-4 left-4 z-[90] rounded-lg border border-violet-400/70 bg-slate-950/90 p-3 font-mono text-xs text-slate-100 shadow-xl pointer-events-none"
           role="status"
@@ -947,13 +949,15 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           aria-live="polite"
         >
           <div className="mb-2 border-b border-slate-800 pb-1 text-violet-300">
-            CONFIRMED SIMULATED DESIGNATIONS
+            DESIGNATED POINTS · SIMULATED
           </div>
-          {confirmedDesignations.map((designation) => (
-            <div key={designation.id} data-testid={`confirmed-designation-${designation.label}`}>
-              {designation.label} {designation.position.lat.toFixed(5)}, {designation.position.lon.toFixed(5)}
-            </div>
-          ))}
+          {confirmedDesignations.length === 0 ? (
+            <div data-testid="no-designated-points">NO DESIGNATED POINTS</div>
+          ) : confirmedDesignations.map((designation) => (
+              <div key={designation.id} data-testid={`confirmed-designation-${designation.label}`}>
+                {designation.label} {designation.position.lat.toFixed(5)}, {designation.position.lon.toFixed(5)}
+              </div>
+            ))}
         </section>
       )}
 

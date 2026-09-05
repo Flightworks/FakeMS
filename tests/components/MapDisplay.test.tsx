@@ -228,6 +228,26 @@ describe('MapDisplay Component', () => {
     expect(onConfirmDesignation).toHaveBeenCalledOnce();
   });
 
+  it('renders the designated points list with renamed labels and stable coordinates', () => {
+    const renamedDesignation: SimulatedDesignation = {
+      type: 'SIMULATED_DESIGNATION',
+      id: 'designation-1',
+      label: 'ALPHA',
+      position: { lat: 34.91682, lon: -120 },
+      source: 'PROJECTION_PREVIEW',
+    };
+
+    render(
+      <MapDisplay
+        {...defaultProps}
+        confirmedDesignations={[renamedDesignation]}
+      />,
+    );
+
+    expect(screen.getByText('DESIGNATED POINTS · SIMULATED')).toBeInTheDocument();
+    expect(screen.getByTestId('confirmed-designation-ALPHA')).toHaveTextContent('ALPHA 34.91682, -120.00000');
+  });
+
   it('cancels a pending map interaction when the pointer enters the preview panel', () => {
     vi.useFakeTimers();
     const preview = createProjectionPreview('BRAVO', mockOwnship.position, 180, 5);

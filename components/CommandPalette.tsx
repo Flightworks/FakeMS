@@ -6,13 +6,18 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
-import type { ProjectionPreview } from '../domain/designations';
+import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   focusMapAt: (position: { lat: number, lon: number }) => void;
   previewProjection?: (preview: ProjectionPreview) => void;
+  designations?: SimulatedDesignation[];
+  listDesignations?: () => void;
+  renameDesignation?: (designationId: string, label: string) => void;
+  deleteDesignation?: (designationId: string) => void;
+  proposeClearDesignations?: () => void;
   proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
   proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
   requestMissionAction: (request: MissionActionRequest) => void;
@@ -54,6 +59,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   focusMapAt,
   previewProjection,
+  designations = [],
+  listDesignations,
+  renameDesignation,
+  deleteDesignation,
+  proposeClearDesignations,
   proposeDirectTo,
   proposeRoute,
   requestMissionAction,
@@ -164,6 +174,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       toggleSystem,
       focusMapAt,
       previewProjection,
+      designations,
+      listDesignations,
+      renameDesignation,
+      deleteDesignation,
+      proposeClearDesignations,
       proposeDirectTo,
       proposeRoute,
       requestMissionAction,
@@ -183,6 +198,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     toggleSystem,
     focusMapAt,
     previewProjection,
+    designations,
+    listDesignations,
+    renameDesignation,
+    deleteDesignation,
+    proposeClearDesignations,
     proposeDirectTo,
     proposeRoute,
     requestMissionAction,

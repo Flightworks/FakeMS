@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { getCommands, CommandContext } from '../../utils/CommandRegistry';
 import { createMathCommandProvider } from '../../utils/mathEvaluator';
 import { Entity, EntityType, NavMode } from '../../types';
+import type { SimulatedDesignation } from '../../domain/designations';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -45,6 +46,30 @@ describe('CommandRegistry', () => {
     proposeRoute: vi.fn(),
     requestMissionAction: vi.fn()
   };
+
+  const pointOne: SimulatedDesignation = {
+    type: 'SIMULATED_DESIGNATION',
+    id: 'designation-1',
+    label: 'P1',
+    position: { lat: 10, lon: 10 },
+    source: 'PROJECTION_PREVIEW',
+  };
+  const pointTwo: SimulatedDesignation = {
+    type: 'SIMULATED_DESIGNATION',
+    id: 'designation-2',
+    label: 'ALPHA',
+    position: { lat: 11, lon: 11 },
+    source: 'PROJECTION_PREVIEW',
+  };
+
+  const createPointContext = () => ({
+    ...mockContext,
+    designations: [pointOne, pointTwo],
+    listDesignations: vi.fn(),
+    renameDesignation: vi.fn(),
+    deleteDesignation: vi.fn(),
+    proposeClearDesignations: vi.fn(),
+  });
 
   describe('getCommands', () => {
     it('should generate history commands when query is empty', () => {
@@ -192,10 +217,71 @@ describe('CommandRegistry', () => {
       expect(commands.some(command => command.id.startsWith('sys-'))).toBe(false);
     });
 
-    it('puts the exact coordinate action before copy and save fallbacks', () => {
+    it('puts an exact coordinate action before copy and save fallbacks', () => {
       const commands = getCommands('N45E006', mockContext);
 
       expect(commands[0]?.id).toBe('fly-to-coords');
+    });
+
+    it('lists confirmed designated points through the list intent callback', () => {
+      const context = createPointContext();
+      const list = getCommands('LIST POINTS', context).find(command => command.id === 'list-points');
+
+      expect(list).toBeDefined();
+      expect(list?.label).toBe('LIST POINTS');
+      list?.action?.();
+
+      expect(context.listDesignations).toHaveBeenCalledOnce();
+    });
+
+    it('focuses a designated point without proposing a route', () => {
+      const focusMapAt = vi.fn();
+      const proposeDirectTo = vi.fn();
+      const context = {
+        ...createPointContext(),
+        focusMapAt,
+        proposeDirectTo,
+      };
+      const focus = getCommands('FOCUS P1', context).find(command => command.id === 'focus-point-designation-1');
+
+      expect(focus).toBeDefined();
+      focus?.action?.();
+
+      expect(focusMapAt).toHaveBeenCalledWith({ lat: 10, lon: 10 });
+      expect(proposeDirectTo).not.toHaveBeenCalled();
+    });
+
+    it('renames a designated point through its intent callback', () => {
+      const context = createPointContext();
+      const rename = getCommands('RENAME P1 ALPHA', context)
+        .find(command => command.id === 'rename-point-designation-1');
+
+      expect(rename).toBeDefined();
+      rename?.action?.();
+
+      expect(context.renameDesignation).toHaveBeenCalledWith('designation-1', 'ALPHA');
+    });
+
+    it('deletes a designated point through its intent callback', () => {
+      const context = createPointContext();
+      const deletion = getCommands('DELETE alpha', context)
+        .find(command => command.id === 'delete-point-designation-2');
+
+      expect(deletion).toBeDefined();
+      deletion?.action?.();
+
+      expect(context.deleteDesignation).toHaveBeenCalledWith('designation-2');
+    });
+
+    it('proposes clear points instead of clearing immediately', () => {
+      const context = createPointContext();
+      const clear = getCommands('CLEAR POINTS', context).find(command => command.id === 'clear-points');
+
+      expect(clear).toBeDefined();
+      clear?.action?.();
+
+      expect(context.proposeClearDesignations).toHaveBeenCalledOnce();
+      expect(context.designations).toHaveLength(2);
     });
   });
 });
