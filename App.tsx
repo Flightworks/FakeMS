@@ -30,6 +30,7 @@ import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
 import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
 import type { CommandContext } from './utils/CommandRegistry';
+import { resolveCommandIntent, type CommandIntent as CommandExecutionIntent } from './application/commandExecutor';
 import { useSimulation } from './utils/useSimulation';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
@@ -600,42 +601,51 @@ const App: React.FC = () => {
 
   const handleDropCommand = async (e: React.DragEvent) => {
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-      if (data && data.type === 'command' && data.query) {
-        const { getCommands } = await import('./utils/CommandRegistry');
-        const context: CommandContext = {
-          entities,
-          ownship,
-          systems,
-          history: [], // Stub history 
-          setMapMode: handleMapModeChange,
-          toggleSystem,
-          focusMapAt: handleFocusMapAt,
-          previewProjection,
-          proposeDirectTo: handleProposeDirectTo,
-          proposeRoute: handleProposeRoute,
-          requestMissionAction: issueMissionAction,
-          designations: designationState.confirmedDesignations,
-          listDesignations,
-          renameDesignation,
-          deleteDesignation,
-          proposeClearDesignations,
-          openDocument: setOpenDoc,
-          ownshipNavMode,
-          toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
-        };
+      const data = JSON.parse(e.dataTransfer.getData('application/json')) as {
+        type?: unknown;
+        commandId?: unknown;
+        query?: unknown;
+      };
+      if (data.type !== 'command' || typeof data.commandId !== 'string' || typeof data.query !== 'string') return;
 
-        const cmds = getCommands(data.query, context);
-        const matched = cmds.find(c => c.id === data.id) || cmds[0];
+      const [{ getCommands }, { createMathCommandProvider }] = await Promise.all([
+        import('./utils/CommandRegistry'),
+        import('./utils/mathEvaluator'),
+      ]);
+      const context: CommandContext = {
+        entities,
+        ownship,
+        systems,
+        history: [], // Stub history
+        setMapMode: handleMapModeChange,
+        toggleSystem,
+        focusMapAt: handleFocusMapAt,
+        previewProjection,
+        proposeDirectTo: handleProposeDirectTo,
+        proposeRoute: handleProposeRoute,
+        requestMissionAction: issueMissionAction,
+        designations: designationState.confirmedDesignations,
+        listDesignations,
+        renameDesignation,
+        deleteDesignation,
+        proposeClearDesignations,
+        openDocument: setOpenDoc,
+        ownshipNavMode,
+        toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
+      };
 
-        if (matched) {
-          matched.action?.();
-          // Feedback?
-          if (prototypeSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(50);
-        }
-      }
+      const commands = getCommands(data.query, context, createMathCommandProvider());
+      const intent: CommandExecutionIntent = {
+        commandId: data.commandId,
+        query: data.query,
+      };
+      const matched = resolveCommandIntent(commands, intent);
+      if (!matched) return;
+
+      matched.action?.();
+      if (prototypeSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(50);
     } catch (err) {
-      console.error("Drop failed", err);
+      console.error('Drop failed', err);
     }
   };
 

@@ -234,6 +234,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     inputRef.current?.focus();
   };
 
+  const executeCommand = (cmd: CommandOption) => {
+    if (cmd.isHistory) {
+      setQuery(cmd.label);
+      inputRef.current?.focus();
+      return;
+    }
+    if (cmd.autocompleteValue) {
+      setQuery(cmd.autocompleteValue);
+      inputRef.current?.focus();
+      return;
+    }
+    addToHistory(cmd.historyValue || query);
+    cmd.action?.();
+    if (!cmd.keepPaletteOpen) onClose();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab' && completions.length > 0) {
       e.preventDefault();
@@ -272,22 +288,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (commands[selectedIndex]) {
-        const cmd = commands[selectedIndex];
-        if (cmd.isHistory) {
-          setQuery(cmd.label);
-          inputRef.current?.focus();
-          return;
-        }
-        if (cmd.autocompleteValue) {
-          setQuery(cmd.autocompleteValue);
-          inputRef.current?.focus();
-          return;
-        }
-        addToHistory(cmd.historyValue || query);
-        cmd.action?.();
-        if (!cmd.keepPaletteOpen) onClose();
-      }
+      if (commands[selectedIndex]) executeCommand(commands[selectedIndex]);
     } else if (e.key === 'Escape') {
       onClose();
     }
@@ -295,11 +296,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Drag Handlers
   const handleDragStart = (e: React.DragEvent, cmd: CommandOption) => {
+    const commandQuery = cmd.historyValue || query;
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'command',
-      id: cmd.id,
-      label: cmd.label,
-      query: query // Pass the query too in case it's a coordinate
+      commandId: cmd.id,
+      query: commandQuery,
     }));
     e.dataTransfer.effectAllowed = 'copy';
   };
@@ -308,12 +309,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const handleSwipe = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, cmd: CommandOption) => {
     if (info.offset.x > 100) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(50); // Haptic feedback on swipe execution
+        navigator.vibrate(50); // Haptic feedback for the same command path.
       }
-      // Trigger Action
-      addToHistory(cmd.historyValue || query);
-      cmd.action?.();
-      if (!cmd.keepPaletteOpen) onClose();
+      executeCommand(cmd);
     }
   };
 
@@ -469,19 +467,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                      group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
                      ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
                    `}
-                    onClick={() => {
-                      if (cmd.isHistory) {
-                        setQuery(cmd.label);
-                        inputRef.current?.focus();
-                      } else if (cmd.autocompleteValue) {
-                        setQuery(cmd.autocompleteValue);
-                        inputRef.current?.focus();
-                      } else {
-                        addToHistory(cmd.historyValue || query);
-                        cmd.action?.();
-                        if (!cmd.keepPaletteOpen) onClose();
-                      }
-                    }}
+                    onClick={() => executeCommand(cmd)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
                   >
