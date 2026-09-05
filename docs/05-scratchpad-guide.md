@@ -73,6 +73,15 @@ Calculate an exact physical position relative to any entity.
 *   `G01 090/10` ➔ Point 10 NM directly East of G01.
 *   `180/5` ➔ Point 5 NM South of your **Ownship**.
 
+The tactical parser accepts equivalent bearing/range forms:
+*   `BRAVO 180/5`
+*   `BRAVO 180/5 NM`
+*   `BRAVO 180 5NM`
+*   `FROM BRAVO 180/5NM`
+*   `BRAVO BRG 180 RNG 5 NM`
+
+These forms normalize to `FROM BRAVO BRG 180°T RNG 5.0 NM`. A range without a unit is treated as NM only in the compact tactical form containing `/`; the parser records this as `ASSUMED NM`. Bearings must be from `000` through `359.999`, ranges must be positive, and the range unit must be a distance unit. Invalid input is returned as a structured error and is not executed. Entity-name resolution remains the responsibility of the mission context that consumes the parsed command.
+
 ### Estimated Time of Arrival (ETA)
 Estimate your arrival time based on the distance to the target and your current speed.
 *   `ETA ALPHA`

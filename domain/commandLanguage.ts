@@ -19,7 +19,11 @@ export type CommandErrorCode =
   | 'INCOMPLETE_COMMAND'
   | 'MISSING_UNIT'
   | 'NON_FINITE_NUMBER'
-  | 'INVALID_NUMBER';
+  | 'INVALID_NUMBER'
+  | 'INVALID_BEARING'
+  | 'INVALID_RANGE'
+  | 'UNKNOWN_UNIT'
+  | 'INCOMPATIBLE_UNIT';
 
 export interface CommandParseError {
   code: CommandErrorCode;
