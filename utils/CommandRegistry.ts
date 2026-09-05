@@ -8,6 +8,11 @@ import {
     createTacticalQuantity,
 } from '../domain/tacticalUnits';
 import { parseCommand } from '../domain/commandParser';
+import {
+    formatEntityReferenceCandidate,
+    resolveEntityReference,
+    type EntityReferenceResolution,
+} from '../domain/entityResolution';
 import { createProjectionPreview } from '../domain/designations';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
@@ -111,8 +116,10 @@ const parseCoordinates = (query: string): { lat: number, lon: number, isPartial?
 }
 
 interface ParsedProjection {
-    label: string;
-    preview: ProjectionPreview;
+    label?: string;
+    preview?: ProjectionPreview;
+    resolution: EntityReferenceResolution;
+    createCandidateQuery: (candidateId: string) => string;
 }
 
 const parseProjection = (query: string, entities: Entity[], ownship: Entity): ParsedProjection | null => {
@@ -131,14 +138,17 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): Pa
     const referenceName = typeof parsed.parameters.reference === 'string'
         ? parsed.parameters.reference
         : 'OWNSHIP';
-    const normalizedReference = normalizeRankingText(referenceName);
-    const referenceEntity = normalizedReference === 'OWNSHIP'
-        ? ownship
-        : entities.find(entity => (
-            normalizeRankingText(entity.label) === normalizedReference
-            || normalizeRankingText(entity.id) === normalizedReference
-        ));
-    if (!referenceEntity) return null;
+    const resolution = resolveEntityReference(referenceName, entities, ownship);
+    const createCandidateQuery = (candidateId: string): string => (
+        `PROJ ${candidateId} ${bearing}/${range}${unit}`
+    );
+
+    if (!resolution.executable || !resolution.entity) {
+        return {
+            resolution,
+            createCandidateQuery,
+        };
+    }
 
     let rangeNauticalMiles: number;
     try {
@@ -150,14 +160,16 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): Pa
 
     try {
         const preview = createProjectionPreview(
-            referenceEntity.label,
-            { ...referenceEntity.position },
+            resolution.entity.label,
+            { ...resolution.entity.position },
             bearing,
             rangeNauticalMiles,
         );
         return {
-            label: `PROJ: ${referenceEntity.label} BRG ${bearing}°/RNG ${rangeNauticalMiles}NM`,
+            label: `PROJ: ${resolution.entity.label} BRG ${bearing}°/RNG ${rangeNauticalMiles}NM`,
             preview,
+            resolution,
+            createCandidateQuery,
         };
     } catch {
         return null;
@@ -531,7 +543,7 @@ export const getCommands = (
 
   // 4. Entity Projection
     const proj = parseProjection(q, entities, ownship);
-    if (proj) {
+    if (proj?.preview && proj.label) {
         commands.push({
             id: 'proj-focus',
             label: proj.label,
@@ -539,15 +551,58 @@ export const getCommands = (
             icon: Crosshair,
             action: () => {
                 if (context.previewProjection) {
-                    context.previewProjection(proj.preview);
+                    context.previewProjection(proj.preview!);
                     return;
                 }
-                focusMapAt(proj.preview.targetPosition);
+                focusMapAt(proj.preview!.targetPosition);
             },
             keywords: ['proj'],
             isPreview: true,
             keepPaletteOpen: true,
             ranking: projectionRanking(),
+        });
+    } else if (proj) {
+        const resolution = proj.resolution;
+        const isFuzzySuggestion = resolution.status === 'FUZZY_SUGGESTION';
+        const statusSubLabel = resolution.status === 'UNKNOWN_REFERENCE'
+            ? 'No matching entity · projection blocked'
+            : isFuzzySuggestion
+                ? 'Choose a suggestion explicitly · projection blocked'
+                : 'Multiple matching entities · choose a reference';
+        const match = isFuzzySuggestion ? 'FUZZY' : resolution.match === 'IDENTIFIER_EXACT'
+            || resolution.match === 'LABEL_EXACT' ? 'EXACT' : 'PREFIX';
+
+        commands.push({
+            id: `proj-reference-status-${resolution.status.toLowerCase()}`,
+            label: `${resolution.status}: ${resolution.reference}`,
+            subLabel: statusSubLabel,
+            icon: Crosshair,
+            keywords: ['proj', 'reference', resolution.status.toLowerCase()],
+            keepPaletteOpen: true,
+            ranking: {
+                category: 'STRUCTURED_PARTIAL',
+                completeness: 2,
+                match,
+                intent: 'PROJECTION',
+            },
+        });
+
+        resolution.candidates.forEach(candidate => {
+            commands.push({
+                id: `proj-reference-candidate-${candidate.id}`,
+                label: candidate.label,
+                subLabel: formatEntityReferenceCandidate(candidate),
+                icon: Crosshair,
+                keywords: ['proj', 'reference', candidate.label, candidate.type, candidate.id],
+                autocompleteValue: proj.createCandidateQuery(candidate.id),
+                keepPaletteOpen: true,
+                ranking: {
+                    category: 'ENTITY_AMBIGUOUS',
+                    completeness: 2,
+                    match,
+                    intent: 'PROJECTION',
+                },
+            });
         });
     }
 

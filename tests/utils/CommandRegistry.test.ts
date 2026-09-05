@@ -283,5 +283,117 @@ describe('CommandRegistry', () => {
       expect(context.proposeClearDesignations).toHaveBeenCalledOnce();
       expect(context.designations).toHaveLength(2);
     });
+
+    it('lists ambiguous projection candidates without creating a projection action', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            id: 'hostile-1',
+            label: 'HOSTILE 1',
+          },
+          {
+            ...mockEntities[1],
+            id: 'hostile-2',
+            label: 'HOSTILE 2',
+            position: { lat: 11, lon: 11 },
+          },
+        ],
+        previewProjection: vi.fn(),
+      };
+
+      const commands = getCommands('HOSTILE 180/5', context);
+
+      expect(commands.find(command => command.id === 'proj-focus')).toBeUndefined();
+      expect(commands.some(command => command.label.length > 0)).toBe(true);
+      expect(commands.some(command => command.label.includes('AMBIGUOUS_REFERENCE'))).toBe(true);
+      expect(commands.filter(command => command.id.startsWith('proj-reference-candidate-'))).toHaveLength(2);
+      expect(commands.every(command => command.action === undefined)).toBe(true);
+      expect(commands[1]?.subLabel).toMatch(/ENEMY|id=|NM/);
+      expect(context.previewProjection).not.toHaveBeenCalled();
+    });
+
+    it('requires explicit candidate selection before a projection is executable', () => {
+      const previewProjection = vi.fn();
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            id: 'hostile-1',
+            label: 'HOSTILE 1',
+          },
+          {
+            ...mockEntities[1],
+            id: 'hostile-2',
+            label: 'HOSTILE 2',
+            position: { lat: 11, lon: 11 },
+          },
+        ],
+        previewProjection,
+      };
+      const ambiguous = getCommands('HOSTILE 180/5', context);
+      const candidate = ambiguous.find(command => command.id === 'proj-reference-candidate-hostile-1');
+
+      expect(candidate).toBeDefined();
+      expect(candidate?.action).toBeUndefined();
+      expect(candidate?.autocompleteValue).toMatch(/^PROJ hostile-1 180\/5/);
+
+      const selected = getCommands(candidate?.autocompleteValue ?? '', context)
+        .find(command => command.id === 'proj-focus');
+      expect(selected).toBeDefined();
+      selected?.action?.();
+      expect(previewProjection).toHaveBeenCalledOnce();
+    });
+
+    it('shows a fuzzy projection suggestion but never executes it automatically', () => {
+      const previewProjection = vi.fn();
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            id: 'bravo',
+            label: 'BRAVO',
+          },
+        ],
+        previewProjection,
+      };
+
+      const commands = getCommands('BRAVX 180/5', context);
+
+      expect(commands.find(command => command.id === 'proj-focus')).toBeUndefined();
+      expect(commands.some(command => command.label.includes('FUZZY_SUGGESTION'))).toBe(true);
+      expect(commands.find(command => command.id === 'proj-reference-candidate-bravo')?.autocompleteValue)
+        .toMatch(/^PROJ bravo 180\/5/);
+      expect(context.previewProjection).not.toHaveBeenCalled();
+    });
+
+    it('keeps exact DCT and FOCUS commands available with projection reference resolution', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            id: 'hostile-1',
+            label: 'HOSTILE 1',
+          },
+          {
+            ...mockEntities[1],
+            id: 'hostile-2',
+            label: 'HOSTILE 2',
+            position: { lat: 11, lon: 11 },
+          },
+        ],
+      };
+
+      expect(getCommands('dct hostile-1', context).find(command => command.id === 'dct-hostile-1')).toBeDefined();
+      expect(getCommands('focus hostile-1', context).find(command => command.id === 'focus-hostile-1')).toBeDefined();
+    });
   });
 });
