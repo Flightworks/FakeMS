@@ -6,6 +6,7 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
+import { getTacticalCompletions, type TacticalCompletion } from '../domain/commandCompletion';
 import type { MissionObjective } from '../domain/intent';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 
@@ -218,11 +219,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return parsed.type === 'PROJECTION' ? parsed.errors : [];
   }, [query]);
 
+  const completions = useMemo(
+    () => getTacticalCompletions(query, entities, ownship),
+    [query, entities, ownship],
+  );
+
   useEffect(() => {
     setSelectedIndex(0);
   }, [commands]);
 
+  const applyCompletion = (completion: TacticalCompletion) => {
+    setQuery(completion.value);
+    setSelectedIndex(0);
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab' && completions.length > 0) {
+      e.preventDefault();
+      applyCompletion(completions[0]);
+      return;
+    }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       // If navigating history (and query matches history), allow moving back down to empty?
@@ -395,6 +413,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           >
             {projectionErrors.map(error => (
               <div key={`${error.code}-${error.message}`}>{error.message}</div>
+            ))}
+          </div>
+        )}
+
+        {completions.length > 0 && (
+          <div
+            className="shrink-0 max-h-32 overflow-y-auto border-b border-slate-800 bg-slate-900/60"
+            role="listbox"
+            aria-label="Tactical completions"
+          >
+            {completions.map(completion => (
+              <button
+                key={`${completion.stage}-${completion.value}`}
+                type="button"
+                role="option"
+                aria-label={`${completion.label} · ${completion.subLabel}`}
+                className="w-full px-4 py-2 text-left text-xs font-mono text-emerald-200 hover:bg-emerald-900/30 focus:bg-emerald-900/30 focus:outline-none"
+                onClick={() => applyCompletion(completion)}
+              >
+                <span className="font-bold">{completion.label}</span>
+                <span className="ml-2 text-slate-400">{completion.subLabel}</span>
+              </button>
             ))}
           </div>
         )}

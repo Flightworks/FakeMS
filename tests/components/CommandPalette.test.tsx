@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { CommandPalette } from '../../components/CommandPalette';
 import { Entity, EntityType, NavMode } from '../../types';
@@ -174,4 +174,36 @@ describe('CommandPalette Component', () => {
 
     unmount();
   });
+
+  it('completes a reference with Tab without executing or closing the palette', () => {
+    vi.clearAllMocks();
+    render(<CommandPalette {...mockProps} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'TAR' } });
+    fireEvent.keyDown(input, { key: 'Tab' });
+
+    expect(input).toHaveValue('TARGET1 ');
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+    expect(mockProps.proposeDirectTo).not.toHaveBeenCalled();
+  });
+
+  it('keeps unit choices as non-executing completions', () => {
+    vi.clearAllMocks();
+    render(<CommandPalette {...mockProps} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'TARGET1 180/5' } });
+
+    const completionList = screen.getByRole('listbox', { name: 'Tactical completions' });
+    expect(within(completionList).getByRole('option', { name: /NM/ })).toBeInTheDocument();
+    expect(within(completionList).getByRole('option', { name: /KM/ })).toBeInTheDocument();
+    expect(within(completionList).getByRole('option', { name: /^M · UNITÉ DE PORTÉE · M$/ })).toBeInTheDocument();
+
+    fireEvent.click(within(completionList).getByRole('option', { name: /UNITÉ DE PORTÉE · NM/ }));
+
+    expect(input).toHaveValue('TARGET1 180/5NM');
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+  });
+
 });

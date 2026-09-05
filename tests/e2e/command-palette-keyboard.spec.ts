@@ -78,3 +78,25 @@ test('keeps the command palette above a reduced touch viewport', async ({ page }
   await expect(dialog).toBeHidden();
   expect(pageErrors).toEqual([]);
 });
+
+test('completes tactical projection parts without executing the command', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const palette = page.getByRole('dialog', { name: 'Tactical command palette' });
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(palette).toBeVisible();
+
+  await input.fill('BRA');
+  const completions = page.getByRole('listbox', { name: 'Tactical completions' });
+  await expect(completions.getByRole('option', { name: /BRAVO · REFERENCE/ })).toBeVisible();
+
+  await input.press('Tab');
+  await expect(input).toHaveValue('BRAVO ');
+  await expect(palette).toBeVisible();
+
+  await input.fill('BRAVO 180/5');
+  await completions.getByRole('option', { name: /NM · UNITÉ DE PORTÉE · NM/ }).tap();
+  await expect(input).toHaveValue('BRAVO 180/5NM');
+  await expect(palette).toBeVisible();
+});
