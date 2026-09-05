@@ -74,7 +74,7 @@ export const projectTacticalPosition = (
   validateRange(rangeNauticalMiles);
 
   const latitude = degreesToRadians(reference.lat);
-  const longitude = degreesToRadians(reference.lon);
+  const longitude = degreesToRadians(normalizeLongitude(reference.lon));
   const bearing = degreesToRadians(bearingDegrees);
   const angularDistance = rangeNauticalMiles * METERS_PER_NAUTICAL_MILE / EARTH_RADIUS;
 

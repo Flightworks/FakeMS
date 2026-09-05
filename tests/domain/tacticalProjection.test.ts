@@ -71,6 +71,15 @@ describe('qualified tactical projection', () => {
     expect(result.position.lon).toBeLessThanOrEqual(180);
   });
 
+  it('keeps the output finite for an extreme finite reference longitude', () => {
+    const result = projectTacticalPosition({ lat: 0, lon: Number.MAX_VALUE }, 90, 5);
+
+    expect(Number.isFinite(result.position.lat)).toBe(true);
+    expect(Number.isFinite(result.position.lon)).toBe(true);
+    expect(result.position.lon).toBeGreaterThanOrEqual(-180);
+    expect(result.position.lon).toBeLessThanOrEqual(180);
+  });
+
   it.each([
     [{ lat: 85, lon: 20 }, 90, { lat: 84.999309847336, lon: 20.954341713410 }],
     [{ lat: -85, lon: 20 }, 270, { lat: -84.999309847336, lon: 19.045658286590 }],
