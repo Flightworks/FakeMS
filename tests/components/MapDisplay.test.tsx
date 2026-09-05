@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapDisplay } from '../../components/MapDisplay';
 import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
@@ -21,6 +21,8 @@ vi.mock('lucide-react', () => ({
   Crosshair: () => <div data-testid="icon-crosshair" />,
   Navigation: () => <div data-testid="icon-navigation" />,
   ChevronUp: () => <div data-testid="icon-chevron-up" />,
+  ChevronRight: () => <div data-testid="icon-chevron-right" />,
+  X: () => <div data-testid="icon-x" />,
   MapPin: () => <div />,
   Info: () => <div />,
   Trash2: () => <div />,
@@ -197,7 +199,27 @@ describe('MapDisplay Component', () => {
     expect(onClearProjectionPreview).toHaveBeenCalledOnce();
   });
 
+  it('cancels a pending map interaction when the pointer enters the preview panel', () => {
+    vi.useFakeTimers();
+    const preview = createProjectionPreview('BRAVO', mockOwnship.position, 180, 5);
+
+    render(<MapDisplay {...defaultProps} projectionPreview={preview} />);
+
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    const previewPanel = screen.getByRole('region', { name: 'Projection preview' });
+    fireEvent.pointerDown(mapRoot, { pointerId: 1, pointerType: 'mouse', clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(previewPanel, { pointerId: 1, pointerType: 'mouse', clientX: 20, clientY: 20 });
+
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 50);
+    });
+
+    expect(screen.queryByRole('dialog', { name: 'MAP ACTION radial menu' })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
@@ -698,11 +698,22 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const isProjectionPreviewTarget = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay]'));
+    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane'));
+
+  const cancelProjectionPreviewInteraction = (event: React.PointerEvent<HTMLDivElement>): boolean => {
+    if (!isProjectionPreviewTarget(event.target)) return false;
+
+    cancelCustomInteraction();
+    if (event.pointerType === 'touch') {
+      activeTouchPointersRef.current.delete(event.pointerId);
+      if (activeTouchPointersRef.current.size === 0) isPinchingRef.current = false;
+    }
+    return true;
+  };
 
   const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (cancelProjectionPreviewInteraction(event)) return;
     if (pieMenu) return;
-    if (isProjectionPreviewTarget(event.target)) return;
 
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.add(event.pointerId);
@@ -718,12 +729,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerMoveCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pieMenu || isProjectionPreviewTarget(event.target) || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
+    if (cancelProjectionPreviewInteraction(event)) return;
+    if (pieMenu || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
     moveInteraction(event.clientX, event.clientY);
   };
 
   const handleMapPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isProjectionPreviewTarget(event.target)) return;
+    if (cancelProjectionPreviewInteraction(event)) return;
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
       if (isPinchingRef.current) {
@@ -739,7 +751,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerCancelCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isProjectionPreviewTarget(event.target)) return;
+    if (cancelProjectionPreviewInteraction(event)) return;
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
       if (activeTouchPointersRef.current.size === 0) isPinchingRef.current = false;
@@ -866,9 +878,15 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           ))}
 
         {projectionPreview && (
-          <>
+          <Pane
+            name="projectionPreviewPane"
+            className="projection-preview-pane"
+            style={{ pointerEvents: 'auto' }}
+          >
             <Polyline
               positions={projectionLinePositions}
+              interactive={false}
+              pane="projectionPreviewPane"
               pathOptions={{
                 color: '#22d3ee',
                 dashArray: '8 6',
@@ -879,6 +897,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             <CircleMarker
               center={[projectionPreview.targetPosition.lat, projectionPreview.targetPosition.lon]}
               radius={8}
+              interactive={false}
+              pane="projectionPreviewPane"
               pathOptions={{
                 color: '#fbbf24',
                 fillColor: '#fbbf24',
@@ -886,14 +906,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 weight: 2,
               }}
             />
-          </>
+          </Pane>
         )}
 
       </MapContainer>
 
       {projectionPreview && (
         <section
-          className="projection-preview-overlay absolute top-4 left-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-cyan-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          className="projection-preview-overlay absolute top-4 left-4 z-[110] w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-cyan-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
           data-projection-preview-overlay
           role="region"
           aria-label="Projection preview"
