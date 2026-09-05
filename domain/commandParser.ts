@@ -106,11 +106,15 @@ const parseCoordinate = (tokens: CommandToken[]): ParsedCommand => {
 };
 
 const PROJECTION_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+const COMPACT_PROJECTION_SEPARATOR_PATTERN = /(?:^|\s)[+-]?(?:\d+(?:\.\d*)?|\.\d+|NAN|INFINITY|INF)\s*\/\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+|NAN|INFINITY|INF)/i;
 
 const isProjectionNumber = (value: string | undefined): boolean => {
   if (!value) return false;
   return value === NON_FINITE_MARKER || PROJECTION_NUMBER_PATTERN.test(value);
 };
+
+const hasCompactProjectionSeparator = (input: string): boolean =>
+  COMPACT_PROJECTION_SEPARATOR_PATTERN.test(input.trim());
 
 const normalizeProjectionPart = (value: string): string =>
   normalizeText(safeTokenValue(value));
@@ -206,6 +210,8 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
     .filter(Boolean);
   let index = 0;
   const explicitCommand = isExplicitProjectionCommand(parts[0]);
+  const containsSlash = input.includes('/');
+  const hasValidCompactSeparator = hasCompactProjectionSeparator(input);
 
   if (explicitCommand) index += 1;
   if (parts[index] === 'FROM') index += 1;
@@ -255,6 +261,20 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
   const bearing = parseNormalizedNumber(bearingToken);
   const range = parseNormalizedNumber(rangeParts.numberToken);
 
+  if (containsSlash && rawRangeToken && !hasValidCompactSeparator) {
+    errors.push({
+      code: 'INVALID_SYNTAX',
+      message: 'Projection slash must separate the bearing and range.',
+    });
+  }
+
+  if (index < parts.length) {
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: `Unexpected projection argument: ${parts.slice(index).join(' ')}`,
+    });
+  }
+
   if (!bearingToken || !rawRangeToken) {
     errors.push({
       code: 'INCOMPLETE_COMMAND',
@@ -287,12 +307,12 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
       errors.push({ code: 'INVALID_NUMBER', message: 'Range must be numeric.' });
     } else if (range <= 0) {
       errors.push({ code: 'INVALID_RANGE', message: 'Projection range must be positive.' });
-    } else if (!unitText && !(input.includes('/') && !explicitCommand)) {
+    } else if (!unitText && !(hasValidCompactSeparator && !explicitCommand)) {
       errors.push({ code: 'MISSING_UNIT', message: 'Projection range requires an explicit unit.' });
     } else {
       try {
         quantity = createTacticalQuantity(range, unitText, {
-          allowImplicitNauticalMile: input.includes('/') && !explicitCommand,
+          allowImplicitNauticalMile: hasValidCompactSeparator && !explicitCommand,
         });
         if (quantity.dimension !== 'DISTANCE') {
           errors.push({

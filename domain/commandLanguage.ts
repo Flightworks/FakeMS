@@ -23,7 +23,9 @@ export type CommandErrorCode =
   | 'INVALID_BEARING'
   | 'INVALID_RANGE'
   | 'UNKNOWN_UNIT'
-  | 'INCOMPATIBLE_UNIT';
+  | 'INCOMPATIBLE_UNIT'
+  | 'INVALID_SYNTAX'
+  | 'UNEXPECTED_ARGUMENT';
 
 export interface CommandParseError {
   code: CommandErrorCode;
