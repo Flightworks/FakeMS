@@ -30,6 +30,7 @@ export type CommandErrorCode =
 export interface CommandParseError {
   code: CommandErrorCode;
   message: string;
+  hint?: string;
 }
 
 export type CommandParameter = string | number | null;

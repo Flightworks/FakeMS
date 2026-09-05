@@ -5,6 +5,7 @@ import { getCommands, CommandOption, CommandContext } from '../utils/CommandRegi
 import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
+import { parseCommand } from '../domain/commandParser';
 import type { MissionObjective } from '../domain/intent';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 
@@ -212,6 +213,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     mathProvider,
   ]);
 
+  const projectionErrors = useMemo(() => {
+    const parsed = parseCommand(query);
+    return parsed.type === 'PROJECTION' ? parsed.errors : [];
+  }, [query]);
+
   useEffect(() => {
     setSelectedIndex(0);
   }, [commands]);
@@ -379,6 +385,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               )}
             </span>
             {historyIndex > -1 && <span className="flex items-center gap-1 text-slate-400"><History size={10} /> HISTORY ({historyIndex + 1})</span>}
+          </div>
+        )}
+        {projectionErrors.length > 0 && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="shrink-0 px-4 py-2 border-b border-amber-500/40 bg-amber-950/30 text-amber-200 text-xs font-mono"
+          >
+            {projectionErrors.map(error => (
+              <div key={`${error.code}-${error.message}`}>{error.message}</div>
+            ))}
           </div>
         )}
 

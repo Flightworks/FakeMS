@@ -276,10 +276,25 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
   }
 
   if (!bearingToken || !rawRangeToken) {
-    errors.push({
-      code: 'INCOMPLETE_COMMAND',
-      message: 'Projection requires a reference, bearing, and range.',
-    });
+    if (bearingToken && !rawRangeToken) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: `PORTÉE MANQUANTE — exemple : ${reference} ${formatBearing(bearing ?? 180)}/5NM`,
+        hint: 'Complete the range after the slash.',
+      });
+    } else if (!bearingToken && rawRangeToken) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: `CAP MANQUANT — exemple : ${reference} 180/${rawRangeToken}`,
+        hint: 'Enter a true bearing from 000 to 359.999 degrees.',
+      });
+    } else {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: `CAP ET PORTÉE MANQUANTS — exemple : ${reference} 180/5NM`,
+        hint: 'Enter a bearing and a range.',
+      });
+    }
   }
 
   if (bearingToken) {
@@ -287,11 +302,12 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
     if (bearingToken === NON_FINITE_MARKER) {
       errors.push(nonFiniteError());
     } else if (bearing === null) {
-      errors.push({ code: 'INVALID_NUMBER', message: 'Bearing must be numeric.' });
+      errors.push({ code: 'INVALID_NUMBER', message: 'CAP INVALIDE — le cap doit être numérique.' });
     } else if (bearing < 0 || bearing >= 360) {
       errors.push({
         code: 'INVALID_BEARING',
-        message: 'Bearing must be between 000 and 359.999 degrees.',
+        message: 'CAP HORS LIMITES — attendu : 000 à 359.999°',
+        hint: 'Normalize the true bearing to the range [000, 360).',
       });
     }
   }
@@ -328,7 +344,15 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
           const code: CommandParseError['code'] = error.code === 'UNKNOWN_UNIT'
             ? 'UNKNOWN_UNIT'
             : 'INVALID_RANGE';
-          errors.push({ code, message: error.message });
+          errors.push({
+            code,
+            message: code === 'UNKNOWN_UNIT'
+              ? 'UNITÉ INCONNUE — NM, KM ou M'
+              : 'PORTÉE INVALIDE — attend une distance positive.',
+            ...(code === 'UNKNOWN_UNIT'
+              ? { hint: 'Supported projection units: NM, KM or M.' }
+              : {}),
+          });
         } else {
           errors.push({ code: 'INVALID_RANGE', message: 'Projection range is invalid.' });
         }
