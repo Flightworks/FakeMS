@@ -24,6 +24,7 @@ import { createCommandState, dispatchCommand } from './application/commandDispat
 import { MissionActionIntent } from './application/missionActionReducer';
 import { createMissionActionState, dispatchMissionAction } from './application/missionActionReducer';
 import type { MissionActionRequest } from './domain/missionActions';
+import type { ProjectionPreview } from './domain/designations';
 import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
 import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
@@ -81,6 +82,7 @@ const App: React.FC = () => {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [projectionPreview, setProjectionPreview] = useState<ProjectionPreview | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [controlsReady, setControlsReady] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
@@ -123,6 +125,11 @@ const App: React.FC = () => {
 
   const closeCommandPalette = React.useCallback(() => {
     setCommandPaletteOpen(false);
+    setProjectionPreview(null);
+  }, []);
+
+  const previewProjection = React.useCallback((preview: ProjectionPreview) => {
+    setProjectionPreview(preview);
   }, []);
 
   const panAnimationRef = useRef<number | undefined>(undefined);
@@ -549,6 +556,7 @@ const App: React.FC = () => {
           setMapMode: handleMapModeChange,
           toggleSystem,
           focusMapAt: handleFocusMapAt,
+          previewProjection,
           proposeDirectTo: handleProposeDirectTo,
           proposeRoute: handleProposeRoute,
           requestMissionAction: issueMissionAction,
@@ -606,6 +614,8 @@ const App: React.FC = () => {
             groundAnchor={groundAnchor}
             onGhostEvent={handleGhostEvent}
             onMissionAction={issueMissionAction}
+            projectionPreview={projectionPreview}
+            onClearProjectionPreview={() => setProjectionPreview(null)}
               />
             </React.Suspense>
           ) : (
@@ -639,6 +649,7 @@ const App: React.FC = () => {
             isOpen={commandPaletteOpen}
             onClose={closeCommandPalette}
             focusMapAt={handleFocusMapAt}
+            previewProjection={previewProjection}
             proposeDirectTo={handleProposeDirectTo}
             proposeRoute={handleProposeRoute}
             requestMissionAction={issueMissionAction}

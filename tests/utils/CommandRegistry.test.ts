@@ -85,6 +85,29 @@ describe('CommandRegistry', () => {
       expect(projCmd?.label).toContain('PROJ: TARGET1');
     });
 
+    it('sends a projection selection to the temporary preview callback', () => {
+      const previewProjection = vi.fn();
+      const focusMapAt = vi.fn();
+      const projectionContext = {
+        ...mockContext,
+        focusMapAt,
+        previewProjection,
+      };
+      const projection = getCommands('TARGET1 090/10', projectionContext)
+        .find(c => c.id === 'proj-focus');
+
+      expect(projection).toBeDefined();
+      projection?.action?.();
+
+      expect(previewProjection).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'PROJECTION_PREVIEW',
+        referenceLabel: 'TARGET1',
+        bearingDegrees: 90,
+        rangeNauticalMiles: 10,
+      }));
+      expect(focusMapAt).not.toHaveBeenCalled();
+    });
+
     it('should find system commands', () => {
       const commands = getCommands('radar', mockContext);
       const radarCmd = commands.find(c => c.id === 'sys-radar');

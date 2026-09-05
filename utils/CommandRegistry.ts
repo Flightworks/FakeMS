@@ -1,9 +1,15 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy } from 'lucide-react';
 import Fuse from 'fuse.js';
-import { getDestinationPoint, distanceBetween } from './geo';
+import { distanceBetween } from './geo';
 import { calculateEta } from '../domain/measurements';
-import { METERS_PER_NAUTICAL_MILE } from '../domain/tacticalUnits';
+import {
+    convertTacticalQuantity,
+    createTacticalQuantity,
+} from '../domain/tacticalUnits';
+import { parseCommand } from '../domain/commandParser';
+import { createProjectionPreview } from '../domain/designations';
+import type { ProjectionPreview } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
@@ -21,6 +27,7 @@ export interface CommandContext {
     setMapMode: (mode: MapMode) => void;
     toggleSystem: (sys: keyof SystemStatus) => void;
     focusMapAt: (position: Position) => void;
+    previewProjection?: (preview: ProjectionPreview) => void;
     proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
     proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
     requestMissionAction: (request: MissionActionRequest) => void;
@@ -42,6 +49,7 @@ export interface CommandOption {
     autocompleteValue?: string;
     historyValue?: string;
     ranking?: CommandRankingMetadata;
+    keepPaletteOpen?: boolean;
 }
 
 // Improved Fuzzy Coordinate Parser
@@ -97,65 +105,59 @@ const parseCoordinates = (query: string): { lat: number, lon: number, isPartial?
     return null;
 }
 
-const parseProjection = (query: string, entities: Entity[], ownship: Entity): { target: { lat: number, lon: number }, label: string } | null => {
-    // Fuzzy Projection: [ENTITY] [BEARING] [RANGE] OR [BEARING] [RANGE] from ownship
-    // Supports spaces or slashes as delimiters.
-    // e.g., "HOSTILE1 180/5", "TK 2 090 10", "G01/180/2", "180/5"
-
-    const parts = query.trim().split(/[\s/]+/).filter(Boolean);
-
-    // We need at least 2 parts (Bearing, Range)
-    if (parts.length < 2) return null;
-
-    if (parts.length === 2) {
-        const bearingStr = parts[0];
-        const rangeStr = parts[1];
-        const bearing = parseFloat(bearingStr);
-        const range = parseFloat(rangeStr);
-
-        if (isNaN(bearing) || isNaN(range)) return null;
-
-        const distMeters = range * METERS_PER_NAUTICAL_MILE;
-        const dest = getDestinationPoint(ownship.position.lat, ownship.position.lon, distMeters, bearing);
-
-        return {
-            target: { lat: dest.lat, lon: dest.lon },
-            label: `PROJ: OWNSHIP BRG ${bearing}°/RNG ${range}NM`
-        };
-    }
-
-    const rangeStr = parts[parts.length - 1];
-    const bearingStr = parts[parts.length - 2];
-    const entityNameOrId = parts.slice(0, parts.length - 2).join(' ');
-
-    const bearing = parseFloat(bearingStr);
-    const range = parseFloat(rangeStr);
-
-    if (isNaN(bearing) || isNaN(range)) return null;
-
-    // Fuzzy find the entity
-    const fuse = new Fuse(entities, {
-        keys: ['label', 'id'],
-        threshold: 0.4,
-        distance: 10 // Favor exact/prefix matches for track names
-    });
-    const result = fuse.search(entityNameOrId);
-
-    if (result.length > 0) {
-        const ent = result[0].item;
-        const distMeters = range * METERS_PER_NAUTICAL_MILE;
-
-        // Use geodesic math to find proper destination lat/lon
-        const dest = getDestinationPoint(ent.position.lat, ent.position.lon, distMeters, bearing);
-
-        return {
-            target: { lat: dest.lat, lon: dest.lon },
-            label: `PROJ: ${ent.label} BRG ${bearing}°/RNG ${range}NM`
-        };
-    }
-
-    return null;
+interface ParsedProjection {
+    label: string;
+    preview: ProjectionPreview;
 }
+
+const parseProjection = (query: string, entities: Entity[], ownship: Entity): ParsedProjection | null => {
+    const parsed = parseCommand(query);
+    if (parsed.type !== 'PROJECTION' || parsed.errors.length > 0) return null;
+
+    const bearing = parsed.parameters.bearing;
+    const range = parsed.parameters.range;
+    const unit = parsed.parameters.unit;
+    if (typeof bearing !== 'number' || !Number.isFinite(bearing)
+        || typeof range !== 'number' || !Number.isFinite(range)
+        || typeof unit !== 'string') {
+        return null;
+    }
+
+    const referenceName = typeof parsed.parameters.reference === 'string'
+        ? parsed.parameters.reference
+        : 'OWNSHIP';
+    const normalizedReference = normalizeRankingText(referenceName);
+    const referenceEntity = normalizedReference === 'OWNSHIP'
+        ? ownship
+        : entities.find(entity => (
+            normalizeRankingText(entity.label) === normalizedReference
+            || normalizeRankingText(entity.id) === normalizedReference
+        ));
+    if (!referenceEntity) return null;
+
+    let rangeNauticalMiles: number;
+    try {
+        const quantity = createTacticalQuantity(range, unit, { allowImplicitNauticalMile: true });
+        rangeNauticalMiles = convertTacticalQuantity(quantity, 'NM').value;
+    } catch {
+        return null;
+    }
+
+    try {
+        const preview = createProjectionPreview(
+            referenceEntity.label,
+            { ...referenceEntity.position },
+            bearing,
+            rangeNauticalMiles,
+        );
+        return {
+            label: `PROJ: ${referenceEntity.label} BRG ${bearing}°/RNG ${rangeNauticalMiles}NM`,
+            preview,
+        };
+    } catch {
+        return null;
+    }
+};
 
 const normalizeRankingText = (value: string): string => value
     .normalize('NFD')
@@ -415,9 +417,16 @@ export const getCommands = (
             label: proj.label,
             subLabel: 'Projection Focus',
             icon: Crosshair,
-            action: () => focusMapAt(proj.target),
+            action: () => {
+                if (context.previewProjection) {
+                    context.previewProjection(proj.preview);
+                    return;
+                }
+                focusMapAt(proj.preview.targetPosition);
+            },
             keywords: ['proj'],
             isPreview: true,
+            keepPaletteOpen: true,
             ranking: projectionRanking(),
         });
     }

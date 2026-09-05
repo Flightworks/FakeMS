@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
 import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
+import type { ProjectionPreview } from '../domain/designations';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -51,6 +52,8 @@ interface MapDisplayProps {
   groundAnchor: {lat: number, lon: number} | null;
   onGhostEvent?: (isGhost: boolean) => void;
   onMissionAction?: (request: MissionActionRequest) => void;
+  projectionPreview?: ProjectionPreview | null;
+  onClearProjectionPreview?: () => void;
 }
 
 
@@ -281,7 +284,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   setMapMode,
   groundAnchor,
   onGhostEvent,
-  onMissionAction
+  onMissionAction,
+  projectionPreview,
+  onClearProjectionPreview,
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -692,8 +697,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const isMarkerTarget = (target: EventTarget | null): boolean =>
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
+  const isProjectionPreviewTarget = (target: EventTarget | null): boolean =>
+    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay]'));
+
   const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
     if (pieMenu) return;
+    if (isProjectionPreviewTarget(event.target)) return;
 
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.add(event.pointerId);
@@ -709,11 +718,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerMoveCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pieMenu || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
+    if (pieMenu || isProjectionPreviewTarget(event.target) || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
     moveInteraction(event.clientX, event.clientY);
   };
 
   const handleMapPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isProjectionPreviewTarget(event.target)) return;
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
       if (isPinchingRef.current) {
@@ -729,12 +739,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerCancelCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isProjectionPreviewTarget(event.target)) return;
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
       if (activeTouchPointersRef.current.size === 0) isPinchingRef.current = false;
     }
     cancelCustomInteraction();
   };
+
+  const projectionLinePositions: LatLngExpression[] = projectionPreview
+    ? projectionPreview.line.map(position => [position.lat, position.lon] as [number, number])
+    : [];
 
   return (
     <div
@@ -850,7 +865,71 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             />
           ))}
 
+        {projectionPreview && (
+          <>
+            <Polyline
+              positions={projectionLinePositions}
+              pathOptions={{
+                color: '#22d3ee',
+                dashArray: '8 6',
+                weight: 3,
+                opacity: 0.9,
+              }}
+            />
+            <CircleMarker
+              center={[projectionPreview.targetPosition.lat, projectionPreview.targetPosition.lon]}
+              radius={8}
+              pathOptions={{
+                color: '#fbbf24',
+                fillColor: '#fbbf24',
+                fillOpacity: 0.85,
+                weight: 2,
+              }}
+            />
+          </>
+        )}
+
       </MapContainer>
+
+      {projectionPreview && (
+        <section
+          className="projection-preview-overlay absolute top-4 left-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-cyan-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          data-projection-preview-overlay
+          role="region"
+          aria-label="Projection preview"
+          aria-live="polite"
+        >
+          <div className="mb-2 flex items-center justify-between border-b border-slate-800 pb-2 text-cyan-300">
+            <span>PROJECTION PREVIEW</span>
+            <span className="text-[10px] text-slate-400">{projectionPreview.referenceLabel}</span>
+          </div>
+          <div className="space-y-1">
+            <div data-testid="projection-preview-point">
+              POINT TARGET {projectionPreview.targetPosition.lat.toFixed(5)}, {projectionPreview.targetPosition.lon.toFixed(5)}
+            </div>
+            <div data-testid="projection-preview-line">
+              LINE REFERENCE {projectionPreview.referencePosition.lat.toFixed(5)}, {projectionPreview.referencePosition.lon.toFixed(5)} → TARGET
+            </div>
+            <div className="text-emerald-300">
+              {projectionPreview.bearingDegrees.toFixed(1)}°T / {projectionPreview.rangeNauticalMiles.toFixed(1)} {projectionPreview.unit}
+            </div>
+            <div className="text-slate-400">METHOD {projectionPreview.method}</div>
+          </div>
+          {onClearProjectionPreview && (
+            <button
+              type="button"
+              className="mt-3 min-h-[32px] w-full rounded border border-amber-400/70 px-2 py-1 text-amber-300 hover:bg-amber-400/10"
+              aria-label="Cancel projection preview"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClearProjectionPreview();
+              }}
+            >
+              CANCEL PREVIEW
+            </button>
+          )}
+        </section>
+      )}
 
       {/* Map orientation and stab are now controlled via the Left Sidebar */}
 

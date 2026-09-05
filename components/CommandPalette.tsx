@@ -6,11 +6,13 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
+import type { ProjectionPreview } from '../domain/designations';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   focusMapAt: (position: { lat: number, lon: number }) => void;
+  previewProjection?: (preview: ProjectionPreview) => void;
   proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
   proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
   requestMissionAction: (request: MissionActionRequest) => void;
@@ -51,6 +53,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
   focusMapAt,
+  previewProjection,
   proposeDirectTo,
   proposeRoute,
   requestMissionAction,
@@ -160,6 +163,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       setMapMode,
       toggleSystem,
       focusMapAt,
+      previewProjection,
       proposeDirectTo,
       proposeRoute,
       requestMissionAction,
@@ -178,6 +182,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setMapMode,
     toggleSystem,
     focusMapAt,
+    previewProjection,
     proposeDirectTo,
     proposeRoute,
     requestMissionAction,
@@ -237,7 +242,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
         addToHistory(cmd.historyValue || query);
         cmd.action?.();
-        onClose();
+        if (!cmd.keepPaletteOpen) onClose();
       }
     } else if (e.key === 'Escape') {
       onClose();
@@ -264,7 +269,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Trigger Action
       addToHistory(cmd.historyValue || query);
       cmd.action?.();
-      onClose();
+      if (!cmd.keepPaletteOpen) onClose();
     }
   };
 
@@ -397,7 +402,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       } else {
                         addToHistory(cmd.historyValue || query);
                         cmd.action?.();
-                        onClose();
+                        if (!cmd.keepPaletteOpen) onClose();
                       }
                     }}
                     onMouseEnter={() => setSelectedIndex(idx)}

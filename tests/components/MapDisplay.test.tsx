@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapDisplay } from '../../components/MapDisplay';
 import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
+import { createProjectionPreview } from '../../domain/designations';
 
 // Mock Framer motion completely since useGesture and react-spring have complex internal physics
 vi.mock('@use-gesture/react', () => ({
@@ -172,6 +173,28 @@ describe('MapDisplay Component', () => {
     // Actually, looking at MapDisplay, "FRIENDLY" uses ADSB, "HOSTILE" uses RADAR
     expect(screen.queryByText('HOSTILE-1')).not.toBeInTheDocument();
     expect(screen.queryByText('FRIEND-1')).not.toBeInTheDocument();
+  });
+
+  it('renders a temporary projection preview with point, line, details, and cancel action', () => {
+    const onClearProjectionPreview = vi.fn();
+    const preview = createProjectionPreview('BRAVO', mockOwnship.position, 180, 5);
+
+    render(
+      <MapDisplay
+        {...defaultProps}
+        projectionPreview={preview}
+        onClearProjectionPreview={onClearProjectionPreview}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Projection preview' })).toBeInTheDocument();
+    expect(screen.getByTestId('projection-preview-point')).toBeInTheDocument();
+    expect(screen.getByTestId('projection-preview-line')).toBeInTheDocument();
+    expect(screen.getByText(/180\.0°T \/ 5\.0 NM/)).toBeInTheDocument();
+    expect(screen.getByText(/TARGET 34\.91682, -120\.00000/)).toBeInTheDocument();
+
+    screen.getByRole('button', { name: 'Cancel projection preview' }).click();
+    expect(onClearProjectionPreview).toHaveBeenCalledOnce();
   });
 
   afterEach(() => {
