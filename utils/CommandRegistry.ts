@@ -3,6 +3,7 @@ import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPi
 import Fuse from 'fuse.js';
 import { getDestinationPoint, distanceBetween } from './geo';
 import { calculateEta } from '../domain/measurements';
+import { METERS_PER_NAUTICAL_MILE } from '../domain/tacticalUnits';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
 import type { MissionObjective } from '../domain/intent';
@@ -109,7 +110,7 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
         if (isNaN(bearing) || isNaN(range)) return null;
 
-        const distMeters = range * 1852;
+        const distMeters = range * METERS_PER_NAUTICAL_MILE;
         const dest = getDestinationPoint(ownship.position.lat, ownship.position.lon, distMeters, bearing);
 
         return {
@@ -137,7 +138,7 @@ const parseProjection = (query: string, entities: Entity[], ownship: Entity): { 
 
     if (result.length > 0) {
         const ent = result[0].item;
-        const distMeters = range * 1852;
+        const distMeters = range * METERS_PER_NAUTICAL_MILE;
 
         // Use geodesic math to find proper destination lat/lon
         const dest = getDestinationPoint(ent.position.lat, ent.position.lon, distMeters, bearing);

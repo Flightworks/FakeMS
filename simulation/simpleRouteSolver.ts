@@ -9,6 +9,7 @@ import type {
   RouteProposalVariant,
 } from '../domain/proposals';
 import type { Position } from '../types';
+import { METERS_PER_NAUTICAL_MILE } from '../domain/tacticalUnits';
 
 export interface SimpleRouteSolveRequest {
   ownshipPosition: Position;
@@ -18,7 +19,6 @@ export interface SimpleRouteSolveRequest {
   altitudeFt: number;
 }
 
-const METERS_PER_NAUTICAL_MILE = 1852;
 const EPSILON = 1e-9;
 
 const copyPosition = (position: Position): Position => ({ ...position });
