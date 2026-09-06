@@ -13,6 +13,7 @@ import {
   type TacticalQuantity,
 } from './tacticalUnits';
 import { parseCoordinate as parseCoordinateValue, type CoordinateFormat } from './coordinateFormats';
+import { MIN_GRID_STEP_MINUTES, MAX_GRID_STEP_MINUTES } from './grid';
 import { MIN_SIMULATION_SPEED, MAX_SIMULATION_SPEED } from '../simulation/clock';
 
 const NON_FINITE_MARKER = '<NON_FINITE>';
@@ -63,6 +64,7 @@ const COMMAND_TOKENS = new Set([
   'TOD',
   'DECLUTTER',
   'LEGEND',
+  'GRID',
   'TIME',
   'DIST',
   'GS',
@@ -1179,6 +1181,39 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseGridCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, CommandParameter> = {
+    system: 'GRID',
+    command: 'GRID',
+    gridType: tokens[1]?.normalized ?? null,
+  };
+  const errors: CommandParseError[] = [];
+  if (tokens[1]?.normalized !== 'LATLON') {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'GRID MGRS is excluded; use GRID LATLON ON, OFF, or STEP <N>MIN.' });
+  } else if (tokens[2]?.normalized === 'ON' || tokens[2]?.normalized === 'OFF') {
+    parameters.enabled = tokens[2].normalized === 'ON';
+    if (tokens.length > 3) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'GRID LATLON ON/OFF takes no extra arguments.' });
+  } else if (tokens[2]?.normalized === 'STEP') {
+    const compact = splitNumericAndUnit(tokens[3]?.normalized);
+    const separated = !compact.unitToken && tokens[4]
+      ? splitNumericAndUnit(`${tokens[3]?.normalized}${tokens[4].normalized}`)
+      : compact;
+    const value = separated.numberToken && separated.numberToken !== NON_FINITE_MARKER
+      ? Number(separated.numberToken)
+      : null;
+    parameters.stepMinutes = Number.isFinite(value) ? value : null;
+    if (!separated.unitToken || separated.unitToken !== 'MIN' || typeof value !== 'number'
+      || !Number.isInteger(value) || value < MIN_GRID_STEP_MINUTES || value > MAX_GRID_STEP_MINUTES) {
+      errors.push({ code: 'INVALID_NUMBER', message: `GRID LATLON step must be an integer from ${MIN_GRID_STEP_MINUTES} to ${MAX_GRID_STEP_MINUTES}MIN.` });
+    }
+    const expectedLength = compact.unitToken ? 4 : 5;
+    if (tokens.length !== expectedLength) errors.push({ code: 'INVALID_SYNTAX', message: 'Use GRID LATLON STEP <N>MIN.' });
+  } else {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use GRID LATLON ON, OFF, or STEP <N>MIN.' });
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseLegendCommand = (tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, CommandParameter> = {
     system: 'LEGEND',
@@ -1555,7 +1590,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
-  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND'].includes(command)) {
+  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND', 'GRID'].includes(command)) {
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
@@ -1598,6 +1633,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'GRID') return parseGridCommand(tokens);
     if (tokens[0]?.normalized === 'LEGEND') return parseLegendCommand(tokens);
     if (tokens[0]?.normalized === 'DECLUTTER') return parseDeclutterCommand(tokens);
     if (tokens[0]?.normalized === 'LAYER' || tokens[0]?.normalized === 'LAYERS') return parseLayerCommand(tokens);

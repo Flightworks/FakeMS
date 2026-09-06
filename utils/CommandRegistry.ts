@@ -70,6 +70,12 @@ import {
     type LegendEntryId,
 } from '../domain/legend';
 import {
+    createGridState,
+    setGridEnabled,
+    setGridStep,
+    type GridState,
+} from '../domain/grid';
+import {
     createLayerState,
     setLayerVisibility,
     type TacticalLayerId,
@@ -155,6 +161,8 @@ export interface CommandContext {
     setLayers?: (state: TacticalLayerState) => void;
     declutter?: DeclutterState;
     setDeclutter?: (state: DeclutterState) => void;
+    grid?: GridState;
+    setGrid?: (state: GridState) => void;
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
     simulationTimeMs?: number;
@@ -634,6 +642,8 @@ export const getCommands = (
         setLayers,
         declutter,
         setDeclutter,
+        grid,
+        setGrid,
         simulationStatus,
         simulationIsRunning,
         simulationTimeMs,
@@ -1082,6 +1092,53 @@ export const getCommands = (
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
             }
+        }
+    }
+
+    const gridCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM' && gridCommand === 'GRID') {
+        const currentGrid = grid ?? createGridState();
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'grid-unavailable',
+                label: 'GRID UNAVAILABLE',
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID GRID'} · LOCAL DISPLAY UNCHANGED`,
+                icon: Crosshair,
+                keywords: ['grid', 'latlon', 'mgrs', 'unavailable'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.enabled === 'boolean') {
+            const enabled = parsedMeasurement.parameters.enabled;
+            commands.push({
+                id: `grid-latlon-${enabled ? 'on' : 'off'}`,
+                label: `GRID LATLON ${enabled ? 'ON' : 'OFF'}`,
+                subLabel: `LOCAL GRID · CURRENT: ${currentGrid.enabled ? 'ON' : 'OFF'} → ${enabled ? 'ON' : 'OFF'} · STEP ${currentGrid.stepMinutes}MIN`,
+                icon: Crosshair,
+                action: () => setGrid?.(setGridEnabled(currentGrid, enabled)),
+                keywords: ['grid', 'latlon', enabled ? 'on' : 'off', 'local'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.stepMinutes === 'number') {
+            const stepMinutes = parsedMeasurement.parameters.stepMinutes;
+            commands.push({
+                id: 'grid-latlon-step',
+                label: `GRID LATLON STEP ${stepMinutes}MIN`,
+                subLabel: `LOCAL GRID · CURRENT STEP ${currentGrid.stepMinutes}MIN → ${stepMinutes}MIN · VALIDATED`,
+                icon: Crosshair,
+                action: () => {
+                    const result = setGridStep(currentGrid, stepMinutes);
+                    if (result.status === 'AVAILABLE') setGrid?.(result.state);
+                },
+                keywords: ['grid', 'latlon', 'step', `${stepMinutes}min`, 'local'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
         }
     }
 

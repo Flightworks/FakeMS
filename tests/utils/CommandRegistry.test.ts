@@ -5,6 +5,7 @@ import { Entity, EntityType, NavMode } from '../../types';
 import type { SimulatedDesignation } from '../../domain/designations';
 import { createLayerState } from '../../domain/layers';
 import { createDeclutterState } from '../../domain/declutter';
+import { createGridState } from '../../domain/grid';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1169,6 +1170,25 @@ describe('CommandRegistry', () => {
       const invalid = getCommands('LEGEND SYMBOL RED', mockContext)
         .find(command => command.id === 'legend-unavailable');
       expect(invalid?.subLabel).toContain('MEANING NOT INFERRED');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
+
+    it('controls only the local latitude/longitude grid', () => {
+      const setGrid = vi.fn();
+      const context = { ...mockContext, grid: createGridState(), setGrid };
+      const enable = getCommands('GRID LATLON ON', context).find(command => command.id === 'grid-latlon-on');
+      expect(enable?.subLabel).toContain('LOCAL GRID');
+      enable?.action?.();
+      expect(setGrid).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+
+      const step = getCommands('GRID LATLON STEP 1MIN', context).find(command => command.id === 'grid-latlon-step');
+      expect(step?.label).toContain('1MIN');
+      step?.action?.();
+      expect(setGrid).toHaveBeenCalledWith(expect.objectContaining({ stepMinutes: 1 }));
+
+      const invalid = getCommands('GRID MGRS ON', context).find(command => command.id === 'grid-unavailable');
+      expect(invalid?.label).toBe('GRID UNAVAILABLE');
+      expect(invalid?.subLabel).toContain('MGRS');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
   });

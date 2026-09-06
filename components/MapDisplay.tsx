@@ -11,6 +11,8 @@ import type { FuturePositionPreview } from '../domain/futurePosition';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { TacticalLayerState } from '../domain/layers';
 import { createLayerState } from '../domain/layers';
+import type { GridState } from '../domain/grid';
+import { buildGridLines, createGridState } from '../domain/grid';
 import {
   createDeclutterState,
   isDeclutterCategoryHidden,
@@ -76,6 +78,7 @@ interface MapDisplayProps {
   layers?: TacticalLayerState;
   activeRoute?: ActiveSimulatedRoute;
   declutter?: DeclutterState;
+  grid?: GridState;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
@@ -331,6 +334,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   layers = createLayerState(),
   activeRoute,
   declutter = createDeclutterState(),
+  grid = createGridState(),
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
@@ -848,6 +852,13 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     ? [activeRoute.origin, ...activeRoute.waypoints.map(waypoint => waypoint.position)]
       .map(position => [position.lat, position.lon] as [number, number])
     : [];
+  const gridCenter = Array.isArray(centerLatLon)
+    ? { lat: centerLatLon[0], lon: centerLatLon[1] }
+    : { lat: centerLatLon.lat, lon: centerLatLon.lng };
+  const gridLinePositions: LatLngExpression[][] = grid.enabled
+    ? buildGridLines(gridCenter, leafletZoom, grid.stepMinutes)
+      .map(line => line.map(position => [position.lat, position.lon] as [number, number]))
+    : [];
 
   return (
     <div
@@ -931,6 +942,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         />
 
         {/* Entities */}
+        {gridLinePositions.length > 0 && (
+          <Pane name="latitudeLongitudeGridLayer" style={{ pointerEvents: 'none' }}>
+            {gridLinePositions.map((line, index) => (
+              <Polyline
+                key={`grid-line-${index}`}
+                positions={line}
+                className="latlon-grid-line"
+                interactive={false}
+                pathOptions={{ color: '#64748b', weight: 1, opacity: 0.55, dashArray: '3 5' }}
+              />
+            ))}
+          </Pane>
+        )}
+
         {routeLinePositions.length > 1 && (
           <Pane name="simulatedRouteLayer" style={{ pointerEvents: 'none' }}>
             <Polyline

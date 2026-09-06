@@ -27,6 +27,27 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses local latitude/longitude grid controls', () => {
+    expect(parseCommand('GRID LATLON ON')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'GRID', command: 'GRID', gridType: 'LATLON', enabled: true },
+      errors: [],
+    });
+    expect(parseCommand('GRID LATLON OFF')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'GRID', command: 'GRID', gridType: 'LATLON', enabled: false },
+      errors: [],
+    });
+    expect(parseCommand('GRID LATLON STEP 1MIN')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'GRID', command: 'GRID', gridType: 'LATLON', stepMinutes: 1 },
+      errors: [],
+    });
+    expect(parseCommand('GRID MGRS ON').errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_SYNTAX' }),
+    ]);
+  });
+
   it('parses contextual legend queries without inferring meaning from color', () => {
     expect(parseCommand('LEGEND')).toMatchObject({
       type: 'SYSTEM',
