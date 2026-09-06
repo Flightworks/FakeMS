@@ -1081,5 +1081,33 @@ describe('CommandRegistry', () => {
       expect(requestSimulationReplay).toHaveBeenCalledTimes(1);
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('exposes one shared scenario time and rejects invalid speed commands', () => {
+      const setSimulationSpeed = vi.fn(() => true);
+      const context = {
+        ...mockContext,
+        simulationStatus: 'PAUSED' as const,
+        simulationIsRunning: false,
+        simulationTimeMs: 90_000,
+        simulationSpeed: 0.5,
+        setSimulationSpeed,
+      };
+
+      const time = getCommands('SIM TIME', context).find(command => command.id === 'sim-time');
+      expect(time?.label).toContain('SIM TIME');
+      expect(time?.subLabel).toContain('T+90s');
+      expect(time?.subLabel).toContain('SPEED 0.5x');
+      expect(time?.action).toBeUndefined();
+
+      const speed = getCommands('SIM SPEED 2', context).find(command => command.id === 'sim-speed');
+      expect(speed?.label).toContain('SIM SPEED 2.00x');
+      speed?.action?.();
+      expect(setSimulationSpeed).toHaveBeenCalledWith(2);
+
+      const invalid = getCommands('SIM SPEED 20.1', context)
+        .find(command => command.id === 'sim-speed-unavailable');
+      expect(invalid?.label).toContain('UNAVAILABLE');
+      expect(invalid?.subLabel).toContain('CALCULATION NOT EXECUTED');
+    });
   });
 });

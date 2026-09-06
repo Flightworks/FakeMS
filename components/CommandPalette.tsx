@@ -68,8 +68,10 @@ interface CommandPaletteProps {
   simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
   simulationIsRunning?: boolean;
   simulationTimeMs?: number;
+  simulationSpeed?: number;
   pauseSimulation?: () => void;
   resumeSimulation?: () => void;
+  setSimulationSpeed?: (speed: number) => boolean;
   requestSimulationReset?: () => void;
   requestSimulationReplay?: () => void;
   bullseye?: BullseyeReference | null;
@@ -185,8 +187,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   simulationStatus,
   simulationIsRunning,
   simulationTimeMs,
+  simulationSpeed,
   pauseSimulation,
   resumeSimulation,
+  setSimulationSpeed,
   requestSimulationReset,
   requestSimulationReplay,
   bullseye,
@@ -337,8 +341,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       simulationStatus,
       simulationIsRunning,
       simulationTimeMs,
+      simulationSpeed,
       pauseSimulation,
       resumeSimulation,
+      setSimulationSpeed,
       requestSimulationReset,
       requestSimulationReplay,
       favoriteState,
@@ -386,8 +392,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     simulationStatus,
     simulationIsRunning,
     simulationTimeMs,
+    simulationSpeed,
     pauseSimulation,
     resumeSimulation,
+    setSimulationSpeed,
     requestSimulationReset,
     requestSimulationReplay,
     favoriteState,

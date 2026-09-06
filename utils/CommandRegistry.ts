@@ -138,8 +138,10 @@ export interface CommandContext {
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
     simulationTimeMs?: number;
+    simulationSpeed?: number;
     pauseSimulation?: () => void;
     resumeSimulation?: () => void;
+    setSimulationSpeed?: (speed: number) => boolean;
     requestSimulationReset?: () => void;
     requestSimulationReplay?: () => void;
     localTimeZone?: string;
@@ -611,8 +613,10 @@ export const getCommands = (
         simulationStatus,
         simulationIsRunning,
         simulationTimeMs,
+        simulationSpeed,
         pauseSimulation,
         resumeSimulation,
+        setSimulationSpeed,
         requestSimulationReset,
         requestSimulationReplay,
         localTimeZone,
@@ -993,16 +997,56 @@ export const getCommands = (
     const simulationCommand = parsedMeasurement.parameters.simulationCommand;
     if (parsedMeasurement.type === 'SYSTEM'
         && parsedMeasurement.parameters.system === 'SIM'
-        && parsedMeasurement.errors.length === 0
         && (simulationCommand === 'STATUS'
             || simulationCommand === 'PAUSE'
             || simulationCommand === 'RESUME'
             || simulationCommand === 'RESET'
-            || simulationCommand === 'REPLAY')) {
+            || simulationCommand === 'REPLAY'
+            || simulationCommand === 'TIME'
+            || simulationCommand === 'SPEED')) {
         const status = simulationStatus ?? (simulationIsRunning ? 'RUNNING' : 'PAUSED');
         const simulatedSeconds = typeof simulationTimeMs === 'number' ? Math.floor(simulationTimeMs / 1000) : null;
         const statusSuffix = simulatedSeconds === null ? '' : ` · SIM T+${simulatedSeconds}s`;
-        if (simulationCommand === 'STATUS') {
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: `sim-${String(simulationCommand).toLowerCase()}-unavailable`,
+                label: `SIM ${String(simulationCommand)}: UNAVAILABLE`,
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID INPUT'} · CALCULATION NOT EXECUTED`,
+                icon: Compass,
+                keywords: ['sim', 'simulation', String(simulationCommand).toLowerCase(), 'unavailable'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'TIME') {
+            const speed = typeof simulationSpeed === 'number' ? simulationSpeed : 1;
+            commands.push({
+                id: 'sim-time',
+                label: 'SIM TIME',
+                subLabel: `${status}${statusSuffix} · SPEED ${speed}x · LOCAL SIMULATION · NO SIDE EFFECT`,
+                icon: Compass,
+                keywords: ['sim', 'simulation', 'time', 'clock'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'SPEED' && typeof parsedMeasurement.parameters.speed === 'number') {
+            const speed = parsedMeasurement.parameters.speed;
+            const previousSpeed = typeof simulationSpeed === 'number' ? simulationSpeed : 1;
+            commands.push({
+                id: 'sim-speed',
+                label: `SIM SPEED ${speed.toFixed(2)}x`,
+                subLabel: `PREVIOUS ${previousSpeed}x · ${status} · LOCAL SIMULATION · NO REAL-TIME CHANGE`,
+                icon: Compass,
+                action: () => { setSimulationSpeed?.(speed); },
+                keywords: ['sim', 'simulation', 'speed', 'clock'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'STATUS') {
             commands.push({
                 id: 'sim-status',
                 label: 'SIM STATUS',

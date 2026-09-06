@@ -27,6 +27,26 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses scenario time and validated simulation speeds', () => {
+    expect(parseCommand('SIM TIME')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'SIM', command: 'SIM TIME', simulationCommand: 'TIME' },
+      errors: [],
+    });
+    for (const speed of [0.1, 0.5, 1, 2, 20]) {
+      expect(parseCommand(`SIM SPEED ${speed}`)).toMatchObject({
+        type: 'SYSTEM',
+        parameters: { system: 'SIM', command: 'SIM SPEED', simulationCommand: 'SPEED', speed },
+        errors: [],
+      });
+    }
+    for (const input of ['SIM SPEED 0', 'SIM SPEED 20.1', 'SIM SPEED NaN', 'SIM SPEED Infinity']) {
+      expect(parseCommand(input).errors, input).toEqual([
+        expect.objectContaining({ code: expect.any(String) }),
+      ]);
+    }
+  });
+
   it('parses local simulation controls without executing them', () => {
     for (const action of ['STATUS', 'PAUSE', 'RESUME', 'RESET', 'REPLAY']) {
       const parsed = parseCommand(`SIM ${action}`);

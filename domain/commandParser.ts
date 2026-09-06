@@ -12,6 +12,7 @@ import {
   type TacticalQuantity,
 } from './tacticalUnits';
 import { parseCoordinate as parseCoordinateValue, type CoordinateFormat } from './coordinateFormats';
+import { MIN_SIMULATION_SPEED, MAX_SIMULATION_SPEED } from '../simulation/clock';
 
 const NON_FINITE_MARKER = '<NON_FINITE>';
 const COMMAND_TOKENS = new Set([
@@ -1182,10 +1183,27 @@ const parseSimulationCommand = (tokens: CommandToken[]): ParsedCommand => {
     command: `SIM ${action}`.trim(),
     simulationCommand: action || null,
   };
-  const allowed = new Set(['STATUS', 'PAUSE', 'RESUME', 'RESET', 'REPLAY']);
-  const errors = action && allowed.has(action)
-    ? []
-    : [{ code: 'INVALID_SYNTAX' as const, message: 'Use SIM STATUS, PAUSE, RESUME, RESET, or REPLAY.' }];
+  const allowed = new Set(['STATUS', 'PAUSE', 'RESUME', 'RESET', 'REPLAY', 'TIME', 'SPEED']);
+  const errors: CommandParseError[] = [];
+  if (!action || !allowed.has(action)) {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use SIM STATUS, PAUSE, RESUME, RESET, REPLAY, TIME, or SPEED.' });
+  } else if (action === 'TIME') {
+    if (tokens.length > 2) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'SIM TIME takes no arguments.' });
+  } else if (action === 'SPEED') {
+    const speedToken = tokens[2];
+    const speed = parseFiniteNumber(speedToken);
+    parameters.speed = speed;
+    if (!speedToken) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'SIM SPEED requires a value.' });
+    else if (hasNonFiniteToken(speedToken)) errors.push(nonFiniteError());
+    else if (speed === null) errors.push({ code: 'INVALID_NUMBER', message: 'Simulation speed must be numeric.' });
+    else if (speed < MIN_SIMULATION_SPEED || speed > MAX_SIMULATION_SPEED) {
+      errors.push({
+        code: 'INVALID_NUMBER',
+        message: `Simulation speed must be between ${MIN_SIMULATION_SPEED} and ${MAX_SIMULATION_SPEED}.`,
+      });
+    }
+    if (tokens.length > 3) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'SIM SPEED takes one value.' });
+  }
   return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
 };
 

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Entity, NavMode } from '../types';
 import { cloneEntity } from '../simulation/scenario';
-import { advanceClock, createSimulationClock, setClockRunning } from '../simulation/clock';
+import {
+    advanceClock,
+    createSimulationClock,
+    setClockRunning,
+    setClockSpeedValidated,
+} from '../simulation/clock';
 import { stepEntity } from '../domain/kinematics';
 
 export { stepEntity } from '../domain/kinematics';
@@ -15,6 +20,8 @@ export interface SimulationControls {
     resume: () => void;
     reset: () => void;
     replay: () => void;
+    speed?: number;
+    setSpeed?: (speed: number) => boolean;
     simTimeMs: number;
 }
 
@@ -38,6 +45,7 @@ export const useSimulation = (
         ...createSimulationClock(initialScenarioTimeRef.current),
         running: true,
     }));
+    const simulationClockRef = useRef(simulationClock);
     const lastTickRef = useRef<number>(Date.now());
     const ownshipRef = useRef(ownship);
     const navModeRef = useRef(ownshipNavMode);
@@ -50,14 +58,18 @@ export const useSimulation = (
 
     const pause = useCallback(() => {
         setIsRunning(false);
-        setSimulationClock(clock => setClockRunning(clock, false));
+        const pausedClock = setClockRunning(simulationClockRef.current, false);
+        simulationClockRef.current = pausedClock;
+        setSimulationClock(pausedClock);
         setStatus('PAUSED');
     }, []);
 
     const resume = useCallback(() => {
         lastTickRef.current = Date.now();
         setIsRunning(true);
-        setSimulationClock(clock => setClockRunning(clock, true));
+        const runningClock = setClockRunning(simulationClockRef.current, true);
+        simulationClockRef.current = runningClock;
+        setSimulationClock(runningClock);
         setStatus('RUNNING');
     }, []);
 
@@ -67,10 +79,12 @@ export const useSimulation = (
         ownshipRef.current = resetOwnship;
         setOwnship(resetOwnship);
         lastTickRef.current = Date.now();
-        setSimulationClock({
+        const resetClock = {
             ...createSimulationClock(initialScenarioTimeRef.current),
             running: false,
-        });
+        };
+        simulationClockRef.current = resetClock;
+        setSimulationClock(resetClock);
         setIsRunning(false);
         setStatus('RESET · PAUSED');
     }, [setOwnship]);
@@ -81,13 +95,23 @@ export const useSimulation = (
         ownshipRef.current = replayOwnship;
         setOwnship(replayOwnship);
         lastTickRef.current = Date.now();
-        setSimulationClock({
+        const replayClock = {
             ...createSimulationClock(initialScenarioTimeRef.current),
             running: true,
-        });
+        };
+        simulationClockRef.current = replayClock;
+        setSimulationClock(replayClock);
         setIsRunning(true);
         setStatus('REPLAY · RUNNING');
     }, [setOwnship]);
+
+    const setSpeed = useCallback((speed: number): boolean => {
+        const result = setClockSpeedValidated(simulationClockRef.current, speed);
+        if (result.status === 'UNAVAILABLE') return false;
+        simulationClockRef.current = result.clock;
+        setSimulationClock(result.clock);
+        return true;
+    }, []);
 
     useEffect(() => {
         lastTickRef.current = Date.now();
@@ -95,19 +119,23 @@ export const useSimulation = (
         const tick = () => {
             const now = Date.now();
             const realDeltaMs = now - lastTickRef.current;
-            const dtSeconds = Math.min(realDeltaMs / 1000.0, 0.1);
             lastTickRef.current = now;
 
-            if (!isRunning || dtSeconds <= 0) return;
+            if (!isRunning || realDeltaMs <= 0) return;
 
-            setSimulationClock(clock => advanceClock(setClockRunning(clock, true), realDeltaMs));
+            const currentClock = simulationClockRef.current;
+            const advancedClock = advanceClock(setClockRunning(currentClock, true), realDeltaMs);
+            simulationClockRef.current = advancedClock;
+            setSimulationClock(advancedClock);
+            const simulatedDeltaSeconds = (advancedClock.simTimeMs - currentClock.simTimeMs) / 1000;
+            if (simulatedDeltaSeconds <= 0) return;
 
-            // Update traditional entities
-            setEntities(prev => prev.map(e => stepEntity(e, dtSeconds)));
+            // Update traditional entities using the shared simulated clock delta.
+            setEntities(prev => prev.map(e => stepEntity(e, simulatedDeltaSeconds)));
 
             // Update ownship if in SIM mode
             if (navModeRef.current === NavMode.SIM) {
-                const updatedOwnship = stepEntity(ownshipRef.current, dtSeconds);
+                const updatedOwnship = stepEntity(ownshipRef.current, simulatedDeltaSeconds);
                 if (updatedOwnship !== ownshipRef.current) {
                     ownshipRef.current = updatedOwnship;
                     setOwnship(updatedOwnship);
@@ -122,6 +150,16 @@ export const useSimulation = (
     return {
         entities,
         setEntities,
-        simulationControls: { isRunning, status, pause, resume, reset, replay, simTimeMs: simulationClock.simTimeMs },
+        simulationControls: {
+            isRunning,
+            status,
+            pause,
+            resume,
+            reset,
+            replay,
+            speed: simulationClock.speed,
+            setSpeed,
+            simTimeMs: simulationClock.simTimeMs,
+        },
     };
 };

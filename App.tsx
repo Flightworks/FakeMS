@@ -988,8 +988,10 @@ const App: React.FC = () => {
             simulationStatus={simulationControls.status}
             simulationIsRunning={simulationControls.isRunning}
             simulationTimeMs={simulationControls.simTimeMs}
+            simulationSpeed={simulationControls.speed}
             pauseSimulation={simulationControls.pause}
             resumeSimulation={simulationControls.resume}
+            setSimulationSpeed={simulationControls.setSpeed}
             requestSimulationReset={requestSimulationReset}
             requestSimulationReplay={requestSimulationReplay}
             bullseye={bullseyeState.bullseye}
