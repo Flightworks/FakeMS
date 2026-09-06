@@ -1,8 +1,11 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2 } from 'lucide-react';
 import Fuse from 'fuse.js';
-import { distanceBetween } from './geo';
-import { calculateEta } from '../domain/measurements';
+import {
+    calculateEtaEte,
+    formatEtaEte,
+    type GroundSpeedInput,
+} from '../domain/etaEte';
 import {
     convertTacticalQuantity,
     createTacticalQuantity,
@@ -52,6 +55,9 @@ export interface CommandContext {
     proposeClearDesignations?: () => void;
     undoLastDesignation?: () => void;
     measurementPositionFreshness?: (entity: Entity) => TacticalPositionFreshness;
+    groundSpeed?: GroundSpeedInput;
+    scenarioTimeMs?: number;
+    localTimeZone?: string;
 }
 
 export interface CommandOption {
@@ -259,6 +265,9 @@ export const getCommands = (
         deleteDesignation,
         proposeClearDesignations,
         undoLastDesignation,
+        groundSpeed,
+        scenarioTimeMs,
+        localTimeZone,
     } = context;
     const commands: CommandOption[] = [];
 
@@ -848,40 +857,86 @@ export const getCommands = (
         const results = fuse.search(q);
         results.forEach(res => commands.push(res.item));
 
-        // ETA Helpers (Special Logic, kept separate as it depends on strict patterns)
-        const etaMatch = q.match(/^eta\s+(.+)$/i);
-        if (etaMatch) {
-            const targetName = etaMatch[1].toLowerCase();
-            const target = entities.find(e => e.label.toLowerCase().includes(targetName));
-            if (target) {
-                const eta = calculateEta(
-                    ownship.position,
-                    target.position,
-                    ownship.speed || 0,
-                );
-                const distanceKm = distanceBetween(
-                    ownship.position.lat,
-                    ownship.position.lon,
-                    target.position.lat,
-                    target.position.lon,
-                ) / 1000;
-                const timeString = eta.value === null
-                    ? 'N/A (SPEED UNAVAILABLE)'
-                    : `${Math.round(eta.value)} MIN`;
+        // ETA/ETE uses an explicit ground-speed source and the scenario clock.
+        const etaEteCommand = typeof parsedMeasurement.parameters.command === 'string'
+            ? parsedMeasurement.parameters.command
+            : undefined;
+        if (parsedMeasurement.type === 'MEASUREMENT'
+            && (etaEteCommand === 'ETA' || etaEteCommand === 'ETE')
+            && parsedMeasurement.errors.length === 0) {
+            const fromReference = typeof parsedMeasurement.parameters.fromReference === 'string'
+                ? parsedMeasurement.parameters.fromReference
+                : undefined;
+            const toReference = typeof parsedMeasurement.parameters.toReference === 'string'
+                ? parsedMeasurement.parameters.toReference
+                : undefined;
 
-                const etaLabel = `ETA ${target.label}`;
-                commands.unshift({ // Add to top
-                    id: `eta-${target.id}`,
-                    label: etaLabel,
-                    subLabel: `ETE: ${timeString} (${distanceKm.toFixed(1)} km) · SRC: ${eta.source} · QUAL: ${eta.qualification}`,
-                    icon: Calculator,
-                    action: () => {
-                        if (navigator.clipboard) void navigator.clipboard.writeText(`${etaLabel}: ${timeString}`);
-                    },
-                    keywords: ['eta'],
-                    isPreview: true,
-                    ranking: createStructuredRanking(q, etaLabel),
-                });
+            if (fromReference && toReference) {
+                const fromResolution = resolveEntityReference(fromReference, entities, ownship);
+                const toResolution = resolveEntityReference(toReference, entities, ownship);
+                const failedResolution = [fromResolution, toResolution]
+                    .find(resolution => resolution.status !== 'RESOLVED');
+
+                if (failedResolution) {
+                    commands.push({
+                        id: `${etaEteCommand.toLowerCase()}-reference-status-${failedResolution.status.toLowerCase()}`,
+                        label: `${etaEteCommand} ${failedResolution.reference}`,
+                        subLabel: `${failedResolution.status} · ${etaEteCommand} blocked`,
+                        icon: Calculator,
+                        keywords: ['eta', 'ete', 'reference', failedResolution.status.toLowerCase()],
+                        isPreview: true,
+                        ranking: {
+                            category: 'STRUCTURED_EXACT',
+                            completeness: 3,
+                            match: 'EXACT',
+                            intent: 'MEASUREMENT',
+                        },
+                    });
+                } else if (fromResolution.entity && toResolution.entity) {
+                    const explicitSpeed = typeof parsedMeasurement.parameters.speed === 'number'
+                        && parsedMeasurement.parameters.speedUnit === 'KT'
+                        ? {
+                            speedKnots: parsedMeasurement.parameters.speed,
+                            source: 'USER_INPUT' as const,
+                            qualification: 'USER_ASSUMPTION' as const,
+                        }
+                        : groundSpeed;
+                    const result = calculateEtaEte(
+                        fromResolution.entity.position,
+                        toResolution.entity.position,
+                        explicitSpeed,
+                        scenarioTimeMs ?? Number.NaN,
+                    );
+                    const display = formatEtaEte(result, localTimeZone ?? 'UTC');
+                    const referenceLabel = fromReference === 'OWNSHIP'
+                        ? toResolution.entity.label
+                        : `${fromResolution.entity.label} → ${toResolution.entity.label}`;
+                    const resultId = fromReference === 'OWNSHIP'
+                        ? `${etaEteCommand.toLowerCase()}-${toResolution.entity.id}`
+                        : `${etaEteCommand.toLowerCase()}-${fromResolution.entity.id}-${toResolution.entity.id}`;
+                    const label = `${etaEteCommand} ${referenceLabel}`;
+
+                    commands.push({
+                        id: resultId,
+                        label,
+                        subLabel: `${display.distance} · ${display.ete} · ${display.etaUtc} · ${display.etaLocal} · ${display.speed} · SRC: ${result.speedSource}`,
+                        icon: Calculator,
+                        action: () => {
+                            if (navigator.clipboard) {
+                                void navigator.clipboard.writeText(`${label}: ${display.ete}; ${display.etaUtc}`);
+                            }
+                        },
+                        keywords: ['eta', 'ete', 'time', 'distance', fromResolution.entity.label, toResolution.entity.label],
+                        historyValue: q,
+                        isPreview: true,
+                        ranking: {
+                            category: 'STRUCTURED_EXACT',
+                            completeness: 3,
+                            match: 'EXACT',
+                            intent: 'MEASUREMENT',
+                        },
+                    });
+                }
             }
         }
 

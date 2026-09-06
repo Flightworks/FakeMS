@@ -17,6 +17,7 @@ import {
   MAX_COMMAND_HISTORY_ENTRIES,
 } from '../domain/commandHistory';
 import type { MissionObjective } from '../domain/intent';
+import type { GroundSpeedInput } from '../domain/etaEte';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -40,6 +41,9 @@ interface CommandPaletteProps {
   openDocument: (filename: string) => void;
   ownshipNavMode: NavMode;
   setOwnshipNavMode: (mode: NavMode) => void;
+  groundSpeed?: GroundSpeedInput;
+  scenarioTimeMs?: number;
+  localTimeZone?: string;
 }
 
 interface VisualViewportRect {
@@ -118,7 +122,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ownship,
   openDocument,
   ownshipNavMode,
-  setOwnshipNavMode
+  setOwnshipNavMode,
+  groundSpeed,
+  scenarioTimeMs,
+  localTimeZone
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -222,6 +229,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       history, // Pass history to registry
       openDocument,
       ownshipNavMode,
+      groundSpeed,
+      scenarioTimeMs,
+      localTimeZone,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context, mathProvider ?? undefined);
@@ -247,6 +257,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     openDocument,
     ownshipNavMode,
     setOwnshipNavMode,
+    groundSpeed,
+    scenarioTimeMs,
+    localTimeZone,
     mathProvider,
   ]);
 

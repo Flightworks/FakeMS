@@ -198,6 +198,57 @@ describe('CommandRegistry', () => {
         expect(saveCmd?.label).toBe('SAVE: "some random text"');
     });
 
+    it('renders distinct ETA and ETE results from qualified simulation speed', () => {
+      const context = {
+        ...mockContext,
+        groundSpeed: {
+          speedKnots: 120,
+          source: 'SIMULATION' as const,
+          qualification: 'SIMULATED' as const,
+          updatedAt: 1_735_732_800_000,
+        },
+        scenarioTimeMs: 1_735_732_800_000,
+        localTimeZone: 'UTC',
+      };
+
+      const eta = getCommands('ETA TARGET1', context).find(command => command.id === 'eta-target1');
+      const ete = getCommands('ETE TARGET1', context).find(command => command.id === 'ete-target1');
+
+      expect(eta).toBeDefined();
+      expect(eta?.label).toBe('ETA TARGET1');
+      expect(eta?.subLabel).toContain('ETE:');
+      expect(eta?.subLabel).toContain('ETA UTC:');
+      expect(eta?.subLabel).toContain('ETA LOCAL (UTC):');
+      expect(eta?.subLabel).toContain('GS: 120.0 KT · SIMULATED');
+      expect(ete).toBeDefined();
+      expect(ete?.label).toBe('ETE TARGET1');
+    });
+
+    it('uses an explicit ETA speed assumption and exposes unavailable speed honestly', () => {
+      const assumed = getCommands('ETA TARGET1 @ 140KT', {
+        ...mockContext,
+        scenarioTimeMs: 1_735_732_800_000,
+        localTimeZone: 'UTC',
+      }).find(command => command.id === 'eta-target1');
+      expect(assumed?.subLabel).toContain('GS: 140.0 KT · USER_ASSUMPTION');
+
+      const unavailable = getCommands('ETA TARGET1', {
+        ...mockContext,
+        scenarioTimeMs: 1_735_732_800_000,
+      }).find(command => command.id === 'eta-target1');
+      expect(unavailable).toBeDefined();
+      expect(unavailable?.subLabel).toContain('ETA UTC: UNAVAILABLE');
+      expect(unavailable?.subLabel).toContain('SPEED_UNAVAILABLE');
+    });
+
+    it('does not select an unrelated fuzzy command for an ETA query', () => {
+      const commands = getCommands('ETA TARGET1', mockContext);
+
+      expect(commands[0]?.id).toBe('eta-target1');
+      expect(commands[0]?.id).not.toBe('save-text-note');
+    });
+
+
     it('puts an exact projection first and excludes unrelated fallbacks', () => {
       const bravoContext = {
         ...mockContext,

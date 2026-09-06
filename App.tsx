@@ -76,6 +76,17 @@ const App: React.FC = () => {
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
+  const localTimeZone = React.useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    [],
+  );
+  const simulationGroundSpeed = ownshipNavMode === NavMode.SIM
+    ? {
+        speedKnots: ownship.speed,
+        source: 'SIMULATION' as const,
+        qualification: 'SIMULATED' as const,
+      }
+    : undefined;
 
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [mapModeBeforeGhost, setMapModeBeforeGhost] = useState<MapMode | null>(null);
@@ -745,6 +756,9 @@ const App: React.FC = () => {
             openDocument={setOpenDoc}
             ownshipNavMode={ownshipNavMode}
             setOwnshipNavMode={setOwnshipNavMode}
+            groundSpeed={simulationGroundSpeed}
+            scenarioTimeMs={simulationControls.simTimeMs}
+            localTimeZone={localTimeZone}
           />
         </React.Suspense>
       )}

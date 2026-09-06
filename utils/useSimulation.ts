@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Entity, NavMode } from '../types';
 import { cloneEntity } from '../simulation/scenario';
+import { advanceClock, createSimulationClock, setClockRunning } from '../simulation/clock';
 import { stepEntity } from '../domain/kinematics';
 
 export { stepEntity } from '../domain/kinematics';
@@ -14,6 +15,7 @@ export interface SimulationControls {
     resume: () => void;
     reset: () => void;
     replay: () => void;
+    simTimeMs: number;
 }
 
 /**
@@ -31,6 +33,11 @@ export const useSimulation = (
     const [entities, setEntities] = useState<Entity[]>(() => initialEntities.map(cloneEntity));
     const [isRunning, setIsRunning] = useState(true);
     const [status, setStatus] = useState<SimulationControls['status']>('RUNNING');
+    const initialScenarioTimeRef = useRef<number>(Date.now());
+    const [simulationClock, setSimulationClock] = useState(() => ({
+        ...createSimulationClock(initialScenarioTimeRef.current),
+        running: true,
+    }));
     const lastTickRef = useRef<number>(Date.now());
     const ownshipRef = useRef(ownship);
     const navModeRef = useRef(ownshipNavMode);
@@ -43,12 +50,14 @@ export const useSimulation = (
 
     const pause = useCallback(() => {
         setIsRunning(false);
+        setSimulationClock(clock => setClockRunning(clock, false));
         setStatus('PAUSED');
     }, []);
 
     const resume = useCallback(() => {
         lastTickRef.current = Date.now();
         setIsRunning(true);
+        setSimulationClock(clock => setClockRunning(clock, true));
         setStatus('RUNNING');
     }, []);
 
@@ -58,6 +67,10 @@ export const useSimulation = (
         ownshipRef.current = resetOwnship;
         setOwnship(resetOwnship);
         lastTickRef.current = Date.now();
+        setSimulationClock({
+            ...createSimulationClock(initialScenarioTimeRef.current),
+            running: false,
+        });
         setIsRunning(false);
         setStatus('RESET · PAUSED');
     }, [setOwnship]);
@@ -68,6 +81,10 @@ export const useSimulation = (
         ownshipRef.current = replayOwnship;
         setOwnship(replayOwnship);
         lastTickRef.current = Date.now();
+        setSimulationClock({
+            ...createSimulationClock(initialScenarioTimeRef.current),
+            running: true,
+        });
         setIsRunning(true);
         setStatus('REPLAY · RUNNING');
     }, [setOwnship]);
@@ -77,10 +94,13 @@ export const useSimulation = (
 
         const tick = () => {
             const now = Date.now();
-            const dtSeconds = Math.min((now - lastTickRef.current) / 1000.0, 0.1);
+            const realDeltaMs = now - lastTickRef.current;
+            const dtSeconds = Math.min(realDeltaMs / 1000.0, 0.1);
             lastTickRef.current = now;
 
             if (!isRunning || dtSeconds <= 0) return;
+
+            setSimulationClock(clock => advanceClock(setClockRunning(clock, true), realDeltaMs));
 
             // Update traditional entities
             setEntities(prev => prev.map(e => stepEntity(e, dtSeconds)));
@@ -102,6 +122,6 @@ export const useSimulation = (
     return {
         entities,
         setEntities,
-        simulationControls: { isRunning, status, pause, resume, reset, replay },
+        simulationControls: { isRunning, status, pause, resume, reset, replay, simTimeMs: simulationClock.simTimeMs },
     };
 };

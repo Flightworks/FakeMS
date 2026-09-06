@@ -226,6 +226,31 @@ describe('CommandPalette Component', () => {
     expect(mockProps.onClose).not.toHaveBeenCalled();
   });
 
+  it('shows ETA and ETE from the simulation clock and qualified ground speed', () => {
+    vi.clearAllMocks();
+    render(
+      <CommandPalette
+        {...mockProps}
+        ownshipNavMode={NavMode.SIM}
+        groundSpeed={{ speedKnots: 120, source: 'SIMULATION', qualification: 'SIMULATED' }}
+        scenarioTimeMs={Date.UTC(2026, 0, 1, 12, 0, 0)}
+        localTimeZone="UTC"
+      />
+    );
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'ETA TARGET1' } });
+    const eta = screen.getByRole('option', { name: /^ETA TARGET1 ·/ });
+    expect(eta).toHaveTextContent(/ETE: /);
+    expect(eta).toHaveTextContent(/ETA UTC:/);
+    expect(eta).toHaveTextContent(/ETA LOCAL \(UTC\):/);
+    expect(eta).toHaveTextContent(/GS: 120\.0 KT/);
+    expect(eta).toHaveTextContent(/SRC: SIMULATION/);
+
+    fireEvent.change(input, { target: { value: 'ETE TARGET1' } });
+    expect(screen.getByRole('option', { name: /^ETE TARGET1 ·/ })).toBeInTheDocument();
+  });
+
   it('replays history as canonical input without executing the stored action', () => {
     sessionStorage.clear();
     vi.clearAllMocks();

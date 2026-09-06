@@ -4,7 +4,7 @@ import type {
   CommandToken,
   ParsedCommand,
 } from './commandLanguage';
-import { createTacticalQuantity, normalizeTacticalUnit, TacticalUnitError } from './tacticalUnits';
+import { createTacticalQuantity, convertTacticalQuantity, normalizeTacticalUnit, TacticalUnitError } from './tacticalUnits';
 
 const NON_FINITE_MARKER = '<NON_FINITE>';
 const COMMAND_TOKENS = new Set([
@@ -368,6 +368,101 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
   return createResult('PROJECTION', tokens, parameters, warnings, errors, assumptions);
 };
 
+const ETA_SPEED_NUMBER_PATTERN = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+|NAN|INFINITY|INF)';
+
+const parseEtaEte = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const body = input.trim().replace(/^\S+\s*/u, '');
+  const atIndex = body.indexOf('@');
+  const referenceText = (atIndex >= 0 ? body.slice(0, atIndex) : body).trim();
+  const speedText = atIndex >= 0 ? body.slice(atIndex + 1).trim() : '';
+  const references = referenceText.split(/\s+/).filter(Boolean);
+  const parameters: Record<string, string | number | null> = {
+    command,
+    query: referenceText,
+  };
+  const errors: CommandParseError[] = [];
+  const assumptions: string[] = [];
+
+  if (references.length === 0) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires at least one entity reference.`,
+      hint: `Use ${command} <REFERENCE> or ${command} <FROM> <TO>.`,
+    });
+  } else if (references.length === 1) {
+    parameters.fromReference = 'OWNSHIP';
+    parameters.toReference = references[0];
+  } else {
+    parameters.fromReference = references[0];
+    parameters.toReference = references.slice(1).join(' ');
+  }
+
+  if (atIndex >= 0) {
+    const speedMatch = speedText.match(new RegExp(`^(${ETA_SPEED_NUMBER_PATTERN})(?:\\s*(.*))?$`, 'i'));
+    if (!speedMatch) {
+      errors.push({
+        code: 'INVALID_NUMBER',
+        message: 'Ground speed must be numeric.',
+      });
+    } else {
+      const rawSpeed = speedMatch[1];
+      const unitText = speedMatch[2]?.trim() ?? '';
+      parameters.speed = rawSpeed.toUpperCase() === 'NAN'
+        || rawSpeed.toUpperCase() === 'INFINITY'
+        || rawSpeed.toUpperCase() === 'INF'
+        ? null
+        : Number(rawSpeed);
+      parameters.speedUnit = unitText || null;
+
+      if (!unitText) {
+        errors.push({
+          code: 'MISSING_UNIT',
+          message: 'Ground speed requires an explicit unit, for example @ 140KT.',
+          hint: 'Use KT, KTS, KNOT, KNOTS, KMH, or KM/H.',
+        });
+      } else {
+        try {
+          const quantity = createTacticalQuantity(Number(parameters.speed), unitText);
+          if (quantity.dimension !== 'SPEED') {
+            errors.push({
+              code: 'INCOMPATIBLE_UNIT',
+              message: 'ETA/ETE speed requires a speed unit.',
+            });
+          } else {
+            const normalizedSpeed = convertTacticalQuantity(quantity, 'KT');
+            parameters.speed = normalizedSpeed.value;
+            parameters.speedUnit = normalizedSpeed.unit;
+            parameters.speedOriginal = quantity.originalValue;
+            parameters.speedOriginalUnit = quantity.originalUnit;
+            parameters.speedAssumed = 'USER ASSUMPTION';
+            assumptions.push('USER ASSUMPTION');
+          }
+        } catch (error) {
+          if (error instanceof TacticalUnitError) {
+            errors.push({
+              code: error.code === 'UNKNOWN_UNIT' ? 'UNKNOWN_UNIT' : 'INVALID_NUMBER',
+              message: error.code === 'UNKNOWN_UNIT'
+                ? 'UNITÉ INCONNUE — KT, KMH ou KM/H'
+                : 'Ground speed must be a positive finite value.',
+              ...(error.code === 'UNKNOWN_UNIT'
+                ? { hint: 'Supported speed units: KT, KMH, or KM/H.' }
+                : {}),
+            });
+          } else {
+            errors.push({ code: 'INVALID_NUMBER', message: 'Ground speed is invalid.' });
+          }
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return createResult('MEASUREMENT', tokens, parameters, ['EXECUTION_NOT_ATTEMPTED'], errors, assumptions);
+  }
+  return createResult('MEASUREMENT', tokens, parameters, [], [], assumptions);
+};
+
 const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand => {
   const normalizedInput = normalizeText(input);
   const match = normalizedInput.match(/^(BRG\/RNG|BRG|RNG)(?:\s+(.*))?$/);
@@ -436,6 +531,9 @@ export const parseCommand = (input: string): ParsedCommand => {
 
   if (type === 'MEASUREMENT') {
     const normalizedCommand = normalizedInput.split(/\s+/)[0] ?? '';
+    if (normalizedCommand === 'ETA' || normalizedCommand === 'ETE') {
+      return parseEtaEte(input, tokens);
+    }
     if (normalizedCommand === 'BRG/RNG' || normalizedCommand === 'BRG' || normalizedCommand === 'RNG') {
       return parseMeasurement(input, tokens);
     }

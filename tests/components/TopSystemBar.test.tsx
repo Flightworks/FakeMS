@@ -58,6 +58,7 @@ describe('TopSystemBar Component', () => {
       resume: vi.fn(),
       reset: vi.fn(),
       replay: vi.fn(),
+      simTimeMs: 0,
     },
   };
 

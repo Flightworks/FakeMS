@@ -33,3 +33,34 @@ test('blocks an ambiguous tactical measurement reference', async ({ page }) => {
   await expect(page.getByRole('option', { name: /AMBIGUOUS_REFERENCE: HOSTILE/i })).toBeVisible();
   await expect(page.locator('[role="option"][id^="measurement-result-"]')).toHaveCount(0);
 });
+
+test('distinguishes unavailable ground speed from an explicit ETA assumption', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+
+  await input.fill('ETA BRAVO');
+  await expect(page.getByRole('option', {
+    name: /^ETA BRAVO.*ETE: UNAVAILABLE.*GS: UNAVAILABLE.*SRC: UNAVAILABLE/i,
+  })).toBeVisible();
+
+  await input.fill('ETA BRAVO @ 140KT');
+  await expect(page.getByRole('option', {
+    name: /^ETA BRAVO.*ETE:.*ETA UTC:.*ETA LOCAL.*GS: 140\.0 KT.*USER_ASSUMPTION.*SRC: USER_INPUT/i,
+  })).toBeVisible();
+});
+
+test('renders ETE separately for an explicit origin and destination', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('ETE G01 BRAVO @ 120KT');
+
+  await expect(page.getByRole('option', {
+    name: /^ETE G01 → BRAVO.*ETE:.*ETA UTC:.*SRC: USER_INPUT/i,
+  })).toBeVisible();
+});

@@ -120,4 +120,38 @@ describe('typed tactical command parser', () => {
       expect(parsed.errors, input).toEqual([]);
     }
   });
+
+  it('parses ETA and ETE references with an explicit ground-speed assumption', () => {
+    const eta = parseCommand('ETA BRAVO @ 140KT');
+    expect(eta.parameters).toMatchObject({
+      command: 'ETA',
+      fromReference: 'OWNSHIP',
+      toReference: 'BRAVO',
+      speed: 140,
+      speedUnit: 'KT',
+      speedAssumed: 'USER ASSUMPTION',
+    });
+    expect(eta.errors).toEqual([]);
+
+    const ete = parseCommand('ETE G01 BRAVO @ 120KT');
+    expect(ete.parameters).toMatchObject({
+      command: 'ETE',
+      fromReference: 'G01',
+      toReference: 'BRAVO',
+      speed: 120,
+      speedUnit: 'KT',
+      speedAssumed: 'USER ASSUMPTION',
+    });
+    expect(ete.errors).toEqual([]);
+  });
+
+  it('rejects a user ETA speed without an explicit speed unit', () => {
+    const parsed = parseCommand('ETA BRAVO @ 140');
+
+    expect(parsed.type).toBe('MEASUREMENT');
+    expect(parsed.errors).toEqual([
+      expect.objectContaining({ code: 'MISSING_UNIT' }),
+    ]);
+    expect(parsed.warnings).toContain('EXECUTION_NOT_ATTEMPTED');
+  });
 });
