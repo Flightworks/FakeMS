@@ -38,6 +38,9 @@ const COMMAND_TOKENS = new Set([
   'NEAREST',
   'NOTE',
   'CALC',
+  'RECIP',
+  'DELTA',
+  'REL',
   'TIME',
   'DIST',
   'GS',
@@ -981,6 +984,77 @@ const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
   );
 };
 
+const parseAngularCalculation = (tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+  const addUnexpectedArguments = (startIndex: number) => {
+    if (tokens.length > startIndex) {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected angular argument: ${tokens.slice(startIndex).map(token => token.normalized).join(' ')}.`,
+      });
+    }
+  };
+  const validateAngle = (token: CommandToken | undefined, label: string): number | null => {
+    const value = parseFiniteNumber(token);
+    if (hasNonFiniteToken(token)) {
+      errors.push(nonFiniteError());
+    } else if (!token) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: `${command} requires ${label}.`,
+      });
+    } else if (value === null) {
+      errors.push({ code: 'INVALID_NUMBER', message: `${label} must be numeric.` });
+    } else if (value < 0 || value >= 360) {
+      errors.push({
+        code: 'INVALID_BEARING',
+        message: `${label} must be between 000 and 359.999 degrees.`,
+        hint: 'Use a value in the range [000, 360).',
+      });
+    }
+    return value;
+  };
+
+  if (command === 'RECIP') {
+    const angle = validateAngle(tokens[1], 'RECIP angle');
+    parameters.angle = angle;
+    parameters.angleKind = 'HEADING';
+    addUnexpectedArguments(2);
+  } else if (command === 'DELTA') {
+    const fromAngle = validateAngle(tokens[1], 'DELTA starting angle');
+    const toAngle = validateAngle(tokens[2], 'DELTA target angle');
+    parameters.fromAngle = fromAngle;
+    parameters.toAngle = toAngle;
+    parameters.angleKind = 'HEADING';
+    addUnexpectedArguments(3);
+  } else {
+    const references = tokens.slice(1).map(token => token.normalized);
+    if (references.length === 1) {
+      parameters.fromReference = 'OWNSHIP';
+      parameters.toReference = references[0];
+    } else if (references.length === 2) {
+      parameters.fromReference = references[0];
+      parameters.toReference = references[1];
+    } else {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'REL requires a target or an observer and target reference.',
+        hint: 'Use REL BRAVO or REL G01 BRAVO.',
+      });
+    }
+  }
+
+  return createResult(
+    'CALCULATION',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIntentType => {
   if (looksLikeProjection(normalizedInput, tokens)) return 'PROJECTION';
 
@@ -1001,6 +1075,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
   if (command === 'NOTE') return 'NOTE';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
+  if (command === 'RECIP' || command === 'DELTA' || command === 'REL') return 'CALCULATION';
   if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
   if (command === 'CALC' || /(?:^|\s)[+*/%=^-](?:\s|$)/.test(normalizedInput)) return 'CALCULATION';
   return 'NOTE';
@@ -1056,6 +1131,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'ROUTE') return parseRoute(tokens);
 
   if (type === 'CALCULATION') {
+    if (tokens[0].normalized === 'RECIP' || tokens[0].normalized === 'DELTA' || tokens[0].normalized === 'REL') {
+      return parseAngularCalculation(tokens);
+    }
     if (tokens[0].normalized === 'TIME' || tokens[0].normalized === 'DIST' || tokens[0].normalized === 'GS') {
       return parseTimeDistanceSpeed(input, tokens);
     }

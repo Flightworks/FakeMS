@@ -1,4 +1,5 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
+import { bearingBetween } from './geo';
 import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2 } from 'lucide-react';
 import Fuse from 'fuse.js';
 import {
@@ -39,6 +40,12 @@ import {
     BearingIntersectionError,
     type BearingIntersectionResult,
 } from '../domain/bearingIntersection';
+import {
+    calculateDelta,
+    calculateReciprocal,
+    calculateRelativeBearing,
+    type AngularInputKind,
+} from '../domain/angularCalculations';
 import {
     calculateFromBullseye,
     createBullseye,
@@ -298,6 +305,36 @@ const formatIntersectionResult = (result: BearingIntersectionResult): string => 
     )).join(' · ');
     return `${legs} · ANGLE: ${result.crossingAngleDegrees.toFixed(2)}° · QUALITY: ${result.quality} · METHOD: ${result.method}`;
 };
+
+const formatAngularDegrees = (value: number): string => (
+    Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)
+);
+
+const formatAngularBearing = (value: number): string => (
+    Number.isInteger(value) ? value.toFixed(0).padStart(3, '0') : value.toFixed(1)
+);
+
+const isAngularInputKind = (value: string | number | null): value is AngularInputKind => (
+    value === 'HEADING'
+    || value === 'TRACK'
+    || value === 'TRUE_BEARING'
+    || value === 'RELATIVE_BEARING'
+);
+
+const formatUnavailableAngular = (command: string, reason = 'MISSING QUALIFIED INPUT'): CommandOption => ({
+    id: `angular-${command.toLowerCase()}-unavailable`,
+    label: `${command}: UNAVAILABLE`,
+    subLabel: `${reason} · CALCULATION ONLY`,
+    icon: Compass,
+    keywords: ['angular', command.toLowerCase(), 'unavailable'],
+    historyValue: command,
+    isPreview: true,
+    ranking: {
+        category: 'STRUCTURED_EXACT',
+        completeness: 3,
+        match: 'EXACT',
+    },
+});
 
 const isCoordinateDisplayFormat = (value: string | number | null): value is CoordinateFormat => (
     value === 'DD' || value === 'DDM' || value === 'DMS'
@@ -767,6 +804,101 @@ export const getCommands = (
             });
         } catch {
             // The typed parser already reports invalid quantities; no result is emitted here.
+        }
+    }
+
+    const angularCommand = calculationCommand;
+    if (parsedMeasurement.type === 'CALCULATION'
+        && (angularCommand === 'RECIP' || angularCommand === 'DELTA' || angularCommand === 'REL')
+        && parsedMeasurement.errors.length === 0) {
+        const angleKind = isAngularInputKind(parsedMeasurement.parameters.angleKind)
+            ? parsedMeasurement.parameters.angleKind
+            : 'HEADING';
+
+        if (angularCommand === 'RECIP' && typeof parsedMeasurement.parameters.angle === 'number') {
+            const result = calculateReciprocal(parsedMeasurement.parameters.angle, angleKind as Exclude<AngularInputKind, 'RELATIVE_BEARING'>);
+            if (result.status === 'AVAILABLE' && result.valueDegrees !== null) {
+                commands.push({
+                    id: 'angular-reciprocal',
+                    label: `RECIP: ${formatAngularBearing(result.valueDegrees)}°`,
+                    subLabel: `${result.inputKind} → ${result.outputKind} · CALCULATION ONLY`,
+                    icon: Compass,
+                    keywords: ['reciprocal', 'recip', result.inputKind, result.outputKind],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                commands.push(formatUnavailableAngular('RECIP', result.reason ?? 'INVALID ANGLE'));
+            }
+        } else if (angularCommand === 'DELTA'
+            && typeof parsedMeasurement.parameters.fromAngle === 'number'
+            && typeof parsedMeasurement.parameters.toAngle === 'number') {
+            const result = calculateDelta(
+                parsedMeasurement.parameters.fromAngle,
+                parsedMeasurement.parameters.toAngle,
+                angleKind as Exclude<AngularInputKind, 'RELATIVE_BEARING'>,
+            );
+            if (result.status === 'AVAILABLE' && result.deltaDegrees !== null && result.direction) {
+                commands.push({
+                    id: 'angular-delta',
+                    label: `DELTA: ${result.direction} ${formatAngularDegrees(result.deltaDegrees)}°`,
+                    subLabel: `${result.inputKind} · SIGNED ${result.signedDeltaDegrees}° · CALCULATION ONLY`,
+                    icon: Compass,
+                    keywords: ['delta', 'turn', result.direction, result.inputKind],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                commands.push(formatUnavailableAngular('DELTA', result.reason ?? 'INVALID ANGLE'));
+            }
+        } else if (angularCommand === 'REL'
+            && typeof parsedMeasurement.parameters.fromReference === 'string'
+            && typeof parsedMeasurement.parameters.toReference === 'string') {
+            const fromReference = parsedMeasurement.parameters.fromReference;
+            const toReference = parsedMeasurement.parameters.toReference;
+            const fromResolution = resolveEntityReference(fromReference, entities, ownship);
+            const toResolution = resolveEntityReference(toReference, entities, ownship);
+            const observer = fromResolution.entity;
+            const target = toResolution.entity;
+            const observerHeading = observer?.heading;
+            const validPositions = observer && target
+                && Number.isFinite(observer.position.lat)
+                && Number.isFinite(observer.position.lon)
+                && Number.isFinite(target.position.lat)
+                && Number.isFinite(target.position.lon);
+
+            if (!fromResolution.executable || !toResolution.executable || !observer || !target) {
+                commands.push(formatUnavailableAngular('REL', 'AMBIGUOUS OR UNKNOWN REFERENCE'));
+            } else if (!validPositions || typeof observerHeading !== 'number' || !Number.isFinite(observerHeading)) {
+                commands.push(formatUnavailableAngular('REL', 'OBSERVER HEADING UNAVAILABLE'));
+            } else {
+                const trueBearing = bearingBetween(
+                    observer.position.lat,
+                    observer.position.lon,
+                    target.position.lat,
+                    target.position.lon,
+                );
+                const result = calculateRelativeBearing(trueBearing, observerHeading);
+                if (result.status === 'AVAILABLE' && result.valueDegrees !== null) {
+                    const relativeId = observer.id === ownship.id
+                        ? `angular-relative-${target.id}`
+                        : `angular-relative-${observer.id}-${target.id}`;
+                    commands.push({
+                        id: relativeId,
+                        label: `REL ${target.label}: ${formatAngularDegrees(result.valueDegrees)}°`,
+                        subLabel: `${result.inputKind} → ${result.outputKind} · BASE ${observerHeading.toFixed(1)}° ${result.referenceKind} · CALCULATION ONLY`,
+                        icon: Compass,
+                        keywords: ['relative', 'rel', target.label, observer.label, result.outputKind],
+                        historyValue: q,
+                        isPreview: true,
+                        ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                    });
+                } else {
+                    commands.push(formatUnavailableAngular('REL', result.reason ?? 'INVALID ANGLE'));
+                }
+            }
         }
     }
 

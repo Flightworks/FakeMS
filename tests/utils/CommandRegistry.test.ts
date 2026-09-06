@@ -741,5 +741,36 @@ describe('CommandRegistry', () => {
       expect(context.proposeDirectTo).not.toHaveBeenCalled();
       expect(context.proposeRoute).not.toHaveBeenCalled();
     });
+
+    it('offers local reciprocal and delta results without mission side effects', () => {
+      const reciprocal = getCommands('RECIP 273', mockContext)
+        .find(command => command.id === 'angular-reciprocal');
+      expect(reciprocal?.label).toContain('093°');
+      expect(reciprocal?.subLabel).toContain('HEADING');
+
+      const delta = getCommands('DELTA 350 010', mockContext)
+        .find(command => command.id === 'angular-delta');
+      expect(delta?.label).toContain('RIGHT 20°');
+      expect(delta?.subLabel).toContain('HEADING');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
+
+    it('offers relative bearing only when the observer heading is available', () => {
+      const relative = getCommands('REL TARGET1', mockContext)
+        .find(command => command.id === 'angular-relative-target1');
+      expect(relative?.label).toContain('REL TARGET1');
+      expect(relative?.subLabel).toContain('RELATIVE_BEARING');
+
+      const unavailableContext = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { id: 'no-heading', label: 'NOHDG', type: EntityType.WAYPOINT, position: { lat: 5, lon: 5 }, heading: undefined },
+          { ...mockEntities[1], heading: 90 },
+        ],
+      };
+      const unavailable = getCommands('REL NOHDG TARGET1', unavailableContext);
+      expect(unavailable.some(command => command.label.includes('UNAVAILABLE'))).toBe(true);
+    });
   });
 });

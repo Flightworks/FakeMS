@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CommandInterpretationPanel } from '../../components/CommandInterpretationPanel';
 import { createProjectionPreview } from '../../domain/designations';
 import { intersectBearings } from '../../domain/bearingIntersection';
+import { calculateDelta, calculateReciprocal, calculateRelativeBearing } from '../../domain/angularCalculations';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -150,5 +151,48 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('METHOD: SPHERICAL GREAT CIRCLE');
     expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
     expect(panel).toHaveTextContent('STATUS: SIMULATED');
+  });
+
+  it('explains reciprocal, delta, and relative angular calculations', () => {
+    const reciprocal = calculateReciprocal(273, 'HEADING');
+    const delta = calculateDelta(350, 10, 'HEADING');
+    const relative = calculateRelativeBearing(90, 0);
+
+    const { rerender } = render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('RECIP 273')}
+        angularCalculation={reciprocal}
+        effect="CALCULATION ONLY"
+      />,
+    );
+    let panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: RECIP');
+    expect(panel).toHaveTextContent('INPUT: HEADING');
+    expect(panel).toHaveTextContent('OUTPUT: HEADING');
+    expect(panel).toHaveTextContent('RESULT: 093°');
+
+    rerender(
+      <CommandInterpretationPanel
+        parsed={parseCommand('DELTA 350 010')}
+        angularCalculation={delta}
+        effect="CALCULATION ONLY"
+      />,
+    );
+    panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: DELTA');
+    expect(panel).toHaveTextContent('DIRECTION: RIGHT');
+    expect(panel).toHaveTextContent('DELTA: 20°');
+
+    rerender(
+      <CommandInterpretationPanel
+        parsed={parseCommand('REL BRAVO')}
+        angularCalculation={relative}
+        effect="CALCULATION ONLY"
+      />,
+    );
+    panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: REL');
+    expect(panel).toHaveTextContent('OUTPUT: RELATIVE_BEARING');
+    expect(panel).toHaveTextContent('RESULT: 090°');
   });
 });

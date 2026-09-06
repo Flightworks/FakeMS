@@ -6,6 +6,13 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
+import {
+  calculateDelta,
+  calculateReciprocal,
+  calculateRelativeBearing,
+  type AngularCalculationResult,
+  type AngularInputKind,
+} from '../domain/angularCalculations';
 import { intersectBearings, type BearingIntersectionResult } from '../domain/bearingIntersection';
 import { createProjectionPreview, type ProjectionPreview, type SimulatedDesignation } from '../domain/designations';
 import {
@@ -16,6 +23,7 @@ import {
   type BullseyeReference,
 } from '../domain/bullseye';
 import { resolveEntityReference } from '../domain/entityResolution';
+import { bearingBetween } from '../utils/geo';
 import { convertTacticalQuantity, createTacticalQuantity } from '../domain/tacticalUnits';
 import { CommandInterpretationPanel } from './CommandInterpretationPanel';
 import { getTacticalCompletions, type TacticalCompletion } from '../domain/commandCompletion';
@@ -399,6 +407,51 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [parsedCommand, bullseye]);
 
+  const interpretationAngularCalculation = useMemo<AngularCalculationResult | undefined>(() => {
+    if (parsedCommand.type !== 'CALCULATION' || parsedCommand.errors.length > 0) return undefined;
+    const command = parsedCommand.parameters.command;
+    if (command !== 'RECIP' && command !== 'DELTA' && command !== 'REL') return undefined;
+
+    const parsedKind = parsedCommand.parameters.angleKind;
+    const angleKind: Exclude<AngularInputKind, 'RELATIVE_BEARING'> = (
+      parsedKind === 'HEADING' || parsedKind === 'TRACK' || parsedKind === 'TRUE_BEARING'
+    ) ? parsedKind : 'HEADING';
+
+    if (command === 'RECIP' && typeof parsedCommand.parameters.angle === 'number') {
+      return calculateReciprocal(parsedCommand.parameters.angle, angleKind);
+    }
+    if (command === 'DELTA'
+      && typeof parsedCommand.parameters.fromAngle === 'number'
+      && typeof parsedCommand.parameters.toAngle === 'number') {
+      return calculateDelta(parsedCommand.parameters.fromAngle, parsedCommand.parameters.toAngle, angleKind);
+    }
+    if (command === 'REL'
+      && typeof parsedCommand.parameters.fromReference === 'string'
+      && typeof parsedCommand.parameters.toReference === 'string') {
+      const fromResolution = resolveEntityReference(parsedCommand.parameters.fromReference, entities, ownship);
+      const toResolution = resolveEntityReference(parsedCommand.parameters.toReference, entities, ownship);
+      const observer = fromResolution.entity;
+      const target = toResolution.entity;
+      if (!fromResolution.executable || !toResolution.executable || !observer || !target
+        || typeof observer.heading !== 'number'
+        || !Number.isFinite(observer.heading)
+        || !Number.isFinite(observer.position.lat)
+        || !Number.isFinite(observer.position.lon)
+        || !Number.isFinite(target.position.lat)
+        || !Number.isFinite(target.position.lon)) {
+        return calculateRelativeBearing(Number.NaN, Number.NaN);
+      }
+      const trueBearing = bearingBetween(
+        observer.position.lat,
+        observer.position.lon,
+        target.position.lat,
+        target.position.lon,
+      );
+      return calculateRelativeBearing(trueBearing, observer.heading);
+    }
+    return undefined;
+  }, [parsedCommand, entities, ownship]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
@@ -648,6 +701,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {shouldShowInterpretation && (
           <CommandInterpretationPanel
             parsed={parsedCommand}
+            angularCalculation={interpretationAngularCalculation}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
             bullseyeMeasurement={interpretationBullseyeMeasurement}

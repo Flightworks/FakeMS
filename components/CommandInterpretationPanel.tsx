@@ -1,4 +1,5 @@
 import type { ParsedCommand } from '../domain/commandLanguage';
+import type { AngularCalculationResult } from '../domain/angularCalculations';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import type {
   BullseyeMeasurement,
@@ -13,6 +14,7 @@ import {
 
 export interface CommandInterpretationPanelProps {
   parsed: ParsedCommand;
+  angularCalculation?: AngularCalculationResult;
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
   bullseyeMeasurement?: BullseyeMeasurement;
@@ -26,6 +28,13 @@ const formatBearing = (value: number): string => (
     ? value.toFixed(0)
     : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
 );
+
+const formatAngularValue = (value: number | null, padded: boolean): string => {
+  if (value === null || !Number.isFinite(value)) return 'UNAVAILABLE';
+  return padded
+    ? (Number.isInteger(value) ? value.toFixed(0).padStart(3, '0') : value.toFixed(1))
+    : (Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1));
+};
 
 const formatCoordinate = (value: number): string => value.toFixed(5);
 
@@ -107,6 +116,7 @@ const getTarget = (
 
 const getDetails = (
   parsed: ParsedCommand,
+  angularCalculation?: AngularCalculationResult,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeMeasurement?: BullseyeMeasurement,
@@ -161,7 +171,26 @@ const getDetails = (
     if (typeof parameters.longitude === 'number') details.push(`LONGITUDE: ${formatCoordinate(parameters.longitude)}°`);
   } else if (parsed.type === 'CALCULATION') {
     const command = typeof parameters.command === 'string' ? parameters.command : undefined;
-    if (command === 'TIME' || command === 'DIST' || command === 'GS') {
+    if (angularCalculation && (command === 'RECIP' || command === 'DELTA' || command === 'REL')) {
+      details.push(`COMMAND: ${command}`);
+      details.push(`INPUT: ${angularCalculation.inputKind}`);
+      details.push(`OUTPUT: ${angularCalculation.outputKind}`);
+      const formattedResult = formatAngularValue(
+        angularCalculation.valueDegrees,
+        angularCalculation.operation !== 'DELTA',
+      );
+      details.push(`RESULT: ${formattedResult === 'UNAVAILABLE' ? formattedResult : `${formattedResult}°`}`);
+      if (angularCalculation.operation === 'DELTA') {
+        details.push(`DIRECTION: ${angularCalculation.direction ?? 'UNAVAILABLE'}`);
+        const formattedDelta = formatAngularValue(angularCalculation.deltaDegrees, false);
+        details.push(`DELTA: ${formattedDelta === 'UNAVAILABLE' ? formattedDelta : `${formattedDelta}°`}`);
+        details.push(`SIGNED DELTA: ${angularCalculation.signedDeltaDegrees ?? 'UNAVAILABLE'}°`);
+      }
+      if (angularCalculation.operation === 'RELATIVE') {
+        details.push(`REFERENCE AXIS: ${angularCalculation.referenceKind}`);
+      }
+      if (angularCalculation.reason) details.push(`REASON: ${angularCalculation.reason}`);
+    } else if (command === 'TIME' || command === 'DIST' || command === 'GS') {
       details.push(`COMMAND: ${command}`);
       if (typeof parameters.distance === 'number' && typeof parameters.distanceUnit === 'string') {
         details.push(`DISTANCE: ${parameters.distance.toFixed(1)} ${parameters.distanceUnit}`);
@@ -192,6 +221,7 @@ const getDetails = (
 
 export const CommandInterpretationPanel = ({
   parsed,
+  angularCalculation,
   projection,
   intersection,
   bullseyeMeasurement,
@@ -205,7 +235,7 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    ...getDetails(parsed, angularCalculation, projection, intersection, bullseyeMeasurement, bullseyeProjection),
     `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,

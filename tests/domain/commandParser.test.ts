@@ -359,4 +359,44 @@ describe('typed tactical command parser', () => {
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
   });
+
+  it('parses reciprocal and delta angular calculations without executing them', () => {
+    const reciprocal = parseCommand('RECIP 273');
+    expect(reciprocal.type).toBe('CALCULATION');
+    expect(reciprocal.parameters).toMatchObject({ command: 'RECIP', angle: 273, angleKind: 'HEADING' });
+    expect(reciprocal.errors).toEqual([]);
+
+    const delta = parseCommand('DELTA 350 010');
+    expect(delta.type).toBe('CALCULATION');
+    expect(delta.parameters).toMatchObject({ command: 'DELTA', fromAngle: 350, toAngle: 10, angleKind: 'HEADING' });
+    expect(delta.errors).toEqual([]);
+  });
+
+  it('parses relative bearing forms with an explicit observer', () => {
+    const ownship = parseCommand('REL BRAVO');
+    expect(ownship.type).toBe('CALCULATION');
+    expect(ownship.parameters).toMatchObject({
+      command: 'REL',
+      fromReference: 'OWNSHIP',
+      toReference: 'BRAVO',
+    });
+    expect(ownship.errors).toEqual([]);
+
+    const explicit = parseCommand('REL G01 BRAVO');
+    expect(explicit.parameters).toMatchObject({
+      command: 'REL',
+      fromReference: 'G01',
+      toReference: 'BRAVO',
+    });
+    expect(explicit.errors).toEqual([]);
+  });
+
+  it('rejects invalid angular values and unexpected angular arguments', () => {
+    for (const input of ['RECIP 360', 'DELTA 350 010 EXTRA', 'REL']) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('CALCULATION');
+      expect(parsed.errors.length, input).toBeGreaterThan(0);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });
