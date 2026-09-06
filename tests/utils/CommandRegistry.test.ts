@@ -808,5 +808,71 @@ describe('CommandRegistry', () => {
       expect(unavailable.some(command => command.label.includes('UNAVAILABLE'))).toBe(true);
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers closure and CPA as local calculations without navigation side effects', () => {
+      const previewRelativeMotion = vi.fn();
+      const ownship = {
+        ...mockOwnship,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const bravo = {
+        ...mockEntities[1],
+        label: 'BRAVO',
+        position: { lat: 0, lon: 0.1 },
+        metadata: {
+          groundTrackDegrees: 270,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const g01 = {
+        ...mockEntities[1],
+        id: 'g01',
+        label: 'G01',
+        position: { lat: 0.1, lon: 0 },
+        metadata: {
+          groundTrackDegrees: 180,
+          groundSpeedKnots: 30,
+          freshness: 'FRESH',
+        },
+      };
+      const context = {
+        ...mockContext,
+        ownship,
+        entities: [ownship, bravo, g01],
+        previewRelativeMotion,
+        requestMissionAction: vi.fn(),
+        proposeDirectTo: vi.fn(),
+        proposeRoute: vi.fn(),
+      };
+
+      const closure = getCommands('CLOSURE BRAVO', context)
+        .find(command => command.id === 'relative-closure-target1');
+      expect(closure?.label).toContain('CLOSURE BRAVO');
+      expect(closure?.subLabel).toContain('CLOSURE:');
+      closure?.action?.();
+      expect(previewRelativeMotion).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'CLOSURE',
+        result: expect.objectContaining({ status: 'AVAILABLE' }),
+      }));
+
+      const cpa = getCommands('CPA G01 BRAVO', context)
+        .find(command => command.id === 'relative-cpa-g01-target1');
+      expect(cpa?.label).toContain('CPA G01 BRAVO');
+      expect(cpa?.subLabel).toContain('TCPA:');
+      expect(cpa?.subLabel).toContain('CONSTANT VELOCITY');
+      cpa?.action?.();
+      expect(previewRelativeMotion).toHaveBeenCalledWith(expect.objectContaining({
+        command: 'CPA',
+        result: expect.objectContaining({ status: 'AVAILABLE' }),
+      }));
+      expect(context.requestMissionAction).not.toHaveBeenCalled();
+      expect(context.proposeDirectTo).not.toHaveBeenCalled();
+      expect(context.proposeRoute).not.toHaveBeenCalled();
+    });
   });
 });

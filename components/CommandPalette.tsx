@@ -36,6 +36,7 @@ import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
+import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 
 type CommandPaletteCloseOptions = {
   preserveFuturePosition?: boolean;
@@ -49,6 +50,7 @@ interface CommandPaletteProps {
   previewIntersection?: (preview: BearingIntersectionResult) => void;
   previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
   previewFuturePosition?: (preview: FuturePositionPreview) => void;
+  previewRelativeMotion?: (preview: RelativeMotionPreview) => void;
   bullseye?: BullseyeReference | null;
   proposeSetBullseye?: (bullseye: BullseyeReference) => void;
   proposeClearBullseye?: () => void;
@@ -146,6 +148,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   previewIntersection,
   previewBullseyeProjection,
   previewFuturePosition,
+  previewRelativeMotion,
   bullseye,
   proposeSetBullseye,
   proposeClearBullseye,
@@ -260,6 +263,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       previewIntersection,
       previewBullseyeProjection,
       previewFuturePosition,
+      previewRelativeMotion,
       bullseye,
       proposeSetBullseye,
       proposeClearBullseye,
@@ -295,6 +299,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     previewIntersection,
     previewBullseyeProjection,
     previewFuturePosition,
+    previewRelativeMotion,
     bullseye,
     proposeSetBullseye,
     proposeClearBullseye,
@@ -473,6 +478,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       || parsedCommand.parameters.command !== 'PREDICT'
       || parsedCommand.errors.length > 0) return undefined;
     return commands.find(command => command.futurePositionResult)?.futurePositionResult;
+  }, [parsedCommand, commands]);
+
+  const interpretationRelativeMotionPreview = useMemo<RelativeMotionPreview | undefined>(() => {
+    if (parsedCommand.type !== 'CALCULATION'
+      || (parsedCommand.parameters.command !== 'CLOSURE' && parsedCommand.parameters.command !== 'CPA')
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.relativeMotionPreview)?.relativeMotionPreview;
+  }, [parsedCommand, commands]);
+
+  const interpretationRelativeMotionResult = useMemo<RelativeMotionResult | undefined>(() => {
+    if (parsedCommand.type !== 'CALCULATION'
+      || (parsedCommand.parameters.command !== 'CLOSURE' && parsedCommand.parameters.command !== 'CPA')
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.relativeMotionResult)?.relativeMotionResult;
   }, [parsedCommand, commands]);
 
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
@@ -731,6 +750,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             angularCalculation={interpretationAngularCalculation}
             futurePositionPreview={interpretationFuturePositionPreview}
             futurePositionResult={interpretationFuturePositionResult}
+            relativeMotionPreview={interpretationRelativeMotionPreview}
+            relativeMotionResult={interpretationRelativeMotionResult}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
             bullseyeMeasurement={interpretationBullseyeMeasurement}

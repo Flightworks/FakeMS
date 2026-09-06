@@ -5,6 +5,7 @@ import { createProjectionPreview } from '../../domain/designations';
 import { intersectBearings } from '../../domain/bearingIntersection';
 import { calculateDelta, calculateReciprocal, calculateRelativeBearing } from '../../domain/angularCalculations';
 import { projectFuturePosition, type FuturePositionPreview } from '../../domain/futurePosition';
+import { calculateRelativeMotion, type RelativeMotionPreview } from '../../domain/relativeMotion';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -238,5 +239,54 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('AGE: 4 S');
     expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT GROUND TRACK / GROUND SPEED');
     expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
+  });
+
+  it('explains closure and CPA as calculation-only relative motion', () => {
+    const result = calculateRelativeMotion({
+      reference: {
+        id: 'ownship',
+        label: 'OWNSHIP',
+        position: { lat: 0, lon: 0 },
+        groundTrackDegrees: 90,
+        groundSpeedKnots: 60,
+        freshness: 'FRESH',
+      },
+      target: {
+        id: 'bravo',
+        label: 'BRAVO',
+        position: { lat: 0, lon: 0.1 },
+        groundTrackDegrees: 270,
+        groundSpeedKnots: 60,
+        freshness: 'FRESH',
+      },
+    });
+    if (result.status !== 'AVAILABLE') throw new Error('Expected an available relative-motion result');
+    const relativeMotionPreview: RelativeMotionPreview = {
+      type: 'RELATIVE_MOTION_PREVIEW',
+      command: 'CPA',
+      referenceId: 'ownship',
+      referenceLabel: 'OWNSHIP',
+      targetId: 'bravo',
+      targetLabel: 'BRAVO',
+      result,
+    };
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('CPA BRAVO')}
+        relativeMotionPreview={relativeMotionPreview}
+        effect="CALCULATION ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: CALCULATION');
+    expect(panel).toHaveTextContent('COMMAND: CPA');
+    expect(panel).toHaveTextContent('CLOSURE: 120.0 KT');
+    expect(panel).toHaveTextContent('CPA: 0.0 NM');
+    expect(panel).toHaveTextContent('TCPA: 3.0 MIN');
+    expect(panel).toHaveTextContent('STATUS: FUTURE_CPA');
+    expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT VELOCITY');
+    expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
   });
 });

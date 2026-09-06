@@ -43,6 +43,13 @@ import {
     type FuturePositionTrack,
 } from '../domain/futurePosition';
 import {
+    calculateRelativeMotion,
+    type RelativeMotionFreshness,
+    type RelativeMotionPreview,
+    type RelativeMotionResult,
+    type RelativeMotionTrack,
+} from '../domain/relativeMotion';
+import {
     intersectBearings,
     BearingIntersectionError,
     type BearingIntersectionResult,
@@ -87,6 +94,7 @@ export interface CommandContext {
     previewIntersection?: (preview: BearingIntersectionResult) => void;
     previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
     previewFuturePosition?: (preview: FuturePositionPreview) => void;
+    previewRelativeMotion?: (preview: RelativeMotionPreview) => void;
     bullseye?: BullseyeReference | null;
     proposeSetBullseye?: (bullseye: BullseyeReference) => void;
     proposeClearBullseye?: () => void;
@@ -124,6 +132,8 @@ export interface CommandOption {
     ranking?: CommandRankingMetadata;
     futurePositionPreview?: FuturePositionPreview;
     futurePositionResult?: FuturePositionResult;
+    relativeMotionPreview?: RelativeMotionPreview;
+    relativeMotionResult?: RelativeMotionResult;
     keepPaletteOpen?: boolean;
 }
 
@@ -375,6 +385,92 @@ const formatFutureUnavailable = (
     },
 });
 
+const readRelativeMotionTrack = (entity: Entity): RelativeMotionTrack => {
+    const metadata = entity.metadata;
+    const numeric = (key: string): number | undefined => {
+        const value = metadata?.[key];
+        return typeof value === 'number' ? value : undefined;
+    };
+    const rawFreshness = metadata?.freshness;
+    const freshness: RelativeMotionFreshness | undefined = rawFreshness === 'FRESH'
+        || rawFreshness === 'STALE'
+        || rawFreshness === 'UNKNOWN'
+        ? rawFreshness
+        : undefined;
+    return {
+        id: entity.id,
+        label: entity.label,
+        position: { ...entity.position },
+        groundTrackDegrees: numeric('groundTrackDegrees'),
+        groundSpeedKnots: numeric('groundSpeedKnots'),
+        freshness,
+    };
+};
+
+const formatRelativeMotionUnavailable = (
+    command: string,
+    reference: string,
+    reason: string,
+    relativeMotionResult?: RelativeMotionResult,
+): CommandOption => ({
+    id: `relative-${command.toLowerCase()}-unavailable-${normalizeRankingText(reference).replace(/\\s+/g, '-')}`,
+    label: `${command} ${reference}: UNAVAILABLE`,
+    subLabel: `REASON: ${reason} · CALCULATION ONLY`,
+    icon: Compass,
+    keywords: ['relative', 'motion', command.toLowerCase(), 'unavailable', reason.toLowerCase()],
+    historyValue: `${command} ${reference}`,
+    isPreview: true,
+    relativeMotionResult,
+    ranking: {
+        category: 'STRUCTURED_EXACT',
+        completeness: 3,
+        match: 'EXACT',
+    },
+});
+
+const createRelativeMotionOption = (
+    command: 'CLOSURE' | 'CPA',
+    reference: Entity,
+    target: Entity,
+    result: Extract<RelativeMotionResult, { status: 'AVAILABLE' }>,
+    previewRelativeMotion: ((preview: RelativeMotionPreview) => void) | undefined,
+    historyValue: string,
+): CommandOption => {
+    const preview: RelativeMotionPreview = {
+        type: 'RELATIVE_MOTION_PREVIEW',
+        command,
+        referenceId: reference.id,
+        referenceLabel: reference.label,
+        targetId: target.id,
+        targetLabel: target.label,
+        result,
+    };
+    const tcpaLabel = result.tcpaMinutes === null ? 'N/A' : `${result.tcpaMinutes.toFixed(1)} MIN`;
+    const label = command === 'CLOSURE'
+        ? `CLOSURE ${target.label}`
+        : `CPA ${reference.label === 'VIPER 1-1' || reference.id === 'ownship' ? '' : `${reference.label} `}${target.label}`;
+    return {
+        id: command === 'CLOSURE'
+            ? `relative-closure-${target.id}`
+            : `relative-cpa-${reference.id}-${target.id}`,
+        label,
+        subLabel: `CLOSURE: ${result.closureRateKnots.toFixed(1)} KT · CPA: ${result.cpaDistanceNauticalMiles.toFixed(1)} NM · TCPA: ${tcpaLabel} · STATUS: ${result.cpaStatus} · ASSUMPTION: ${result.assumption}`,
+        icon: Compass,
+        action: previewRelativeMotion ? () => previewRelativeMotion(preview) : undefined,
+        relativeMotionPreview: preview,
+        relativeMotionResult: result,
+        keywords: ['relative', 'motion', command.toLowerCase(), 'closure', 'cpa', 'tcpa', reference.label, target.label],
+        historyValue,
+        isPreview: true,
+        keepPaletteOpen: true,
+        ranking: {
+            category: 'STRUCTURED_EXACT',
+            completeness: 3,
+            match: 'EXACT',
+        },
+    };
+};
+
 const isAngularInputKind = (value: string | number | null): value is AngularInputKind => (
     value === 'HEADING'
     || value === 'TRACK'
@@ -423,6 +519,7 @@ export const getCommands = (
         previewIntersection,
         previewBullseyeProjection,
         previewFuturePosition,
+        previewRelativeMotion,
         bullseye,
         proposeSetBullseye,
         proposeClearBullseye,
@@ -1021,6 +1118,58 @@ export const getCommands = (
                         },
                     });
                 }
+            }
+        }
+    }
+
+    const relativeMotionCommand = parsedMeasurement.parameters.command;
+    if (parsedMeasurement.type === 'CALCULATION'
+        && (relativeMotionCommand === 'CLOSURE' || relativeMotionCommand === 'CPA')
+        && parsedMeasurement.errors.length === 0) {
+        const isClosure = relativeMotionCommand === 'CLOSURE';
+        const fromReference = isClosure ? 'OWNSHIP' : parsedMeasurement.parameters.fromReference;
+        const toReference = isClosure
+            ? parsedMeasurement.parameters.targetReference
+            : parsedMeasurement.parameters.toReference;
+        const referenceLabel = typeof fromReference === 'string' ? fromReference : 'UNKNOWN';
+        const targetLabel = typeof toReference === 'string' ? toReference : 'UNKNOWN';
+        const referenceResolution = isClosure
+            ? { executable: true, entity: ownship }
+            : typeof fromReference === 'string'
+                ? resolveEntityReference(fromReference, entities, ownship)
+                : { executable: false, entity: undefined };
+        const targetResolution = typeof toReference === 'string'
+            ? resolveEntityReference(toReference, entities, ownship)
+            : { executable: false, entity: undefined };
+        if (!referenceResolution.executable || !referenceResolution.entity
+            || !targetResolution.executable || !targetResolution.entity
+            || referenceResolution.entity.id === targetResolution.entity.id) {
+            commands.push(formatRelativeMotionUnavailable(
+                relativeMotionCommand,
+                isClosure ? targetLabel : `${referenceLabel} ${targetLabel}`,
+                'AMBIGUOUS OR UNKNOWN REFERENCE',
+            ));
+        } else {
+            const result = calculateRelativeMotion({
+                reference: readRelativeMotionTrack(referenceResolution.entity),
+                target: readRelativeMotionTrack(targetResolution.entity),
+            });
+            if (result.status === 'UNAVAILABLE') {
+                commands.push(formatRelativeMotionUnavailable(
+                    relativeMotionCommand,
+                    isClosure ? targetResolution.entity.label : `${referenceResolution.entity.label} ${targetResolution.entity.label}`,
+                    result.reason,
+                    result,
+                ));
+            } else {
+                commands.push(createRelativeMotionOption(
+                    relativeMotionCommand,
+                    referenceResolution.entity,
+                    targetResolution.entity,
+                    result,
+                    previewRelativeMotion,
+                    q,
+                ));
             }
         }
     }

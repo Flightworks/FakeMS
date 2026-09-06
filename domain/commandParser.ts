@@ -42,6 +42,8 @@ const COMMAND_TOKENS = new Set([
   'RECIP',
   'DELTA',
   'REL',
+  'CLOSURE',
+  'CPA',
   'TIME',
   'DIST',
   'GS',
@@ -1117,6 +1119,47 @@ const parseAngularCalculation = (tokens: CommandToken[]): ParsedCommand => {
   );
 };
 
+const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+  const references = tokens.slice(1).map(token => token.normalized);
+
+  if (command === 'CLOSURE') {
+    if (references.length === 0) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'CLOSURE requires a target reference.',
+        hint: 'Use CLOSURE BRAVO.',
+      });
+    } else {
+      parameters.targetReference = references.join(' ');
+    }
+  } else if (references.length === 1) {
+    parameters.fromReference = 'OWNSHIP';
+    parameters.toReference = references[0];
+  } else if (references.length === 2) {
+    parameters.fromReference = references[0];
+    parameters.toReference = references[1];
+  } else {
+    errors.push({
+      code: references.length === 0 ? 'INCOMPLETE_COMMAND' : 'UNEXPECTED_ARGUMENT',
+      message: references.length === 0
+        ? 'CPA requires a target or an observer and target reference.'
+        : `Unexpected CPA argument: ${references.slice(2).join(' ')}.`,
+      hint: 'Use CPA BRAVO or CPA G01 BRAVO.',
+    });
+  }
+
+  return createResult(
+    'CALCULATION',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIntentType => {
   if (looksLikeProjection(normalizedInput, tokens)) return 'PROJECTION';
 
@@ -1137,7 +1180,8 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
   if (command === 'NOTE') return 'NOTE';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
-  if (command === 'RECIP' || command === 'DELTA' || command === 'REL') return 'CALCULATION';
+  if (command === 'RECIP' || command === 'DELTA' || command === 'REL'
+    || command === 'CLOSURE' || command === 'CPA') return 'CALCULATION';
   if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
   if (command === 'CALC' || /(?:^|\s)[+*/%=^-](?:\s|$)/.test(normalizedInput)) return 'CALCULATION';
   return 'NOTE';
@@ -1194,6 +1238,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'ROUTE') return parseRoute(tokens);
 
   if (type === 'CALCULATION') {
+    if (tokens[0].normalized === 'CLOSURE' || tokens[0].normalized === 'CPA') {
+      return parseRelativeMotionCalculation(tokens);
+    }
     if (tokens[0].normalized === 'RECIP' || tokens[0].normalized === 'DELTA' || tokens[0].normalized === 'REL') {
       return parseAngularCalculation(tokens);
     }

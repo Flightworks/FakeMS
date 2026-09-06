@@ -435,4 +435,36 @@ describe('typed tactical command parser', () => {
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
   });
+
+  it('parses relative motion commands without execution', () => {
+    const closure = parseCommand('CLOSURE BRAVO');
+    expect(closure.type).toBe('CALCULATION');
+    expect(closure.parameters).toMatchObject({ command: 'CLOSURE', targetReference: 'BRAVO' });
+    expect(closure.errors).toEqual([]);
+
+    const ownshipCpa = parseCommand('CPA BRAVO');
+    expect(ownshipCpa.parameters).toMatchObject({
+      command: 'CPA',
+      fromReference: 'OWNSHIP',
+      toReference: 'BRAVO',
+    });
+    expect(ownshipCpa.errors).toEqual([]);
+
+    const twoReferenceCpa = parseCommand('CPA G01 BRAVO');
+    expect(twoReferenceCpa.parameters).toMatchObject({
+      command: 'CPA',
+      fromReference: 'G01',
+      toReference: 'BRAVO',
+    });
+    expect(twoReferenceCpa.errors).toEqual([]);
+  });
+
+  it('rejects incomplete relative motion commands honestly', () => {
+    for (const input of ['CLOSURE', 'CPA', 'CPA G01 BRAVO EXTRA']) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('CALCULATION');
+      expect(parsed.errors.length, input).toBeGreaterThan(0);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });

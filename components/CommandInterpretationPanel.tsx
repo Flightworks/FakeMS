@@ -10,6 +10,10 @@ import type {
   FuturePositionPreview,
   FuturePositionResult,
 } from '../domain/futurePosition';
+import type {
+  RelativeMotionPreview,
+  RelativeMotionResult,
+} from '../domain/relativeMotion';
 import {
   convertTacticalQuantity,
   createTacticalQuantity,
@@ -21,6 +25,8 @@ export interface CommandInterpretationPanelProps {
   angularCalculation?: AngularCalculationResult;
   futurePositionPreview?: FuturePositionPreview;
   futurePositionResult?: FuturePositionResult;
+  relativeMotionPreview?: RelativeMotionPreview;
+  relativeMotionResult?: RelativeMotionResult;
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
   bullseyeMeasurement?: BullseyeMeasurement;
@@ -129,6 +135,8 @@ const getDetails = (
   angularCalculation?: AngularCalculationResult,
   futurePositionPreview?: FuturePositionPreview,
   futurePositionResult?: FuturePositionResult,
+  relativeMotionPreview?: RelativeMotionPreview,
+  relativeMotionResult?: RelativeMotionResult,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeMeasurement?: BullseyeMeasurement,
@@ -183,7 +191,21 @@ const getDetails = (
     if (typeof parameters.longitude === 'number') details.push(`LONGITUDE: ${formatCoordinate(parameters.longitude)}°`);
   } else if (parsed.type === 'CALCULATION') {
     const command = typeof parameters.command === 'string' ? parameters.command : undefined;
-    if (angularCalculation && (command === 'RECIP' || command === 'DELTA' || command === 'REL')) {
+    if ((command === 'CLOSURE' || command === 'CPA')
+      && (relativeMotionPreview || relativeMotionResult)) {
+      details.push(`COMMAND: ${command}`);
+      const result = relativeMotionPreview?.result ?? relativeMotionResult;
+      if (!result || result.status === 'UNAVAILABLE') {
+        details.push('RESULT: UNAVAILABLE');
+        if (result?.status === 'UNAVAILABLE') details.push(`REASON: ${result.reason}`);
+      } else {
+        details.push(`CLOSURE: ${result.closureRateKnots.toFixed(1)} KT`);
+        details.push(`CPA: ${result.cpaDistanceNauticalMiles.toFixed(1)} NM`);
+        details.push(`TCPA: ${result.tcpaMinutes === null ? 'N/A' : `${result.tcpaMinutes.toFixed(1)} MIN`}`);
+        details.push(`STATUS: ${result.cpaStatus}`);
+        details.push(`ASSUMPTION: ${result.assumption}`);
+      }
+    } else if (angularCalculation && (command === 'RECIP' || command === 'DELTA' || command === 'REL')) {
       details.push(`COMMAND: ${command}`);
       details.push(`INPUT: ${angularCalculation.inputKind}`);
       details.push(`OUTPUT: ${angularCalculation.outputKind}`);
@@ -257,6 +279,8 @@ export const CommandInterpretationPanel = ({
   angularCalculation,
   futurePositionPreview,
   futurePositionResult,
+  relativeMotionPreview,
+  relativeMotionResult,
   projection,
   intersection,
   bullseyeMeasurement,
@@ -270,7 +294,7 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, projection, intersection, bullseyeMeasurement, bullseyeProjection),
     `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,

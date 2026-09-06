@@ -48,13 +48,14 @@ const INITIAL_OWNSHIP: Entity = {
   label: 'VIPER 1-1',
   heading: 0,
   speed: 120, // Default speed in knots for ETA calculations
-  altitude: 3428
+  altitude: 3428,
+  metadata: { groundTrackDegrees: 0, groundSpeedKnots: 120, freshness: 'FRESH', ageSeconds: 0 },
 };
 
 // Seeding test entities with Lat/Lon Native coordinates
 const INITIAL_ENTITIES: Entity[] = [
   { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01' },
-  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO' },
+  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO', metadata: { groundTrackDegrees: 180, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4 } },
   { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE' },
   { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3, metadata: { groundTrackDegrees: 270, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4 } },
   // Adding Waypoint routine to ENEMY 2 to test automatic navigation
