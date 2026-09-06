@@ -1148,5 +1148,28 @@ describe('CommandRegistry', () => {
       expect(invalid?.subLabel).toContain('LOW/HIGH');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('explains symbols and layers from the shared local legend registry', () => {
+      const list = getCommands('LEGEND', mockContext).find(command => command.id === 'legend-list');
+      expect(list?.label).toBe('LEGEND');
+      expect(list?.subLabel).toContain('HOSTILE: Simulated hostile track symbol');
+      expect(list?.subLabel).toContain('SOURCE: LOCAL REGISTRY');
+
+      const hostile = getCommands('LEGEND SYMBOL HOSTILE', mockContext)
+        .find(command => command.id === 'legend-symbol_hostile');
+      expect(hostile?.subLabel).toContain('Simulated hostile track symbol');
+      expect(hostile?.subLabel).toContain('LOCAL SIMULATION SYMBOLOGY');
+      expect(hostile?.action).toBeUndefined();
+
+      const layerContext = { ...mockContext, layers: { ...createLayerState(), TRACKS: { ...createLayerState().TRACKS, visible: false } } };
+      const tracks = getCommands('LEGEND LAYER TRACKS', layerContext)
+        .find(command => command.id === 'legend-layer_tracks');
+      expect(tracks?.subLabel).toContain('VISIBILITY: OFF');
+
+      const invalid = getCommands('LEGEND SYMBOL RED', mockContext)
+        .find(command => command.id === 'legend-unavailable');
+      expect(invalid?.subLabel).toContain('MEANING NOT INFERRED');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

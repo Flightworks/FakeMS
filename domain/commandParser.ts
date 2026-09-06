@@ -62,6 +62,7 @@ const COMMAND_TOKENS = new Set([
   'VSREQ',
   'TOD',
   'DECLUTTER',
+  'LEGEND',
   'TIME',
   'DIST',
   'GS',
@@ -1178,6 +1179,35 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseLegendCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, CommandParameter> = {
+    system: 'LEGEND',
+    command: 'LEGEND',
+    scope: 'ALL',
+  };
+  const errors: CommandParseError[] = [];
+  const kind = tokens[1]?.normalized;
+  const reference = tokens[2]?.normalized;
+  if (tokens.length === 1) {
+    return createResult('SYSTEM', tokens, parameters);
+  }
+  if ((kind !== 'SYMBOL' && kind !== 'LAYER') || !reference || tokens.length > 3) {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use LEGEND, LEGEND SYMBOL <ID>, or LEGEND LAYER <ID>.' });
+  } else {
+    const allowed = kind === 'SYMBOL'
+      ? ['OWNSHIP', 'HOSTILE', 'WAYPOINT', 'AIRPORT']
+      : ['TRACKS', 'VECTORS', 'ROUTE'];
+    if (!allowed.includes(reference)) {
+      errors.push({ code: 'INVALID_SYNTAX', message: `Unknown legend ${kind.toLowerCase()} reference: ${reference}.` });
+    } else {
+      parameters.scope = kind;
+      parameters.kind = kind;
+      parameters.reference = reference;
+    }
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseDeclutterCommand = (tokens: CommandToken[]): ParsedCommand => {
   const preset = tokens[1]?.normalized ?? '';
   const parameters: Record<string, CommandParameter> = {
@@ -1525,7 +1555,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
-  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER'].includes(command)) {
+  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND'].includes(command)) {
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
@@ -1568,6 +1598,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'LEGEND') return parseLegendCommand(tokens);
     if (tokens[0]?.normalized === 'DECLUTTER') return parseDeclutterCommand(tokens);
     if (tokens[0]?.normalized === 'LAYER' || tokens[0]?.normalized === 'LAYERS') return parseLayerCommand(tokens);
     if (tokens[0]?.normalized === 'SIM') return parseSimulationCommand(tokens);

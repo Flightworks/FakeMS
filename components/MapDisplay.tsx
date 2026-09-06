@@ -16,6 +16,10 @@ import {
   isDeclutterCategoryHidden,
   type DeclutterState,
 } from '../domain/declutter';
+import {
+  getLegendSymbolId,
+  type LegendEntryId,
+} from '../domain/legend';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { getDestinationPoint } from '../utils/geo';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
@@ -695,6 +699,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const createEntityIcon = (entity: Entity, rotation: number, isSelected: boolean) => {
+    const legendSymbolId: LegendEntryId = getLegendSymbolId(entity.type);
     const labelCategory = entity.type === EntityType.WAYPOINT
       ? 'WAYPOINT_LABELS'
       : entity.type === EntityType.AIRPORT
@@ -720,6 +725,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       <div 
         className="entity-marker-container relative flex flex-col items-center justify-center pointer-events-none"
         data-entity-id={entity.id}
+        data-legend-symbol={legendSymbolId}
         style={{
           width: '48px', height: '48px',
         }}

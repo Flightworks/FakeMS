@@ -27,6 +27,27 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses contextual legend queries without inferring meaning from color', () => {
+    expect(parseCommand('LEGEND')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LEGEND', command: 'LEGEND', scope: 'ALL' },
+      errors: [],
+    });
+    expect(parseCommand('LEGEND SYMBOL HOSTILE')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LEGEND', command: 'LEGEND', kind: 'SYMBOL', reference: 'HOSTILE' },
+      errors: [],
+    });
+    expect(parseCommand('LEGEND LAYER TRACKS')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LEGEND', command: 'LEGEND', kind: 'LAYER', reference: 'TRACKS' },
+      errors: [],
+    });
+    expect(parseCommand('LEGEND SYMBOL RED').errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_SYNTAX' }),
+    ]);
+  });
+
   it('parses declutter presets without changing scenario data', () => {
     for (const preset of ['MINIMAL', 'NORMAL', 'FULL']) {
       expect(parseCommand(`DECLUTTER ${preset}`)).toMatchObject({

@@ -1,6 +1,6 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { bearingBetween } from './geo';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers } from 'lucide-react';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers, Info } from 'lucide-react';
 import Fuse from 'fuse.js';
 import {
     calculateEtaEte,
@@ -64,6 +64,11 @@ import {
     type DeclutterPreset,
     type DeclutterState,
 } from '../domain/declutter';
+import {
+    getLegendEntries,
+    getLegendEntry,
+    type LegendEntryId,
+} from '../domain/legend';
 import {
     createLayerState,
     setLayerVisibility,
@@ -1074,6 +1079,70 @@ export const getCommands = (
                     keywords: ['layer', layer.label.toLowerCase(), requestedVisibility ? 'on' : 'off', layer.source.toLowerCase()],
                     historyValue: q,
                     isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
+        }
+    }
+
+    const legendCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM' && legendCommand === 'LEGEND') {
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'legend-unavailable',
+                label: 'LEGEND UNAVAILABLE',
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID LEGEND QUERY'} · MEANING NOT INFERRED`,
+                icon: Info,
+                keywords: ['legend', 'unavailable', 'symbol', 'layer'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (parsedMeasurement.parameters.scope === 'ALL') {
+            const summary = getLegendEntries()
+                .map(entry => `${entry.label}: ${entry.meaning}`)
+                .join(' · ');
+            commands.push({
+                id: 'legend-list',
+                label: 'LEGEND',
+                subLabel: `${summary} · SOURCE: LOCAL REGISTRY · SIMULATED`,
+                icon: Info,
+                keywords: ['legend', 'symbol', 'layer', 'meaning', 'local'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.kind === 'string'
+            && typeof parsedMeasurement.parameters.reference === 'string') {
+            const legendId = `${parsedMeasurement.parameters.kind}_${parsedMeasurement.parameters.reference}` as LegendEntryId;
+            const entry = getLegendEntry(legendId);
+            if (!entry) {
+                commands.push({
+                    id: 'legend-unavailable',
+                    label: 'LEGEND UNAVAILABLE',
+                    subLabel: 'REFERENCE NOT IN LOCAL REGISTRY · MEANING NOT INFERRED',
+                    icon: Info,
+                    keywords: ['legend', 'unavailable'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                const layerId = entry.kind === 'LAYER' ? entry.label as TacticalLayerId : null;
+                const layerState = layerId && layers ? layers[layerId as 'TRACKS' | 'VECTORS' | 'ROUTE'] : undefined;
+                const visibility = layerState ? ` · VISIBILITY: ${layerState.visible ? 'ON' : 'OFF'}` : '';
+                commands.push({
+                    id: `legend-${entry.id.toLowerCase()}`,
+                    label: `LEGEND ${entry.kind} ${entry.label}`,
+                    subLabel: `${entry.meaning} · SOURCE: ${entry.source} · STATE: ${entry.simulatedState}${visibility}`,
+                    icon: Info,
+                    keywords: ['legend', entry.kind.toLowerCase(), entry.label.toLowerCase(), entry.meaning.toLowerCase(), entry.source.toLowerCase()],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
             }
