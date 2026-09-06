@@ -6,6 +6,7 @@ import { intersectBearings } from '../../domain/bearingIntersection';
 import { calculateDelta, calculateReciprocal, calculateRelativeBearing } from '../../domain/angularCalculations';
 import { projectFuturePosition, type FuturePositionPreview } from '../../domain/futurePosition';
 import { calculateRelativeMotion, type RelativeMotionPreview } from '../../domain/relativeMotion';
+import type { TrackDisplayDetails } from '../../domain/trackDetails';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -288,5 +289,53 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('STATUS: FUTURE_CPA');
     expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT VELOCITY');
     expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
+  });
+
+  it('shows qualified track details and stale track ordering without fabricating fields', () => {
+    const details: TrackDisplayDetails = {
+      trackId: 'track-bravo',
+      label: 'BRAVO',
+      sourceLabel: 'RADAR',
+      ageSeconds: 4,
+      freshness: 'FRESH',
+      quality: 'GOOD',
+      uncertaintyMeters: 40,
+      classification: 'SUSPECT',
+      confidence: 0.7,
+    };
+    const staleDetails: TrackDisplayDetails[] = [
+      { ...details, trackId: 'older', label: 'OLDER', ageSeconds: 120, freshness: 'STALE' },
+      { ...details, trackId: 'old', label: 'OLD', ageSeconds: 90, freshness: 'STALE' },
+    ];
+
+    const { rerender } = render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('INFO BRAVO')}
+        trackDetails={details}
+        effect="LOCAL DISPLAY ONLY"
+      />,
+    );
+    let panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: INFO');
+    expect(panel).toHaveTextContent('SOURCE: RADAR');
+    expect(panel).toHaveTextContent('AGE: 4 S');
+    expect(panel).toHaveTextContent('FRESHNESS: FRESH');
+    expect(panel).toHaveTextContent('QUALITY: GOOD');
+    expect(panel).toHaveTextContent('UNCERTAINTY: 40 M');
+    expect(panel).toHaveTextContent('CLASSIFICATION: SUSPECT');
+    expect(panel).toHaveTextContent('CONFIDENCE: 70%');
+
+    rerender(
+      <CommandInterpretationPanel
+        parsed={parseCommand('STALE')}
+        staleTrackDetails={staleDetails}
+        effect="LOCAL DISPLAY ONLY"
+      />,
+    );
+    panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: STALE');
+    expect(panel).toHaveTextContent('COUNT: 2');
+    expect(panel).toHaveTextContent('OLDER AGE: 120 S');
+    expect(panel).toHaveTextContent('OLD AGE: 90 S');
   });
 });

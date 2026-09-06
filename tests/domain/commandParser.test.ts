@@ -467,4 +467,24 @@ describe('typed tactical command parser', () => {
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
   });
+
+  it('parses track information commands without execution', () => {
+    for (const input of ['INFO BRAVO', 'AGE BRAVO', 'QUALITY BRAVO']) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('SEARCH');
+      expect(parsed.parameters, input).toMatchObject({ command: input.split(' ')[0], reference: 'BRAVO' });
+      expect(parsed.errors, input).toEqual([]);
+    }
+
+    const stale = parseCommand('STALE');
+    expect(stale.type).toBe('SEARCH');
+    expect(stale.parameters).toMatchObject({ command: 'STALE' });
+    expect(stale.errors).toEqual([]);
+
+    const invalid = parseCommand('STALE BRAVO');
+    expect(invalid.type).toBe('SEARCH');
+    expect(invalid.errors).toEqual([
+      expect.objectContaining({ code: 'UNEXPECTED_ARGUMENT' }),
+    ]);
+  });
 });

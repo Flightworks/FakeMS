@@ -50,6 +50,11 @@ import {
     type RelativeMotionTrack,
 } from '../domain/relativeMotion';
 import {
+    createEntityTrackDetails,
+    listStaleEntityDetails,
+    type TrackDisplayDetails,
+} from '../domain/trackDetails';
+import {
     intersectBearings,
     BearingIntersectionError,
     type BearingIntersectionResult,
@@ -134,6 +139,8 @@ export interface CommandOption {
     futurePositionResult?: FuturePositionResult;
     relativeMotionPreview?: RelativeMotionPreview;
     relativeMotionResult?: RelativeMotionResult;
+    trackDetails?: TrackDisplayDetails;
+    staleTrackDetails?: TrackDisplayDetails[];
     keepPaletteOpen?: boolean;
 }
 
@@ -470,6 +477,39 @@ const createRelativeMotionOption = (
         },
     };
 };
+
+const formatTrackAge = (ageSeconds: number | null): string => (
+    ageSeconds === null ? 'UNKNOWN' : `${Number.isInteger(ageSeconds) ? ageSeconds.toFixed(0) : ageSeconds.toFixed(1)} S`
+);
+
+const formatTrackDetails = (details: TrackDisplayDetails): string => (
+    `SOURCE: ${details.sourceLabel ?? 'UNKNOWN'} · AGE: ${formatTrackAge(details.ageSeconds)} · FRESHNESS: ${details.freshness} · QUALITY: ${details.quality} · UNCERTAINTY: ${details.uncertaintyMeters === null ? 'N/A' : `${details.uncertaintyMeters.toFixed(0)} M`} · CLASSIFICATION: ${details.classification} · CONFIDENCE: ${details.confidence === null ? 'N/A' : `${(details.confidence * 100).toFixed(0)}%`}`
+);
+
+const createTrackInfoOption = (
+    command: 'INFO' | 'AGE' | 'QUALITY',
+    details: TrackDisplayDetails,
+    historyValue: string,
+): CommandOption => ({
+    id: `track-${command.toLowerCase()}-${details.trackId}`,
+    label: `${command} ${details.label}`,
+    subLabel: command === 'INFO'
+        ? formatTrackDetails(details)
+        : command === 'AGE'
+            ? `AGE: ${formatTrackAge(details.ageSeconds)} · FRESHNESS: ${details.freshness}`
+            : `QUALITY: ${details.quality} · CLASSIFICATION: ${details.classification} · CONFIDENCE: ${details.confidence === null ? 'N/A' : `${(details.confidence * 100).toFixed(0)}%`}`,
+    icon: Compass,
+    keywords: ['track', 'info', 'age', 'quality', 'freshness', details.label, details.freshness, details.quality],
+    historyValue,
+    isPreview: true,
+    trackDetails: details,
+    keepPaletteOpen: true,
+    ranking: {
+        category: 'STRUCTURED_EXACT',
+        completeness: 3,
+        match: 'EXACT',
+    },
+});
 
 const isAngularInputKind = (value: string | number | null): value is AngularInputKind => (
     value === 'HEADING'
@@ -1168,6 +1208,63 @@ export const getCommands = (
                     targetResolution.entity,
                     result,
                     previewRelativeMotion,
+                    q,
+                ));
+            }
+        }
+    }
+
+    const trackInfoCommand = parsedMeasurement.parameters.command;
+    if (parsedMeasurement.type === 'SEARCH'
+        && (trackInfoCommand === 'INFO'
+            || trackInfoCommand === 'AGE'
+            || trackInfoCommand === 'QUALITY'
+            || trackInfoCommand === 'STALE')
+        && parsedMeasurement.errors.length === 0) {
+        if (trackInfoCommand === 'STALE') {
+            const staleDetails = listStaleEntityDetails(entities, scenarioTimeMs);
+            const staleSummary = staleDetails.length === 0
+                ? 'NONE · NO EXPLICITLY STALE TRACKS'
+                : staleDetails.map(details => `${details.label} AGE: ${formatTrackAge(details.ageSeconds)}`).join(' · ');
+            commands.push({
+                id: 'track-stale',
+                label: 'STALE',
+                subLabel: staleSummary,
+                icon: Compass,
+                keywords: ['track', 'stale', 'freshness', ...staleDetails.map(details => details.label)],
+                historyValue: q,
+                isPreview: true,
+                staleTrackDetails: staleDetails,
+                keepPaletteOpen: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
+        } else if (typeof parsedMeasurement.parameters.reference === 'string') {
+            const reference = parsedMeasurement.parameters.reference;
+            const resolution = resolveEntityReference(reference, entities, ownship);
+            if (!resolution.executable || !resolution.entity) {
+                commands.push({
+                    id: `track-${trackInfoCommand.toLowerCase()}-unavailable`,
+                    label: `${trackInfoCommand} ${reference}: UNAVAILABLE`,
+                    subLabel: 'REASON: AMBIGUOUS OR UNKNOWN REFERENCE · TRACK DETAILS UNAVAILABLE',
+                    icon: Compass,
+                    keywords: ['track', trackInfoCommand.toLowerCase(), 'unavailable', 'reference'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
+                });
+            } else {
+                commands.push(createTrackInfoOption(
+                    trackInfoCommand,
+                    createEntityTrackDetails(resolution.entity, scenarioTimeMs),
                     q,
                 ));
             }

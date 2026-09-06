@@ -37,6 +37,7 @@ import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
+import type { TrackDisplayDetails } from '../domain/trackDetails';
 
 type CommandPaletteCloseOptions = {
   preserveFuturePosition?: boolean;
@@ -494,6 +495,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return commands.find(command => command.relativeMotionResult)?.relativeMotionResult;
   }, [parsedCommand, commands]);
 
+  const interpretationTrackDetails = useMemo<TrackDisplayDetails | undefined>(() => {
+    if (parsedCommand.type !== 'SEARCH'
+      || (parsedCommand.parameters.command !== 'INFO'
+        && parsedCommand.parameters.command !== 'AGE'
+        && parsedCommand.parameters.command !== 'QUALITY')
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.trackDetails)?.trackDetails;
+  }, [parsedCommand, commands]);
+
+  const interpretationStaleTrackDetails = useMemo<TrackDisplayDetails[] | undefined>(() => {
+    if (parsedCommand.type !== 'SEARCH'
+      || parsedCommand.parameters.command !== 'STALE'
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.staleTrackDetails)?.staleTrackDetails;
+  }, [parsedCommand, commands]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
@@ -752,6 +769,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             futurePositionResult={interpretationFuturePositionResult}
             relativeMotionPreview={interpretationRelativeMotionPreview}
             relativeMotionResult={interpretationRelativeMotionResult}
+            trackDetails={interpretationTrackDetails}
+            staleTrackDetails={interpretationStaleTrackDetails}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
             bullseyeMeasurement={interpretationBullseyeMeasurement}

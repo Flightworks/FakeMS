@@ -44,6 +44,10 @@ const COMMAND_TOKENS = new Set([
   'REL',
   'CLOSURE',
   'CPA',
+  'INFO',
+  'AGE',
+  'QUALITY',
+  'STALE',
   'TIME',
   'DIST',
   'GS',
@@ -1160,6 +1164,38 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseTrackInfoCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+  const references = tokens.slice(1).map(token => token.normalized);
+
+  if (command === 'STALE') {
+    if (references.length > 0) {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected STALE argument: ${references.join(' ')}.`,
+      });
+    }
+  } else if (references.length === 0) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires a track reference.`,
+      hint: `Use ${command} BRAVO.`,
+    });
+  } else {
+    parameters.reference = references.join(' ');
+  }
+
+  return createResult(
+    'SEARCH',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIntentType => {
   if (looksLikeProjection(normalizedInput, tokens)) return 'PROJECTION';
 
@@ -1174,7 +1210,8 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS'].includes(command)) {
     return 'SYSTEM';
   }
-  if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST') return 'SEARCH';
+  if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
+    || command === 'INFO' || command === 'AGE' || command === 'QUALITY' || command === 'STALE') return 'SEARCH';
   if (command === 'BULL'
     || (command === 'SET' && tokens[1]?.normalized === 'BULL')
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
@@ -1230,6 +1267,10 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'SEARCH') {
     if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
     if (tokens[0]?.normalized === 'PREDICT') return parsePredict(tokens);
+    if (tokens[0]?.normalized === 'INFO'
+      || tokens[0]?.normalized === 'AGE'
+      || tokens[0]?.normalized === 'QUALITY'
+      || tokens[0]?.normalized === 'STALE') return parseTrackInfoCommand(tokens);
     return createResult('SEARCH', tokens, {
       query: tokens.slice(1).map(token => token.normalized).join(' '),
     });

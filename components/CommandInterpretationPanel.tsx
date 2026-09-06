@@ -10,10 +10,8 @@ import type {
   FuturePositionPreview,
   FuturePositionResult,
 } from '../domain/futurePosition';
-import type {
-  RelativeMotionPreview,
-  RelativeMotionResult,
-} from '../domain/relativeMotion';
+import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
+import type { TrackDisplayDetails } from '../domain/trackDetails';
 import {
   convertTacticalQuantity,
   createTacticalQuantity,
@@ -27,6 +25,8 @@ export interface CommandInterpretationPanelProps {
   futurePositionResult?: FuturePositionResult;
   relativeMotionPreview?: RelativeMotionPreview;
   relativeMotionResult?: RelativeMotionResult;
+  trackDetails?: TrackDisplayDetails;
+  staleTrackDetails?: TrackDisplayDetails[];
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
   bullseyeMeasurement?: BullseyeMeasurement;
@@ -137,6 +137,8 @@ const getDetails = (
   futurePositionResult?: FuturePositionResult,
   relativeMotionPreview?: RelativeMotionPreview,
   relativeMotionResult?: RelativeMotionResult,
+  trackDetails?: TrackDisplayDetails,
+  staleTrackDetails?: TrackDisplayDetails[],
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeMeasurement?: BullseyeMeasurement,
@@ -240,6 +242,44 @@ const getDetails = (
     }
   } else if (parsed.type === 'ROUTE' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
+  } else if (parsed.type === 'SEARCH'
+    && (parameters.command === 'INFO' || parameters.command === 'AGE' || parameters.command === 'QUALITY' || parameters.command === 'STALE')) {
+    const command = parameters.command;
+    details.push(`COMMAND: ${command}`);
+    if (command === 'STALE') {
+      const stale = staleTrackDetails ?? [];
+      details.push(`COUNT: ${stale.length}`);
+      stale.forEach(item => {
+        const age = item.ageSeconds === null
+          ? 'UNKNOWN'
+          : `${Number.isInteger(item.ageSeconds) ? item.ageSeconds.toFixed(0) : item.ageSeconds.toFixed(1)} S`;
+        details.push(`${item.label} AGE: ${age} · FRESHNESS: ${item.freshness}`);
+      });
+    } else if (!trackDetails) {
+      details.push('RESULT: UNAVAILABLE');
+      details.push('REASON: TRACK DETAILS UNAVAILABLE');
+    } else if (command === 'AGE') {
+      const age = trackDetails.ageSeconds === null
+        ? 'UNKNOWN'
+        : `${Number.isInteger(trackDetails.ageSeconds) ? trackDetails.ageSeconds.toFixed(0) : trackDetails.ageSeconds.toFixed(1)} S`;
+      details.push(`AGE: ${age}`);
+      details.push(`FRESHNESS: ${trackDetails.freshness}`);
+    } else if (command === 'QUALITY') {
+      details.push(`QUALITY: ${trackDetails.quality}`);
+      details.push(`CLASSIFICATION: ${trackDetails.classification}`);
+      details.push(`CONFIDENCE: ${trackDetails.confidence === null ? 'N/A' : `${(trackDetails.confidence * 100).toFixed(0)}%`}`);
+    } else {
+      const age = trackDetails.ageSeconds === null
+        ? 'UNKNOWN'
+        : `${Number.isInteger(trackDetails.ageSeconds) ? trackDetails.ageSeconds.toFixed(0) : trackDetails.ageSeconds.toFixed(1)} S`;
+      details.push(`SOURCE: ${trackDetails.sourceLabel ?? 'UNKNOWN'}`);
+      details.push(`AGE: ${age}`);
+      details.push(`FRESHNESS: ${trackDetails.freshness}`);
+      details.push(`QUALITY: ${trackDetails.quality}`);
+      details.push(`UNCERTAINTY: ${trackDetails.uncertaintyMeters === null ? 'N/A' : `${trackDetails.uncertaintyMeters.toFixed(0)} M`}`);
+      details.push(`CLASSIFICATION: ${trackDetails.classification}`);
+      details.push(`CONFIDENCE: ${trackDetails.confidence === null ? 'N/A' : `${(trackDetails.confidence * 100).toFixed(0)}%`}`);
+    }
   } else if (parsed.type === 'SEARCH' && parameters.command === 'PREDICT') {
     details.push('COMMAND: PREDICT');
     const futureResult = futurePositionPreview?.result ?? futurePositionResult;
@@ -281,6 +321,8 @@ export const CommandInterpretationPanel = ({
   futurePositionResult,
   relativeMotionPreview,
   relativeMotionResult,
+  trackDetails,
+  staleTrackDetails,
   projection,
   intersection,
   bullseyeMeasurement,
@@ -294,7 +336,7 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, trackDetails, staleTrackDetails, projection, intersection, bullseyeMeasurement, bullseyeProjection),
     `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,

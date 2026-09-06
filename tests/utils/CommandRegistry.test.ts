@@ -874,5 +874,65 @@ describe('CommandRegistry', () => {
       expect(context.proposeDirectTo).not.toHaveBeenCalled();
       expect(context.proposeRoute).not.toHaveBeenCalled();
     });
+
+    it('exposes explicit track details and stale ordering without mission effects', () => {
+      const ownship = {
+        ...mockOwnship,
+        metadata: {
+          source: 'RADAR',
+          freshness: 'FRESH',
+          ageSeconds: 4,
+          quality: 'GOOD',
+          uncertaintyMeters: 40,
+          classification: 'SUSPECT',
+          confidence: 0.7,
+        },
+      };
+      const older = {
+        ...mockEntities[1],
+        id: 'older',
+        label: 'OLDER',
+        metadata: {
+          source: 'RADAR',
+          freshness: 'STALE',
+          ageSeconds: 120,
+          quality: 'DEGRADED',
+          uncertaintyMeters: 250,
+          classification: 'HOSTILE',
+          confidence: 0.8,
+        },
+      };
+      const old = {
+        ...mockEntities[1],
+        id: 'old',
+        label: 'OLD',
+        metadata: { freshness: 'STALE', ageSeconds: 90 },
+      };
+      const context = {
+        ...mockContext,
+        ownship,
+        entities: [ownship, { ...mockEntities[1], label: 'BRAVO', metadata: ownship.metadata }, older, old],
+        requestMissionAction: vi.fn(),
+      };
+
+      const info = getCommands('INFO BRAVO', context).find(command => command.id === 'track-info-target1');
+      expect(info?.subLabel).toContain('SOURCE: RADAR');
+      expect(info?.subLabel).toContain('AGE: 4 S');
+      expect(info?.subLabel).toContain('FRESHNESS: FRESH');
+      expect(info?.subLabel).toContain('QUALITY: GOOD');
+      expect(info?.subLabel).toContain('UNCERTAINTY: 40 M');
+      expect(info?.subLabel).toContain('CLASSIFICATION: SUSPECT');
+      expect(info?.subLabel).toContain('CONFIDENCE: 70%');
+
+      const age = getCommands('AGE BRAVO', context).find(command => command.id === 'track-age-target1');
+      expect(age?.subLabel).toContain('AGE: 4 S');
+      const quality = getCommands('QUALITY BRAVO', context).find(command => command.id === 'track-quality-target1');
+      expect(quality?.subLabel).toContain('QUALITY: GOOD');
+
+      const stale = getCommands('STALE', context).find(command => command.id === 'track-stale');
+      expect(stale?.subLabel).toContain('OLDER');
+      expect(stale?.subLabel.indexOf('OLDER AGE')).toBeLessThan(stale?.subLabel.indexOf('OLD AGE'));
+      expect(context.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });
