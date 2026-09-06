@@ -8,7 +8,11 @@ import type { ProjectionPreview, SimulatedDesignation } from '../domain/designat
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import type { BullseyeProjectionPreview, BullseyeReference } from '../domain/bullseye';
 import type { FuturePositionPreview } from '../domain/futurePosition';
+import type { ActiveSimulatedRoute } from '../domain/routeSummary';
+import type { TacticalLayerState } from '../domain/layers';
+import { createLayerState } from '../domain/layers';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
+import { getDestinationPoint } from '../utils/geo';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
 import {
@@ -60,6 +64,8 @@ interface MapDisplayProps {
   bullseye?: BullseyeReference | null;
   bullseyeProjectionPreview?: BullseyeProjectionPreview | null;
   futurePositionPreview?: FuturePositionPreview | null;
+  layers?: TacticalLayerState;
+  activeRoute?: ActiveSimulatedRoute;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
@@ -312,6 +318,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   bullseye,
   bullseyeProjectionPreview,
   futurePositionPreview,
+  layers = createLayerState(),
+  activeRoute,
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
@@ -803,6 +811,23 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const futurePositionLinePositions: LatLngExpression[] = futurePositionPreview
     ? futurePositionPreview.result.line.map(position => [position.lat, position.lon] as [number, number])
     : [];
+  const vectorLinePositions: LatLngExpression[][] = layers.VECTORS.visible
+    ? [ownship, ...entities]
+      .filter(entity => Number.isFinite(entity.heading) && Number.isFinite(entity.speed) && (entity.speed ?? 0) > 0)
+      .map(entity => {
+        const endpoint = getDestinationPoint(
+          entity.position.lat,
+          entity.position.lon,
+          (entity.speed ?? 0) * 1852 / 60,
+          entity.heading ?? 0,
+        );
+        return [[entity.position.lat, entity.position.lon], [endpoint.lat, endpoint.lon]];
+      })
+    : [];
+  const routeLinePositions: LatLngExpression[] = layers.ROUTE.visible && activeRoute && !activeRoute.hidden
+    ? [activeRoute.origin, ...activeRoute.waypoints.map(waypoint => waypoint.position)]
+      .map(position => [position.lat, position.lon] as [number, number])
+    : [];
 
   return (
     <div
@@ -886,8 +911,32 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         />
 
         {/* Entities */}
+        {routeLinePositions.length > 1 && (
+          <Pane name="simulatedRouteLayer" style={{ pointerEvents: 'none' }}>
+            <Polyline
+              positions={routeLinePositions}
+              interactive={false}
+              pathOptions={{ color: '#f59e0b', weight: 3, opacity: 0.9, dashArray: '10 6' }}
+            />
+          </Pane>
+        )}
+
+        {vectorLinePositions.length > 0 && (
+          <Pane name="kinematicVectorsLayer" style={{ pointerEvents: 'none' }}>
+            {vectorLinePositions.map((line, index) => (
+              <Polyline
+                key={`vector-${index}`}
+                positions={line}
+                interactive={false}
+                pathOptions={{ color: '#22d3ee', weight: 1.5, opacity: 0.8, dashArray: '4 3' }}
+              />
+            ))}
+          </Pane>
+        )}
+
         {entities
           .filter(entity => {
+            if (!layers.TRACKS.visible) return false;
             if (entity.type === EntityType.ENEMY) return systems.radar;
             if (entity.type === EntityType.FRIENDLY) return systems.adsb;
             if (entity.type === EntityType.AIRPORT) return true; // Always visible

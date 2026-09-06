@@ -36,7 +36,7 @@ export interface CommandParseError {
   hint?: string;
 }
 
-export type CommandParameter = string | number | null;
+export type CommandParameter = string | number | boolean | null;
 
 export interface ParsedCommand {
   type: CommandIntentType;

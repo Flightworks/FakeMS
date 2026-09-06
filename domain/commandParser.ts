@@ -1,5 +1,6 @@
 import type {
   CommandIntentType,
+  CommandParameter,
   CommandParseError,
   CommandToken,
   ParsedCommand,
@@ -96,7 +97,7 @@ const tokenize = (input: string): CommandToken[] => {
 const createResult = (
   type: CommandIntentType,
   tokens: CommandToken[],
-  parameters: Record<string, string | number | null>,
+  parameters: Record<string, CommandParameter>,
   warnings: string[] = [],
   errors: CommandParseError[] = [],
   assumptions: string[] = [],
@@ -1176,6 +1177,29 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseLayerCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | boolean | null> = {
+    system: command,
+    command,
+  };
+  const errors: CommandParseError[] = [];
+  if (command === 'LAYERS') {
+    if (tokens.length > 1) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'LAYERS takes no arguments.' });
+    return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+  }
+  const layerId = tokens[1]?.normalized ?? '';
+  const operation = tokens[2]?.normalized ?? '';
+  const allowedLayers = new Set(['TRACKS', 'VECTORS', 'ROUTE']);
+  if (!allowedLayers.has(layerId) || !['ON', 'OFF'].includes(operation) || tokens.length > 3) {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use LAYER TRACKS|VECTORS|ROUTE ON|OFF.' });
+  } else {
+    parameters.layerId = layerId;
+    parameters.visible = operation === 'ON';
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseSimulationCommand = (tokens: CommandToken[]): ParsedCommand => {
   const action = tokens[1]?.normalized ?? '';
   const parameters: Record<string, string | number | null> = {
@@ -1529,6 +1553,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'LAYER' || tokens[0]?.normalized === 'LAYERS') return parseLayerCommand(tokens);
     if (tokens[0]?.normalized === 'SIM') return parseSimulationCommand(tokens);
     return createResult('SYSTEM', tokens, { system: tokens[1]?.normalized ?? tokens[0].normalized });
   }

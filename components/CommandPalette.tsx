@@ -35,6 +35,7 @@ import {
 import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
+import type { TacticalLayerState } from '../domain/layers';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../domain/trackDetails';
@@ -98,6 +99,8 @@ interface CommandPaletteProps {
   scenarioTimeMs?: number;
   localTimeZone?: string;
   activeRoute?: ActiveSimulatedRoute;
+  layers?: TacticalLayerState;
+  setLayers?: (state: TacticalLayerState) => void;
 }
 
 interface VisualViewportRect {
@@ -217,6 +220,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   scenarioTimeMs,
   localTimeZone,
   activeRoute,
+  layers,
+  setLayers,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -369,6 +374,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       scenarioTimeMs,
       localTimeZone,
       activeRoute,
+      layers,
+      setLayers,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context, mathProvider ?? undefined);
@@ -420,6 +427,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     scenarioTimeMs,
     localTimeZone,
     activeRoute,
+    layers,
+    setLayers,
     mathProvider,
   ]);
 

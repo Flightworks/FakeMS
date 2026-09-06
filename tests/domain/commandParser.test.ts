@@ -27,6 +27,27 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses local layer visibility controls', () => {
+    expect(parseCommand('LAYERS')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LAYERS', command: 'LAYERS' },
+      errors: [],
+    });
+    expect(parseCommand('LAYER TRACKS OFF')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LAYER', command: 'LAYER', layerId: 'TRACKS', visible: false },
+      errors: [],
+    });
+    expect(parseCommand('LAYER VECTORS ON')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'LAYER', command: 'LAYER', layerId: 'VECTORS', visible: true },
+      errors: [],
+    });
+    expect(parseCommand('LAYER UNKNOWN ON').errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_SYNTAX' }),
+    ]);
+  });
+
   it('parses scenario time and validated simulation speeds', () => {
     expect(parseCommand('SIM TIME')).toMatchObject({
       type: 'SYSTEM',

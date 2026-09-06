@@ -44,6 +44,10 @@ import {
   createTimerState,
   resetScenarioTimers,
 } from './domain/simulationTimers';
+import {
+  createLayerState,
+  type TacticalLayerState,
+} from './domain/layers';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
@@ -100,6 +104,7 @@ const App: React.FC = () => {
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
   const [simulationProposal, setSimulationProposal] = useState<'RESET' | 'REPLAY' | null>(null);
+  const [layerState, setLayerState] = useState<TacticalLayerState>(() => createLayerState());
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
   const requestSimulationReset = React.useCallback(() => setSimulationProposal('RESET'), []);
@@ -880,6 +885,8 @@ const App: React.FC = () => {
         undoLastDesignation,
         openDocument: setOpenDoc,
         ownshipNavMode,
+        layers: layerState,
+        setLayers: setLayerState,
         toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
       };
 
@@ -938,6 +945,8 @@ const App: React.FC = () => {
             bullseye={bullseyeState.bullseye}
             bullseyeProjectionPreview={bullseyeProjectionPreview}
             futurePositionPreview={futurePositionPreview}
+            layers={layerState}
+            activeRoute={activeRouteForPalette}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
@@ -1018,6 +1027,8 @@ const App: React.FC = () => {
             scenarioTimeMs={simulationControls.simTimeMs}
             localTimeZone={localTimeZone}
             activeRoute={activeRouteForPalette}
+            layers={layerState}
+            setLayers={setLayerState}
           />
         </React.Suspense>
       )}

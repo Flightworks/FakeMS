@@ -3,6 +3,7 @@ import { getCommands, CommandContext } from '../../utils/CommandRegistry';
 import { createMathCommandProvider } from '../../utils/mathEvaluator';
 import { Entity, EntityType, NavMode } from '../../types';
 import type { SimulatedDesignation } from '../../domain/designations';
+import { createLayerState } from '../../domain/layers';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1108,6 +1109,27 @@ describe('CommandRegistry', () => {
         .find(command => command.id === 'sim-speed-unavailable');
       expect(invalid?.label).toContain('UNAVAILABLE');
       expect(invalid?.subLabel).toContain('CALCULATION NOT EXECUTED');
+    });
+
+    it('lists and changes only the registered local layers', () => {
+      const layerState = createLayerState();
+      const setLayers = vi.fn();
+      const context = { ...mockContext, layers: layerState, setLayers };
+      const list = getCommands('LAYERS', context).find(command => command.id === 'layers-list');
+      expect(list?.label).toBe('LAYERS');
+      expect(list?.subLabel).toContain('TRACKS ON');
+      expect(list?.subLabel).toContain('VECTORS ON');
+      expect(list?.subLabel).toContain('ROUTE ON');
+      expect(list?.action).toBeUndefined();
+
+      const off = getCommands('LAYER TRACKS OFF', context).find(command => command.id === 'layer-tracks-off');
+      off?.action?.();
+      expect(setLayers).toHaveBeenCalledWith(expect.objectContaining({ TRACKS: expect.objectContaining({ visible: false }) }));
+
+      const unavailable = getCommands('LAYER GRID ON', context)
+        .find(command => command.id === 'layer-unavailable');
+      expect(unavailable?.label).toContain('LAYER UNAVAILABLE');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
   });
 });

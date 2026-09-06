@@ -1,6 +1,6 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { bearingBetween } from './geo';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2 } from 'lucide-react';
+import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers } from 'lucide-react';
 import Fuse from 'fuse.js';
 import {
     calculateEtaEte,
@@ -59,6 +59,12 @@ import {
 } from '../domain/trackDetails';
 import type { ScenarioTimerState } from '../domain/simulationTimers';
 import type { FavoriteRequest, FavoriteState } from '../domain/favorites';
+import {
+    createLayerState,
+    setLayerVisibility,
+    type TacticalLayerId,
+    type TacticalLayerState,
+} from '../domain/layers';
 import {
     calculateGradient,
     calculateTopOfDescent,
@@ -135,6 +141,8 @@ export interface CommandContext {
     favoriteState?: FavoriteState;
     addFavorite?: (request: FavoriteRequest) => void;
     removeFavorite?: (favoriteId: number) => void;
+    layers?: TacticalLayerState;
+    setLayers?: (state: TacticalLayerState) => void;
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
     simulationTimeMs?: number;
@@ -539,7 +547,7 @@ const createTrackInfoOption = (
     },
 });
 
-const isAngularInputKind = (value: string | number | null): value is AngularInputKind => (
+const isAngularInputKind = (value: unknown): value is AngularInputKind => (
     value === 'HEADING'
     || value === 'TRACK'
     || value === 'TRUE_BEARING'
@@ -561,7 +569,7 @@ const formatUnavailableAngular = (command: string, reason = 'MISSING QUALIFIED I
     },
 });
 
-const isCoordinateDisplayFormat = (value: string | number | null): value is CoordinateFormat => (
+const isCoordinateDisplayFormat = (value: unknown): value is CoordinateFormat => (
     value === 'DD' || value === 'DDM' || value === 'DMS'
 );
 
@@ -610,6 +618,8 @@ export const getCommands = (
         favoriteState,
         addFavorite,
         removeFavorite,
+        layers,
+        setLayers,
         simulationStatus,
         simulationIsRunning,
         simulationTimeMs,
@@ -994,6 +1004,73 @@ export const getCommands = (
     }
 
     const parsedMeasurement = parseCommand(q);
+    const layerCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM'
+        && (layerCommand === 'LAYERS' || layerCommand === 'LAYER')) {
+        const currentLayers = layers ?? createLayerState();
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'layer-unavailable',
+                label: 'LAYER UNAVAILABLE',
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID LAYER'} · NO STATE CREATED`,
+                icon: Layers,
+                keywords: ['layer', 'unavailable'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (layerCommand === 'LAYERS') {
+            const summary = Object.values(currentLayers)
+                .map(layer => `${layer.label} ${layer.available ? (layer.visible ? 'ON' : 'OFF') : 'UNAVAILABLE'}`)
+                .join(' · ');
+            commands.push({
+                id: 'layers-list',
+                label: 'LAYERS',
+                subLabel: `${summary} · LOCAL ONLY`,
+                icon: Layers,
+                keywords: ['layers', 'layer', 'visibility', 'local'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.layerId === 'string'
+            && typeof parsedMeasurement.parameters.visible === 'boolean') {
+            const layerId = parsedMeasurement.parameters.layerId as TacticalLayerId;
+            const requestedVisibility = parsedMeasurement.parameters.visible;
+            const layer = currentLayers[layerId];
+            if (!layer || !layer.available) {
+                commands.push({
+                    id: 'layer-unavailable',
+                    label: 'LAYER UNAVAILABLE',
+                    subLabel: `${layerId} · NO RENDERED LOCAL LAYER`,
+                    icon: Layers,
+                    keywords: ['layer', 'unavailable', layerId.toLowerCase()],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                commands.push({
+                    id: `layer-${layerId.toLowerCase()}-${requestedVisibility ? 'on' : 'off'}`,
+                    label: `LAYER ${layer.label} ${requestedVisibility ? 'ON' : 'OFF'}`,
+                    subLabel: `${layer.visible ? 'VISIBLE' : 'HIDDEN'} → ${requestedVisibility ? 'VISIBLE' : 'HIDDEN'} · SOURCE: ${layer.source}`,
+                    icon: Layers,
+                    action: () => {
+                        const result = setLayerVisibility(currentLayers, layerId, requestedVisibility);
+                        if (result.status === 'AVAILABLE') setLayers?.(result.state);
+                    },
+                    keywords: ['layer', layer.label.toLowerCase(), requestedVisibility ? 'on' : 'off', layer.source.toLowerCase()],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
+        }
+    }
+
     const simulationCommand = parsedMeasurement.parameters.simulationCommand;
     if (parsedMeasurement.type === 'SYSTEM'
         && parsedMeasurement.parameters.system === 'SIM'
