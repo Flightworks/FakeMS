@@ -35,14 +35,20 @@ import {
 import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
+import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
+
+type CommandPaletteCloseOptions = {
+  preserveFuturePosition?: boolean;
+};
 
 interface CommandPaletteProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (options?: CommandPaletteCloseOptions) => void;
   focusMapAt: (position: { lat: number, lon: number }) => void;
   previewProjection?: (preview: ProjectionPreview) => void;
   previewIntersection?: (preview: BearingIntersectionResult) => void;
   previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
+  previewFuturePosition?: (preview: FuturePositionPreview) => void;
   bullseye?: BullseyeReference | null;
   proposeSetBullseye?: (bullseye: BullseyeReference) => void;
   proposeClearBullseye?: () => void;
@@ -139,6 +145,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   previewProjection,
   previewIntersection,
   previewBullseyeProjection,
+  previewFuturePosition,
   bullseye,
   proposeSetBullseye,
   proposeClearBullseye,
@@ -252,6 +259,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       previewProjection,
       previewIntersection,
       previewBullseyeProjection,
+      previewFuturePosition,
       bullseye,
       proposeSetBullseye,
       proposeClearBullseye,
@@ -286,6 +294,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     previewProjection,
     previewIntersection,
     previewBullseyeProjection,
+    previewFuturePosition,
     bullseye,
     proposeSetBullseye,
     proposeClearBullseye,
@@ -452,6 +461,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return undefined;
   }, [parsedCommand, entities, ownship]);
 
+  const interpretationFuturePositionPreview = useMemo<FuturePositionPreview | undefined>(() => {
+    if (parsedCommand.type !== 'SEARCH'
+      || parsedCommand.parameters.command !== 'PREDICT'
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.futurePositionPreview)?.futurePositionPreview;
+  }, [parsedCommand, commands]);
+
+  const interpretationFuturePositionResult = useMemo<FuturePositionResult | undefined>(() => {
+    if (parsedCommand.type !== 'SEARCH'
+      || parsedCommand.parameters.command !== 'PREDICT'
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.futurePositionResult)?.futurePositionResult;
+  }, [parsedCommand, commands]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
@@ -470,6 +493,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ? 'CALCULATION ONLY'
       : parsedCommand.type === 'COORDINATE'
         ? 'MAP DISPLAY ONLY'
+        : parsedCommand.type === 'SEARCH' && parsedCommand.parameters.command === 'PREDICT'
+          ? interpretationFuturePositionPreview ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
         : parsedCommand.type === 'SYSTEM'
           ? 'LOCAL SIMULATION CONTROL'
           : 'LOCAL DISPLAY ONLY';
@@ -502,7 +527,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
     addToHistory(query, cmd.historyValue || canonicalizeCommandInput(query));
     cmd.action?.();
-    if (!cmd.keepPaletteOpen) onClose();
+    if (!cmd.keepPaletteOpen) {
+      onClose(cmd.futurePositionPreview ? { preserveFuturePosition: true } : undefined);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -591,7 +618,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
         } : {}),
       }}
-      onClick={onClose}
+      onClick={() => onClose()}
     >
       <div
         className={`w-[600px] max-w-[90vw] bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-200 ${
@@ -632,7 +659,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <button
               type="button"
               aria-label="Close command palette"
-              onClick={onClose}
+              onClick={() => onClose()}
               className="px-2 py-1 flex items-center justify-center rounded bg-slate-800 text-[10px] font-mono border border-slate-700 hover:bg-slate-700 active:bg-slate-600 transition-colors cursor-pointer min-h-[30px] min-w-[40px]"
             >
               ESC
@@ -702,6 +729,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <CommandInterpretationPanel
             parsed={parsedCommand}
             angularCalculation={interpretationAngularCalculation}
+            futurePositionPreview={interpretationFuturePositionPreview}
+            futurePositionResult={interpretationFuturePositionResult}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
             bullseyeMeasurement={interpretationBullseyeMeasurement}

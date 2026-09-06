@@ -36,6 +36,13 @@ import {
     type NearestCategory,
 } from '../domain/spatialQueries';
 import {
+    projectFuturePosition,
+    type FuturePositionFreshness,
+    type FuturePositionPreview,
+    type FuturePositionResult,
+    type FuturePositionTrack,
+} from '../domain/futurePosition';
+import {
     intersectBearings,
     BearingIntersectionError,
     type BearingIntersectionResult,
@@ -79,6 +86,7 @@ export interface CommandContext {
     previewProjection?: (preview: ProjectionPreview) => void;
     previewIntersection?: (preview: BearingIntersectionResult) => void;
     previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
+    previewFuturePosition?: (preview: FuturePositionPreview) => void;
     bullseye?: BullseyeReference | null;
     proposeSetBullseye?: (bullseye: BullseyeReference) => void;
     proposeClearBullseye?: () => void;
@@ -114,6 +122,8 @@ export interface CommandOption {
     autocompleteValue?: string;
     historyValue?: string;
     ranking?: CommandRankingMetadata;
+    futurePositionPreview?: FuturePositionPreview;
+    futurePositionResult?: FuturePositionResult;
     keepPaletteOpen?: boolean;
 }
 
@@ -314,6 +324,57 @@ const formatAngularBearing = (value: number): string => (
     Number.isInteger(value) ? value.toFixed(0).padStart(3, '0') : value.toFixed(1)
 );
 
+const readFuturePositionTrack = (entity: Entity): FuturePositionTrack => {
+    const metadata = entity.metadata;
+    const numeric = (key: string): number | undefined => {
+        const value = metadata?.[key];
+        return typeof value === 'number' ? value : undefined;
+    };
+    const rawFreshness = metadata?.freshness;
+    const freshness: FuturePositionFreshness | undefined = rawFreshness === 'FRESH'
+        || rawFreshness === 'STALE'
+        || rawFreshness === 'UNKNOWN'
+        ? rawFreshness
+        : undefined;
+
+    return {
+        id: entity.id,
+        label: entity.label,
+        position: { ...entity.position },
+        groundTrackDegrees: numeric('groundTrackDegrees'),
+        groundSpeedKnots: numeric('groundSpeedKnots'),
+        freshness,
+        lastSeenAtMs: numeric('lastSeenAtMs'),
+        ageSeconds: numeric('ageSeconds'),
+    };
+};
+
+const formatFutureAge = (ageSeconds: number | null): string => (
+    ageSeconds === null
+        ? 'UNKNOWN'
+        : `${Number.isInteger(ageSeconds) ? ageSeconds.toFixed(0) : ageSeconds.toFixed(1)} S`
+);
+
+const formatFutureUnavailable = (
+    reference: string,
+    reason: string,
+    futurePositionResult?: FuturePositionResult,
+): CommandOption => ({
+    id: `future-position-unavailable-${normalizeRankingText(reference).replace(/\\s+/g, '-')}`,
+    label: `PREDICT ${reference}: UNAVAILABLE`,
+    subLabel: `REASON: ${reason} · NO GHOST PREVIEW · CALCULATION ONLY`,
+    icon: Navigation,
+    keywords: ['predict', 'future', 'position', 'unavailable', reason.toLowerCase()],
+    historyValue: `PREDICT ${reference}`,
+    isPreview: true,
+    futurePositionResult,
+    ranking: {
+        category: 'STRUCTURED_EXACT',
+        completeness: 3,
+        match: 'EXACT',
+    },
+});
+
 const isAngularInputKind = (value: string | number | null): value is AngularInputKind => (
     value === 'HEADING'
     || value === 'TRACK'
@@ -361,6 +422,7 @@ export const getCommands = (
         focusMapAt,
         previewIntersection,
         previewBullseyeProjection,
+        previewFuturePosition,
         bullseye,
         proposeSetBullseye,
         proposeClearBullseye,
@@ -897,6 +959,67 @@ export const getCommands = (
                     });
                 } else {
                     commands.push(formatUnavailableAngular('REL', result.reason ?? 'INVALID ANGLE'));
+                }
+            }
+        }
+    }
+
+    const predictionCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    const predictionReference = parsedMeasurement.parameters.reference;
+    const predictionHorizonValue = parsedMeasurement.parameters.horizonValue;
+    const predictionHorizonUnit = parsedMeasurement.parameters.horizonUnit;
+    if (parsedMeasurement.type === 'SEARCH'
+        && predictionCommand === 'PREDICT'
+        && parsedMeasurement.errors.length === 0) {
+        if (typeof predictionReference !== 'string'
+            || typeof predictionHorizonValue !== 'number'
+            || (predictionHorizonUnit !== 'MIN' && predictionHorizonUnit !== 'NM')) {
+            commands.push(formatFutureUnavailable(String(predictionReference ?? 'UNKNOWN'), 'INVALID_INPUT'));
+        } else {
+            const resolution = resolveEntityReference(predictionReference, entities, ownship);
+            if (!resolution.executable || !resolution.entity) {
+                commands.push(formatFutureUnavailable(predictionReference, 'AMBIGUOUS OR UNKNOWN REFERENCE'));
+            } else {
+                const futureTrack = readFuturePositionTrack(resolution.entity);
+                const result = projectFuturePosition({
+                    track: futureTrack,
+                    horizon: { value: predictionHorizonValue, unit: predictionHorizonUnit },
+                    nowMs: scenarioTimeMs,
+                });
+                if (result.status === 'UNAVAILABLE') {
+                    commands.push(formatFutureUnavailable(resolution.entity.label, result.reason, result));
+                } else {
+                    const groundTrack = futureTrack.groundTrackDegrees as number;
+                    const groundSpeed = futureTrack.groundSpeedKnots as number;
+                    const preview: FuturePositionPreview = {
+                        type: 'FUTURE_POSITION_PREVIEW',
+                        trackId: futureTrack.id,
+                        trackLabel: futureTrack.label,
+                        groundTrackDegrees: groundTrack,
+                        groundSpeedKnots: groundSpeed,
+                        result,
+                    };
+                    const horizonLabel = `+${predictionHorizonValue}${predictionHorizonUnit}`;
+                    const limitLabel = result.horizonLimit === 'NONE' ? 'NONE' : result.horizonLimit;
+                    commands.push({
+                        id: `future-position-${resolution.entity.id}`,
+                        label: `PREDICT ${resolution.entity.label} ${horizonLabel}`,
+                        subLabel: `GHOST: ${result.targetPosition.lat.toFixed(5)}, ${result.targetPosition.lon.toFixed(5)} · VECTOR: ${groundTrack.toFixed(1)}°T @ ${groundSpeed.toFixed(1)} KT · RANGE: ${result.projectedRangeNauticalMiles.toFixed(1)} NM · HORIZON: ${result.effectiveHorizonMinutes.toFixed(1)} MIN · AGE: ${formatFutureAge(result.ageSeconds)} · LIMIT: ${limitLabel} · ASSUMPTION: ${result.assumption}`,
+                        icon: Navigation,
+                        action: previewFuturePosition ? () => previewFuturePosition(preview) : undefined,
+                        futurePositionPreview: preview,
+                        futurePositionResult: result,
+                        keywords: ['predict', 'future', 'position', 'ghost', resolution.entity.label, 'ground track', 'ground speed'],
+                        historyValue: q,
+                        isPreview: true,
+                        ranking: {
+                            category: 'STRUCTURED_EXACT',
+                            completeness: 3,
+                            match: 'EXACT',
+                        },
+                    });
                 }
             }
         }

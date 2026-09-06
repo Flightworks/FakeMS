@@ -399,4 +399,40 @@ describe('typed tactical command parser', () => {
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
   });
+
+  it('parses future-position prediction horizons in minutes or nautical miles', () => {
+    const minutes = parseCommand('PREDICT BRAVO +2MIN');
+    expect(minutes.type).toBe('SEARCH');
+    expect(minutes.parameters).toMatchObject({
+      command: 'PREDICT',
+      reference: 'BRAVO',
+      horizonValue: 2,
+      horizonUnit: 'MIN',
+    });
+    expect(minutes.errors).toEqual([]);
+
+    const distance = parseCommand('PREDICT BRAVO +10NM');
+    expect(distance.parameters).toMatchObject({
+      command: 'PREDICT',
+      reference: 'BRAVO',
+      horizonValue: 10,
+      horizonUnit: 'NM',
+    });
+    expect(distance.errors).toEqual([]);
+  });
+
+  it('rejects malformed, zero, unsupported, or extra prediction horizons', () => {
+    for (const input of [
+      'PREDICT BRAVO +2',
+      'PREDICT BRAVO 2MIN',
+      'PREDICT BRAVO +0NM',
+      'PREDICT BRAVO +10FT',
+      'PREDICT BRAVO +2MIN EXTRA',
+    ]) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('SEARCH');
+      expect(parsed.errors.length, input).toBeGreaterThan(0);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });

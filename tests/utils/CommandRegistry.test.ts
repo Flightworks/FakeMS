@@ -772,5 +772,41 @@ describe('CommandRegistry', () => {
       const unavailable = getCommands('REL NOHDG TARGET1', unavailableContext);
       expect(unavailable.some(command => command.label.includes('UNAVAILABLE'))).toBe(true);
     });
+
+    it('offers a bounded future-position preview only from explicit ground-track metadata', () => {
+      const previewFuturePosition = vi.fn();
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          {
+            ...mockEntities[1],
+            metadata: {
+              groundTrackDegrees: 90,
+              groundSpeedKnots: 120,
+              freshness: 'FRESH',
+              ageSeconds: 4,
+            },
+          },
+        ],
+        previewFuturePosition,
+        scenarioTimeMs: 10_000,
+      };
+
+      const prediction = getCommands('PREDICT TARGET1 +2MIN', context)
+        .find(command => command.id === 'future-position-target1');
+      expect(prediction?.label).toContain('PREDICT TARGET1 +2MIN');
+      expect(prediction?.subLabel).toContain('4.0 NM');
+      expect(prediction?.subLabel).toContain('AGE: 4 S');
+      expect(prediction?.subLabel).toContain('CONSTANT GROUND TRACK / GROUND SPEED');
+      expect(prediction?.isPreview).toBe(true);
+      prediction?.action?.();
+      expect(previewFuturePosition).toHaveBeenCalledOnce();
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+
+      const unavailable = getCommands('PREDICT TARGET1 +2MIN', mockContext);
+      expect(unavailable.some(command => command.label.includes('UNAVAILABLE'))).toBe(true);
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

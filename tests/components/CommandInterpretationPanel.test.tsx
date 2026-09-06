@@ -4,6 +4,7 @@ import { CommandInterpretationPanel } from '../../components/CommandInterpretati
 import { createProjectionPreview } from '../../domain/designations';
 import { intersectBearings } from '../../domain/bearingIntersection';
 import { calculateDelta, calculateReciprocal, calculateRelativeBearing } from '../../domain/angularCalculations';
+import { projectFuturePosition, type FuturePositionPreview } from '../../domain/futurePosition';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -165,11 +166,11 @@ describe('CommandInterpretationPanel', () => {
         effect="CALCULATION ONLY"
       />,
     );
-    let panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('COMMAND: RECIP');
-    expect(panel).toHaveTextContent('INPUT: HEADING');
-    expect(panel).toHaveTextContent('OUTPUT: HEADING');
-    expect(panel).toHaveTextContent('RESULT: 093°');
+    let angularPanel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(angularPanel).toHaveTextContent('COMMAND: RECIP');
+    expect(angularPanel).toHaveTextContent('INPUT: HEADING');
+    expect(angularPanel).toHaveTextContent('OUTPUT: HEADING');
+    expect(angularPanel).toHaveTextContent('RESULT: 093°');
 
     rerender(
       <CommandInterpretationPanel
@@ -178,10 +179,10 @@ describe('CommandInterpretationPanel', () => {
         effect="CALCULATION ONLY"
       />,
     );
-    panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('COMMAND: DELTA');
-    expect(panel).toHaveTextContent('DIRECTION: RIGHT');
-    expect(panel).toHaveTextContent('DELTA: 20°');
+    angularPanel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(angularPanel).toHaveTextContent('COMMAND: DELTA');
+    expect(angularPanel).toHaveTextContent('DIRECTION: RIGHT');
+    expect(angularPanel).toHaveTextContent('DELTA: 20°');
 
     rerender(
       <CommandInterpretationPanel
@@ -190,9 +191,52 @@ describe('CommandInterpretationPanel', () => {
         effect="CALCULATION ONLY"
       />,
     );
-    panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('COMMAND: REL');
-    expect(panel).toHaveTextContent('OUTPUT: RELATIVE_BEARING');
-    expect(panel).toHaveTextContent('RESULT: 090°');
+    angularPanel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(angularPanel).toHaveTextContent('COMMAND: REL');
+    expect(angularPanel).toHaveTextContent('OUTPUT: RELATIVE_BEARING');
+    expect(angularPanel).toHaveTextContent('RESULT: 090°');
+  });
+
+  it('explains a future-position preview without implying a route change', () => {
+    const result = projectFuturePosition({
+      track: {
+        id: 'track-bravo',
+        label: 'BRAVO',
+        position: { lat: 0, lon: 0 },
+        groundTrackDegrees: 90,
+        groundSpeedKnots: 120,
+        freshness: 'FRESH',
+        ageSeconds: 4,
+      },
+      horizon: { value: 2, unit: 'MIN' },
+      nowMs: 10_000,
+    });
+    if (result.status !== 'AVAILABLE') throw new Error('Expected an available future preview');
+    const futurePositionPreview: FuturePositionPreview = {
+      type: 'FUTURE_POSITION_PREVIEW',
+      trackId: 'track-bravo',
+      trackLabel: 'BRAVO',
+      groundTrackDegrees: 90,
+      groundSpeedKnots: 120,
+      result,
+    };
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('PREDICT BRAVO +2MIN')}
+        futurePositionPreview={futurePositionPreview}
+        effect="MAP PREVIEW ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: SEARCH');
+    expect(panel).toHaveTextContent('COMMAND: PREDICT');
+    expect(panel).toHaveTextContent('GHOST:');
+    expect(panel).toHaveTextContent('VECTOR: 90.0°T @ 120.0 KT');
+    expect(panel).toHaveTextContent('HORIZON: 2.0 MIN');
+    expect(panel).toHaveTextContent('AGE: 4 S');
+    expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT GROUND TRACK / GROUND SPEED');
+    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
   });
 });

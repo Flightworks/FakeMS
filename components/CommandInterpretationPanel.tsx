@@ -6,6 +6,10 @@ import type {
   BullseyeProjectionPreview,
 } from '../domain/bullseye';
 import type { ProjectionPreview } from '../domain/designations';
+import type {
+  FuturePositionPreview,
+  FuturePositionResult,
+} from '../domain/futurePosition';
 import {
   convertTacticalQuantity,
   createTacticalQuantity,
@@ -15,6 +19,8 @@ import {
 export interface CommandInterpretationPanelProps {
   parsed: ParsedCommand;
   angularCalculation?: AngularCalculationResult;
+  futurePositionPreview?: FuturePositionPreview;
+  futurePositionResult?: FuturePositionResult;
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
   bullseyeMeasurement?: BullseyeMeasurement;
@@ -94,6 +100,7 @@ const getTarget = (
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeProjection?: BullseyeProjectionPreview,
+  futurePositionPreview?: FuturePositionPreview,
 ): string => {
   if (projection) {
     return `${formatCoordinate(projection.targetPosition.lat)}, ${formatCoordinate(projection.targetPosition.lon)}`;
@@ -103,6 +110,9 @@ const getTarget = (
   }
   if (bullseyeProjection) {
     return `${formatCoordinate(bullseyeProjection.targetPosition.lat)}, ${formatCoordinate(bullseyeProjection.targetPosition.lon)}`;
+  }
+  if (futurePositionPreview) {
+    return `${formatCoordinate(futurePositionPreview.result.targetPosition.lat)}, ${formatCoordinate(futurePositionPreview.result.targetPosition.lon)}`;
   }
 
   if (parsed.type === 'COORDINATE'
@@ -117,6 +127,8 @@ const getTarget = (
 const getDetails = (
   parsed: ParsedCommand,
   angularCalculation?: AngularCalculationResult,
+  futurePositionPreview?: FuturePositionPreview,
+  futurePositionResult?: FuturePositionResult,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeMeasurement?: BullseyeMeasurement,
@@ -206,6 +218,27 @@ const getDetails = (
     }
   } else if (parsed.type === 'ROUTE' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
+  } else if (parsed.type === 'SEARCH' && parameters.command === 'PREDICT') {
+    details.push('COMMAND: PREDICT');
+    const futureResult = futurePositionPreview?.result ?? futurePositionResult;
+    if (!futureResult || futureResult.status === 'UNAVAILABLE') {
+      details.push('RESULT: UNAVAILABLE');
+      if (futureResult?.reason) details.push(`REASON: ${futureResult.reason}`);
+    } else {
+      details.push(`GHOST: ${formatCoordinate(futureResult.targetPosition.lat)}, ${formatCoordinate(futureResult.targetPosition.lon)}`);
+      if (futurePositionPreview) {
+        details.push(`VECTOR: ${futurePositionPreview.groundTrackDegrees.toFixed(1)}°T @ ${futurePositionPreview.groundSpeedKnots.toFixed(1)} KT`);
+      } else {
+        details.push('VECTOR: N/A');
+      }
+      details.push(`RANGE: ${futureResult.projectedRangeNauticalMiles.toFixed(1)} NM`);
+      details.push(`HORIZON: ${futureResult.effectiveHorizonMinutes.toFixed(1)} MIN`);
+      details.push(`AGE: ${futureResult.ageSeconds === null
+        ? 'UNKNOWN'
+        : `${Number.isInteger(futureResult.ageSeconds) ? futureResult.ageSeconds.toFixed(0) : futureResult.ageSeconds.toFixed(1)} S`}`);
+      details.push(`LIMIT: ${futureResult.horizonLimit}`);
+      details.push(`ASSUMPTION: ${futureResult.assumption}`);
+    }
   } else if (parsed.type === 'SEARCH' && parameters.command === 'NEAREST') {
     details.push('COMMAND: NEAREST');
     if (typeof parameters.category === 'string') details.push(`CATEGORY: ${parameters.category}`);
@@ -222,6 +255,8 @@ const getDetails = (
 export const CommandInterpretationPanel = ({
   parsed,
   angularCalculation,
+  futurePositionPreview,
+  futurePositionResult,
   projection,
   intersection,
   bullseyeMeasurement,
@@ -235,8 +270,8 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, angularCalculation, projection, intersection, bullseyeMeasurement, bullseyeProjection),
-    `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection)}`,
+    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,
     `EFFECT: ${effect}`,

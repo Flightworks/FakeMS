@@ -35,6 +35,7 @@ const COMMAND_TOKENS = new Set([
   'LAYER',
   'LAYERS',
   'SEARCH',
+  'PREDICT',
   'NEAREST',
   'NOTE',
   'CALC',
@@ -674,6 +675,67 @@ const parseNearest = (tokens: CommandToken[]): ParsedCommand => {
   );
 };
 
+const parsePredict = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, string | number | null> = { command: 'PREDICT' };
+  const errors: CommandParseError[] = [];
+  const body = tokens.slice(1).map(token => token.normalized);
+  const horizonIndex = body.findIndex(token => token.startsWith('+'));
+
+  if (horizonIndex < 0) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: 'PREDICT requires a reference and a signed horizon.',
+      hint: 'Use PREDICT BRAVO +2MIN or PREDICT BRAVO +10NM.',
+    });
+  } else if (horizonIndex !== body.length - 1) {
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: 'PREDICT horizon must be the final argument.',
+    });
+  }
+
+  const referenceParts = horizonIndex > 0 ? body.slice(0, horizonIndex) : [];
+  if (referenceParts.length === 0) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: 'PREDICT requires a target reference.',
+    });
+  } else {
+    parameters.reference = referenceParts.join(' ');
+  }
+
+  const horizonToken = horizonIndex === body.length - 1 ? body[horizonIndex] : undefined;
+  const horizonMatch = horizonToken?.match(/^\+((?:\d+(?:\.\d*)?|\.\d+))(MIN|NM)$/);
+  if (!horizonMatch) {
+    if (horizonToken && horizonToken === NON_FINITE_MARKER) {
+      errors.push(nonFiniteError());
+    } else if (horizonToken) {
+      errors.push({
+        code: 'INVALID_SYNTAX',
+        message: 'Prediction horizon must use +<value>MIN or +<value>NM.',
+      });
+    }
+  } else {
+    const value = Number(horizonMatch[1]);
+    parameters.horizonValue = value;
+    parameters.horizonUnit = horizonMatch[2];
+    if (!Number.isFinite(value) || value <= 0) {
+      errors.push({
+        code: 'INVALID_RANGE',
+        message: 'Prediction horizon must be greater than zero.',
+      });
+    }
+  }
+
+  return createResult(
+    'SEARCH',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const COORDINATE_FORMATS: CoordinateFormat[] = ['DD', 'DDM', 'DMS'];
 
 const isCoordinateFormat = (value: string | undefined): value is CoordinateFormat =>
@@ -1069,7 +1131,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS'].includes(command)) {
     return 'SYSTEM';
   }
-  if (command === 'SEARCH' || command === 'NEAREST') return 'SEARCH';
+  if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST') return 'SEARCH';
   if (command === 'BULL'
     || (command === 'SET' && tokens[1]?.normalized === 'BULL')
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
@@ -1123,6 +1185,7 @@ export const parseCommand = (input: string): ParsedCommand => {
 
   if (type === 'SEARCH') {
     if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
+    if (tokens[0]?.normalized === 'PREDICT') return parsePredict(tokens);
     return createResult('SEARCH', tokens, {
       query: tokens.slice(1).map(token => token.normalized).join(' '),
     });

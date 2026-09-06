@@ -7,6 +7,7 @@ import type { MissionActionCategory, MissionActionImplementation, MissionActionR
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import type { BullseyeProjectionPreview, BullseyeReference } from '../domain/bullseye';
+import type { FuturePositionPreview } from '../domain/futurePosition';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -58,12 +59,14 @@ interface MapDisplayProps {
   intersectionPreview?: BearingIntersectionResult | null;
   bullseye?: BullseyeReference | null;
   bullseyeProjectionPreview?: BullseyeProjectionPreview | null;
+  futurePositionPreview?: FuturePositionPreview | null;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
   onClearProjectionPreview?: () => void;
   onClearIntersectionPreview?: () => void;
   onClearBullseyeProjectionPreview?: () => void;
+  onClearFuturePositionPreview?: () => void;
 }
 
 
@@ -72,6 +75,10 @@ const formatIntersectionBearing = (value: number): string => (
   Number.isInteger(value)
     ? value.toFixed(0).padStart(3, '0')
     : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+);
+
+const formatProjectedTimestamp = (value: number | null): string => (
+  value === null ? 'UNKNOWN' : new Date(value).toISOString()
 );
 
 // Deprecated projection helpers. We now use native lat/lon. Validate if still needed elsewhere.
@@ -304,12 +311,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   intersectionPreview,
   bullseye,
   bullseyeProjectionPreview,
+  futurePositionPreview,
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
   onClearProjectionPreview,
   onClearIntersectionPreview,
   onClearBullseyeProjectionPreview,
+  onClearFuturePositionPreview,
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -721,7 +730,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const isProjectionPreviewTarget = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane, .bearing-intersection-preview-overlay, .bearing-intersection-pane, .simulated-designation-pane'));
+    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane, .bearing-intersection-preview-overlay, .bearing-intersection-pane, .simulated-designation-pane, .future-position-preview-overlay, .future-position-preview-pane'));
 
   const cancelProjectionPreviewInteraction = (event: React.PointerEvent<HTMLDivElement>): boolean => {
     if (!isProjectionPreviewTarget(event.target)) return false;
@@ -790,6 +799,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         [leg.position.lat, leg.position.lon],
         [intersectionPreview.position.lat, intersectionPreview.position.lon],
       ])
+    : [];
+  const futurePositionLinePositions: LatLngExpression[] = futurePositionPreview
+    ? futurePositionPreview.result.line.map(position => [position.lat, position.lon] as [number, number])
     : [];
 
   return (
@@ -905,6 +917,38 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               }}
             />
           ))}
+
+        {futurePositionPreview && (
+          <Pane
+            name="futurePositionPreviewPane"
+            className="future-position-preview-pane"
+            style={{ pointerEvents: 'none' }}
+          >
+            <Polyline
+              positions={futurePositionLinePositions}
+              interactive={false}
+              pane="futurePositionPreviewPane"
+              pathOptions={{
+                color: '#c084fc',
+                dashArray: '6 5',
+                weight: 3,
+                opacity: 0.9,
+              }}
+            />
+            <CircleMarker
+              center={[futurePositionPreview.result.targetPosition.lat, futurePositionPreview.result.targetPosition.lon]}
+              radius={9}
+              interactive={false}
+              pane="futurePositionPreviewPane"
+              pathOptions={{
+                color: '#e879f9',
+                fillColor: '#7e22ce',
+                fillOpacity: 0.85,
+                weight: 3,
+              }}
+            />
+          </Pane>
+        )}
 
         {bullseye && (
           <Pane
@@ -1216,6 +1260,53 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               }}
             >
               CANCEL INTERSECTION PREVIEW
+            </button>
+          )}
+        </section>
+      )}
+
+      {futurePositionPreview && (
+        <section
+          className="future-position-preview-overlay absolute bottom-20 left-4 z-[110] w-[min(25rem,calc(100vw-2rem))] rounded-lg border border-fuchsia-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          data-future-position-preview-overlay
+          role="region"
+          aria-label="Future position preview"
+          aria-live="polite"
+        >
+          <div className="mb-2 flex items-center justify-between border-b border-slate-800 pb-2 text-fuchsia-300">
+            <span>FUTURE POSITION PREVIEW</span>
+            <span className="text-[10px] text-slate-400">{futurePositionPreview.trackLabel}</span>
+          </div>
+          <div className="space-y-1">
+            <div data-testid="future-position-preview-point">
+              GHOST {futurePositionPreview.result.targetPosition.lat.toFixed(5)}, {futurePositionPreview.result.targetPosition.lon.toFixed(5)}
+            </div>
+            <div data-testid="future-position-preview-vector">
+              VECTOR {futurePositionPreview.groundTrackDegrees.toFixed(1)}°T @ {futurePositionPreview.groundSpeedKnots.toFixed(1)} KT
+            </div>
+            <div>
+              HORIZON {futurePositionPreview.result.effectiveHorizonMinutes.toFixed(1)} MIN · RANGE {futurePositionPreview.result.projectedRangeNauticalMiles.toFixed(1)} NM
+            </div>
+            <div data-testid="future-position-preview-timestamp">
+              PROJECTED AT {formatProjectedTimestamp(futurePositionPreview.result.projectedAtMs)}
+            </div>
+            <div>
+              AGE {futurePositionPreview.result.ageSeconds === null ? 'UNKNOWN' : `${futurePositionPreview.result.ageSeconds.toFixed(1)} S`} · LIMIT {futurePositionPreview.result.horizonLimit}
+            </div>
+            <div className="text-slate-400">ASSUMPTION {futurePositionPreview.result.assumption}</div>
+            <div className="text-slate-500">SOURCE LOCAL SCENARIO · EFFECT MAP PREVIEW ONLY</div>
+          </div>
+          {onClearFuturePositionPreview && (
+            <button
+              type="button"
+              className="mt-3 min-h-[32px] w-full rounded border border-amber-400/70 px-2 py-1 text-amber-300 hover:bg-amber-400/10"
+              aria-label="Cancel future position preview"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClearFuturePositionPreview();
+              }}
+            >
+              CANCEL FUTURE POSITION PREVIEW
             </button>
           )}
         </section>

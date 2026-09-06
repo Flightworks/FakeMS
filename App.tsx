@@ -27,6 +27,7 @@ import type { MissionActionRequest } from './domain/missionActions';
 import type { ProjectionPreview } from './domain/designations';
 import type { BearingIntersectionResult } from './domain/bearingIntersection';
 import type { BullseyeProjectionPreview, BullseyeReference } from './domain/bullseye';
+import type { FuturePositionPreview } from './domain/futurePosition';
 import type { ActiveSimulatedRoute } from './domain/routeSummary';
 import { createBullseyeState, bullseyeReducer } from './application/bullseyeReducer';
 import { createDesignationState, designationReducer } from './application/designationReducer';
@@ -55,7 +56,7 @@ const INITIAL_ENTITIES: Entity[] = [
   { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01' },
   { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO' },
   { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE' },
-  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3 },
+  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3, metadata: { groundTrackDegrees: 270, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4 } },
   // Adding Waypoint routine to ENEMY 2 to test automatic navigation
   { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }] },
 ];
@@ -141,6 +142,7 @@ const App: React.FC = () => {
   const [bullseyeProposal, setBullseyeProposal] = useState<BullseyeProposal | null>(null);
   const [bullseyeProjectionPreview, setBullseyeProjectionPreview] = useState<BullseyeProjectionPreview | null>(null);
   const [intersectionPreview, setIntersectionPreview] = useState<BearingIntersectionResult | null>(null);
+  const [futurePositionPreview, setFuturePositionPreview] = useState<FuturePositionPreview | null>(null);
   const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
   const [mapReady, setMapReady] = useState(false);
@@ -183,15 +185,25 @@ const App: React.FC = () => {
     setSystems(prev => ({ ...prev, [sys]: !prev[sys] }));
   };
 
-  const closeCommandPalette = React.useCallback(() => {
+  const closeCommandPalette = React.useCallback((options?: { preserveFuturePosition?: boolean }) => {
     setCommandPaletteOpen(false);
     setBullseyeProposal(null);
     setBullseyeProjectionPreview(null);
     setIntersectionPreview(null);
+    if (!options?.preserveFuturePosition) setFuturePositionPreview(null);
     setDesignationState(prev => prev.phase === 'PREVIEWED'
       ? designationReducer(prev, { type: 'CANCEL_DESIGNATION' })
       : prev);
   }, []);
+
+  React.useEffect(() => {
+    if (!futurePositionPreview) return undefined;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFuturePositionPreview(null);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [futurePositionPreview]);
 
   const previewProjection = React.useCallback((preview: ProjectionPreview) => {
     setDesignationState(prev => designationReducer(prev, {
@@ -229,6 +241,25 @@ const App: React.FC = () => {
 
   const clearBullseyeProjectionPreview = React.useCallback(() => {
     setBullseyeProjectionPreview(null);
+  }, []);
+
+  const previewFuturePosition = React.useCallback((preview: FuturePositionPreview) => {
+    setFuturePositionPreview({
+      ...preview,
+      result: {
+        ...preview.result,
+        referencePosition: { ...preview.result.referencePosition },
+        targetPosition: { ...preview.result.targetPosition },
+        line: [
+          { ...preview.result.line[0] },
+          { ...preview.result.line[1] },
+        ],
+      },
+    });
+  }, []);
+
+  const clearFuturePositionPreview = React.useCallback(() => {
+    setFuturePositionPreview(null);
   }, []);
 
   const proposeSetBullseye = React.useCallback((nextBullseye: BullseyeReference) => {
@@ -857,12 +888,14 @@ const App: React.FC = () => {
             intersectionPreview={intersectionPreview}
             bullseye={bullseyeState.bullseye}
             bullseyeProjectionPreview={bullseyeProjectionPreview}
+            futurePositionPreview={futurePositionPreview}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
             onClearProjectionPreview={cancelDesignation}
             onClearIntersectionPreview={clearIntersectionPreview}
             onClearBullseyeProjectionPreview={clearBullseyeProjectionPreview}
+            onClearFuturePositionPreview={clearFuturePositionPreview}
               />
             </React.Suspense>
           ) : (
@@ -899,6 +932,7 @@ const App: React.FC = () => {
             previewProjection={previewProjection}
             previewIntersection={previewIntersection}
             previewBullseyeProjection={previewBullseyeProjection}
+            previewFuturePosition={previewFuturePosition}
             bullseye={bullseyeState.bullseye}
             proposeSetBullseye={proposeSetBullseye}
             proposeClearBullseye={proposeClearBullseye}
