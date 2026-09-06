@@ -511,4 +511,19 @@ describe('typed tactical command parser', () => {
     expect(cancel.parameters).toMatchObject({ command: 'CANCEL TIMER', timerId: 1 });
     expect(cancel.errors).toEqual([]);
   });
+
+  it('parses explicit unit conversions without implicit dimensions', () => {
+    for (const input of ['5NM > KM', '120KT > KMH', '5000FT > M', '15MIN > SEC']) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('CALCULATION');
+      expect(parsed.parameters, input).toMatchObject({ command: 'CONVERT' });
+      expect(parsed.errors, input).toEqual([]);
+    }
+
+    const incompatible = parseCommand('5NM > KT');
+    expect(incompatible.type).toBe('CALCULATION');
+    expect(incompatible.errors).toEqual([
+      expect.objectContaining({ code: 'INCOMPATIBLE_UNIT' }),
+    ]);
+  });
 });

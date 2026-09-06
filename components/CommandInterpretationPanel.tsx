@@ -12,6 +12,7 @@ import type {
 } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../domain/trackDetails';
+import type { TacticalQuantity } from '../domain/tacticalUnits';
 import {
   convertTacticalQuantity,
   createTacticalQuantity,
@@ -27,6 +28,8 @@ export interface CommandInterpretationPanelProps {
   relativeMotionResult?: RelativeMotionResult;
   trackDetails?: TrackDisplayDetails;
   staleTrackDetails?: TrackDisplayDetails[];
+  unitConversionResult?: TacticalQuantity;
+  unitConversionError?: string;
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
   bullseyeMeasurement?: BullseyeMeasurement;
@@ -139,6 +142,8 @@ const getDetails = (
   relativeMotionResult?: RelativeMotionResult,
   trackDetails?: TrackDisplayDetails,
   staleTrackDetails?: TrackDisplayDetails[],
+  unitConversionResult?: TacticalQuantity,
+  unitConversionError?: string,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
   bullseyeMeasurement?: BullseyeMeasurement,
@@ -193,7 +198,19 @@ const getDetails = (
     if (typeof parameters.longitude === 'number') details.push(`LONGITUDE: ${formatCoordinate(parameters.longitude)}°`);
   } else if (parsed.type === 'CALCULATION') {
     const command = typeof parameters.command === 'string' ? parameters.command : undefined;
-    if ((command === 'CLOSURE' || command === 'CPA')
+    if (command === 'CONVERT') {
+      details.push('COMMAND: CONVERT');
+      if (!unitConversionResult) {
+        details.push('RESULT: UNAVAILABLE');
+        details.push(`REASON: ${unitConversionError ?? 'CONVERSION NOT AVAILABLE'}`);
+        details.push('STATUS: CALCULATION NOT EXECUTED');
+      } else {
+        details.push(`VALUE: ${unitConversionResult.value.toFixed(3)} ${unitConversionResult.unit}`);
+        details.push(`DIMENSION: ${unitConversionResult.dimension}`);
+        details.push(`SOURCE VALUE: ${unitConversionResult.originalValue} ${unitConversionResult.originalUnit ?? 'UNKNOWN'}`);
+        details.push(`ASSUMED UNIT: ${unitConversionResult.assumed ? 'YES' : 'NO'}`);
+      }
+    } else if ((command === 'CLOSURE' || command === 'CPA')
       && (relativeMotionPreview || relativeMotionResult)) {
       details.push(`COMMAND: ${command}`);
       const result = relativeMotionPreview?.result ?? relativeMotionResult;
@@ -323,6 +340,8 @@ export const CommandInterpretationPanel = ({
   relativeMotionResult,
   trackDetails,
   staleTrackDetails,
+  unitConversionResult,
+  unitConversionError,
   projection,
   intersection,
   bullseyeMeasurement,
@@ -330,13 +349,14 @@ export const CommandInterpretationPanel = ({
   effect = 'SIMULATED CALCULATION',
   source = 'LOCAL SCENARIO',
 }: CommandInterpretationPanelProps) => {
-  if (parsed.errors.length > 0) return null;
+  const allowConversionError = parsed.type === 'CALCULATION' && parsed.parameters.command === 'CONVERT';
+  if (parsed.errors.length > 0 && !allowConversionError) return null;
 
   const assumptions = parsed.assumptions.length > 0 ? parsed.assumptions.join(', ') : 'NONE';
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, trackDetails, staleTrackDetails, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, trackDetails, staleTrackDetails, unitConversionResult, unitConversionError, projection, intersection, bullseyeMeasurement, bullseyeProjection),
     `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,

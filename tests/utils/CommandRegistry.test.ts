@@ -974,5 +974,20 @@ describe('CommandRegistry', () => {
       expect(cancelTimer).toHaveBeenCalledWith(1);
       expect(context.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers explicit unit conversions as local calculations', () => {
+      const conversion = getCommands('5NM > KM', mockContext)
+        .find(command => command.id === 'unit-conversion');
+      expect(conversion?.label).toContain('5 NM');
+      expect(conversion?.subLabel).toContain('9.260 KM');
+      expect(conversion?.subLabel).toContain('CALCULATION ONLY');
+      expect(conversion?.isPreview).toBe(true);
+
+      const incompatible = getCommands('5NM > KT', mockContext)
+        .find(command => command.id === 'unit-conversion-unavailable');
+      expect(incompatible?.label).toContain('UNAVAILABLE');
+      expect(incompatible?.subLabel).toContain('INCOMPATIBLE UNITS');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

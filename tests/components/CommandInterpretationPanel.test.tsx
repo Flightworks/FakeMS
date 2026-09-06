@@ -7,6 +7,7 @@ import { calculateDelta, calculateReciprocal, calculateRelativeBearing } from '.
 import { projectFuturePosition, type FuturePositionPreview } from '../../domain/futurePosition';
 import { calculateRelativeMotion, type RelativeMotionPreview } from '../../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../../domain/trackDetails';
+import { convertTacticalQuantity, createTacticalQuantity, type TacticalQuantity } from '../../domain/tacticalUnits';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -337,5 +338,27 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('COUNT: 2');
     expect(panel).toHaveTextContent('OLDER AGE: 120 S');
     expect(panel).toHaveTextContent('OLD AGE: 90 S');
+  });
+
+  it('shows explicit unit conversion results as calculation-only', () => {
+    const unitConversionResult: TacticalQuantity = convertTacticalQuantity(
+      createTacticalQuantity(5, 'NM'),
+      'KM',
+    );
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('5NM > KM')}
+        unitConversionResult={unitConversionResult}
+        effect="CALCULATION ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('COMMAND: CONVERT');
+    expect(panel).toHaveTextContent('VALUE: 9.260 KM');
+    expect(panel).toHaveTextContent('DIMENSION: DISTANCE');
+    expect(panel).toHaveTextContent('SOURCE VALUE: 5 NM');
+    expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
   });
 });

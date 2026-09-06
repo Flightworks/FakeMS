@@ -50,6 +50,7 @@ const COMMAND_TOKENS = new Set([
   'STALE',
   'TIMER',
   'TIMERS',
+  'CONVERT',
   'TIME',
   'DIST',
   'GS',
@@ -1166,6 +1167,49 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseUnitConversion = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, string | number | null> = { command: 'CONVERT' };
+  const errors: CommandParseError[] = [];
+  const sourceParts = splitNumericAndUnit(tokens[0]?.normalized === 'CONVERT' ? tokens[1]?.normalized : tokens[0]?.normalized);
+  const sourceValue = sourceParts.numberToken && sourceParts.numberToken !== NON_FINITE_MARKER
+    ? Number(sourceParts.numberToken)
+    : null;
+  const sourceUnit = sourceParts.unitToken;
+  const targetUnit = tokens[0]?.normalized === 'CONVERT' ? tokens[3]?.normalized : tokens[2]?.normalized;
+  parameters.value = Number.isFinite(sourceValue) ? sourceValue : null;
+  parameters.sourceUnit = sourceUnit;
+  parameters.targetUnit = targetUnit;
+
+  if (tokens[0]?.normalized === 'CONVERT') {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use <VALUE><UNIT> > <UNIT>.' });
+  } else if (tokens.length !== 3 || tokens[1]?.normalized !== '>') {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use <VALUE><UNIT> > <UNIT>.' });
+  } else if (sourceParts.numberToken === NON_FINITE_MARKER || !Number.isFinite(sourceValue)) {
+    errors.push(nonFiniteError());
+  } else if (!sourceUnit || !targetUnit) {
+    errors.push({ code: 'UNKNOWN_UNIT', message: 'Source and target units are required.' });
+  } else {
+    try {
+      const quantity = createTacticalQuantity(sourceValue as number, sourceUnit, {
+        allowZero: true,
+        allowNegative: true,
+      });
+      convertTacticalQuantity(quantity, targetUnit);
+    } catch (error) {
+      if (error instanceof TacticalUnitError) {
+        errors.push({
+          code: error.code === 'INCOMPATIBLE_UNITS' ? 'INCOMPATIBLE_UNIT' : error.code === 'UNKNOWN_UNIT' ? 'UNKNOWN_UNIT' : 'INVALID_NUMBER',
+          message: error.message,
+        });
+      } else {
+        errors.push({ code: 'INVALID_SYNTAX', message: 'Conversion is invalid.' });
+      }
+    }
+  }
+
+  return createResult('CALCULATION', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseTimerCommand = (tokens: CommandToken[]): ParsedCommand => {
   const first = tokens[0]?.normalized ?? '';
   const isCancel = first === 'CANCEL' && tokens[1]?.normalized === 'TIMER';
@@ -1261,6 +1305,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     || (command === 'SET' && tokens[1]?.normalized === 'BULL')
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
   if (command === 'NOTE') return 'NOTE';
+  if (command === 'CONVERT' || tokens[1]?.normalized === '>') return 'CALCULATION';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
   if (command === 'RECIP' || command === 'DELTA' || command === 'REL'
     || command === 'CLOSURE' || command === 'CPA') return 'CALCULATION';
@@ -1327,6 +1372,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'ROUTE') return parseRoute(tokens);
 
   if (type === 'CALCULATION') {
+    if (tokens[0].normalized === 'CONVERT' || tokens[1]?.normalized === '>') {
+      return parseUnitConversion(tokens);
+    }
     if (tokens[0].normalized === 'CLOSURE' || tokens[0].normalized === 'CPA') {
       return parseRelativeMotionCalculation(tokens);
     }

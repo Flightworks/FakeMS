@@ -10,6 +10,7 @@ import {
 import {
     convertTacticalQuantity,
     createTacticalQuantity,
+    type TacticalQuantity,
 } from '../domain/tacticalUnits';
 import { parseCommand } from '../domain/commandParser';
 import {
@@ -146,6 +147,8 @@ export interface CommandOption {
     trackDetails?: TrackDisplayDetails;
     staleTrackDetails?: TrackDisplayDetails[];
     timerState?: ScenarioTimerState;
+    unitConversionResult?: TacticalQuantity;
+    unitConversionError?: string;
     keepPaletteOpen?: boolean;
 }
 
@@ -1275,6 +1278,70 @@ export const getCommands = (
                     createEntityTrackDetails(resolution.entity, scenarioTimeMs),
                     q,
                 ));
+            }
+        }
+    }
+
+    if (parsedMeasurement.type === 'CALCULATION'
+        && parsedMeasurement.parameters.command === 'CONVERT') {
+        const sourceValue = parsedMeasurement.parameters.value;
+        const sourceUnit = parsedMeasurement.parameters.sourceUnit;
+        const targetUnit = parsedMeasurement.parameters.targetUnit;
+        const sourceLabel = `${typeof sourceValue === 'number' ? sourceValue : '?'} ${typeof sourceUnit === 'string' ? sourceUnit : '?'}`;
+        const targetLabel = typeof targetUnit === 'string' ? targetUnit : '?';
+        if (parsedMeasurement.errors.length > 0
+            || typeof sourceValue !== 'number'
+            || typeof sourceUnit !== 'string'
+            || typeof targetUnit !== 'string') {
+            const parseError = parsedMeasurement.errors[0];
+            const reason = parseError?.code === 'INCOMPATIBLE_UNIT'
+                ? 'INCOMPATIBLE UNITS'
+                : (parseError?.message ?? 'INVALID CONVERSION').toUpperCase();
+            commands.push({
+                id: 'unit-conversion-unavailable',
+                label: `${sourceLabel} > ${targetLabel}: UNAVAILABLE`,
+                subLabel: `${reason} · CALCULATION NOT EXECUTED`,
+                unitConversionError: reason,
+                icon: Calculator,
+                keywords: ['convert', 'unit', 'unavailable', 'incompatible', sourceLabel, targetLabel],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else {
+            try {
+                const quantity = createTacticalQuantity(sourceValue, sourceUnit, {
+                    allowZero: true,
+                    allowNegative: true,
+                });
+                const converted = convertTacticalQuantity(quantity, targetUnit);
+                commands.push({
+                    id: 'unit-conversion',
+                    label: `${sourceValue} ${quantity.unit} > ${targetUnit}`,
+                    subLabel: `${converted.value.toFixed(3)} ${converted.unit} · ${quantity.dimension} · CALCULATION ONLY`,
+                    icon: Calculator,
+                    keywords: ['convert', 'unit', quantity.unit, converted.unit, quantity.dimension],
+                    historyValue: q,
+                    isPreview: true,
+                    unitConversionResult: converted,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : 'INVALID CONVERSION';
+                commands.push({
+                    id: 'unit-conversion-unavailable',
+                    label: `${sourceLabel} > ${targetLabel}: UNAVAILABLE`,
+                    subLabel: `${reason.toUpperCase()} · CALCULATION NOT EXECUTED`,
+                    unitConversionError: reason.toUpperCase(),
+                    icon: Calculator,
+                    keywords: ['convert', 'unit', 'unavailable', 'incompatible'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
             }
         }
     }

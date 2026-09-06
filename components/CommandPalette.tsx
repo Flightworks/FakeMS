@@ -39,6 +39,7 @@ import type { FuturePositionPreview, FuturePositionResult } from '../domain/futu
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../domain/trackDetails';
 import type { ScenarioTimerState } from '../domain/simulationTimers';
+import type { TacticalQuantity } from '../domain/tacticalUnits';
 
 type CommandPaletteCloseOptions = {
   preserveFuturePosition?: boolean;
@@ -524,10 +525,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return commands.find(command => command.staleTrackDetails)?.staleTrackDetails;
   }, [parsedCommand, commands]);
 
+  const interpretationUnitConversionResult = useMemo<TacticalQuantity | undefined>(() => {
+    if (parsedCommand.type !== 'CALCULATION'
+      || parsedCommand.parameters.command !== 'CONVERT'
+      || parsedCommand.errors.length > 0) return undefined;
+    return commands.find(command => command.unitConversionResult)?.unitConversionResult;
+  }, [parsedCommand, commands]);
+
+  const interpretationUnitConversionError = useMemo<string | undefined>(() => {
+    if (parsedCommand.type !== 'CALCULATION'
+      || parsedCommand.parameters.command !== 'CONVERT') return undefined;
+    return commands.find(command => command.unitConversionError)?.unitConversionError;
+  }, [parsedCommand, commands]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
+  const showConversionError = parsedCommand.type === 'CALCULATION'
+    && parsedCommand.parameters.command === 'CONVERT'
+    && parsedCommand.errors.length > 0;
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
-    && parsedCommand.errors.length === 0;
+    && (parsedCommand.errors.length === 0 || showConversionError);
   const interpretationEffect = parsedCommand.type === 'PROJECTION'
     ? interpretationProjection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
     : parsedCommand.type === 'INTERSECTION'
@@ -784,6 +801,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             relativeMotionResult={interpretationRelativeMotionResult}
             trackDetails={interpretationTrackDetails}
             staleTrackDetails={interpretationStaleTrackDetails}
+            unitConversionResult={interpretationUnitConversionResult}
+            unitConversionError={interpretationUnitConversionError}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
             bullseyeMeasurement={interpretationBullseyeMeasurement}
