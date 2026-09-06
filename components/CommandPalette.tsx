@@ -18,6 +18,7 @@ import {
 } from '../domain/commandHistory';
 import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
+import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ interface CommandPaletteProps {
   groundSpeed?: GroundSpeedInput;
   scenarioTimeMs?: number;
   localTimeZone?: string;
+  activeRoute?: ActiveSimulatedRoute;
 }
 
 interface VisualViewportRect {
@@ -125,7 +127,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   setOwnshipNavMode,
   groundSpeed,
   scenarioTimeMs,
-  localTimeZone
+  localTimeZone,
+  activeRoute,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -232,6 +235,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       groundSpeed,
       scenarioTimeMs,
       localTimeZone,
+      activeRoute,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context, mathProvider ?? undefined);
@@ -260,6 +264,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     groundSpeed,
     scenarioTimeMs,
     localTimeZone,
+    activeRoute,
     mathProvider,
   ]);
 

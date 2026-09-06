@@ -4,6 +4,7 @@ export type CommandIntentType =
   | 'MEASUREMENT'
   | 'SYSTEM'
   | 'CALCULATION'
+  | 'ROUTE'
   | 'SEARCH'
   | 'NOTE';
 

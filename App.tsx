@@ -25,6 +25,7 @@ import { MissionActionIntent } from './application/missionActionReducer';
 import { createMissionActionState, dispatchMissionAction } from './application/missionActionReducer';
 import type { MissionActionRequest } from './domain/missionActions';
 import type { ProjectionPreview } from './domain/designations';
+import type { ActiveSimulatedRoute } from './domain/routeSummary';
 import { createDesignationState, designationReducer } from './application/designationReducer';
 import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
@@ -66,6 +67,7 @@ const App: React.FC = () => {
   const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
   const [missionActionPanelOpen, setMissionActionPanelOpen] = useState(false);
   const [routeProposalSet, setRouteProposalSet] = useState<RouteProposalSet | null>(null);
+  const [activeSimulatedRoute, setActiveSimulatedRoute] = useState<ActiveSimulatedRoute | undefined>();
   const [acceptedRouteProposalId, setAcceptedRouteProposalId] = useState<string | null>(null);
   const [justificationPair, setJustificationPair] = useState<{
     preferred: RouteProposal;
@@ -87,6 +89,38 @@ const App: React.FC = () => {
         qualification: 'SIMULATED' as const,
       }
     : undefined;
+
+  useEffect(() => {
+    if (simulationControls.status === 'RESET · PAUSED' || simulationControls.status === 'REPLAY · RUNNING') {
+      setActiveSimulatedRoute(undefined);
+    }
+  }, [simulationControls.status]);
+
+  useEffect(() => {
+    setActiveSimulatedRoute(previous => {
+      if (!previous) return previous;
+      const remainingWaypointCount = ownship.waypoints
+        ? Math.min(previous.waypoints.length, ownship.waypoints.length)
+        : previous.remainingWaypointCount === previous.waypoints.length
+          ? previous.remainingWaypointCount
+          : 0;
+      return remainingWaypointCount === previous.remainingWaypointCount
+        ? previous
+        : { ...previous, remainingWaypointCount };
+    });
+  }, [ownship.waypoints]);
+
+  const activeRouteForPalette = React.useMemo<ActiveSimulatedRoute | undefined>(() => {
+    if (!activeSimulatedRoute) return undefined;
+    return {
+      ...activeSimulatedRoute,
+      origin: { ...activeSimulatedRoute.origin },
+      waypoints: activeSimulatedRoute.waypoints.map(waypoint => ({
+        ...waypoint,
+        position: { ...waypoint.position },
+      })),
+    };
+  }, [activeSimulatedRoute]);
 
   const [mapMode, setMapMode] = useState<MapMode>(MapMode.HEADING_UP);
   const [mapModeBeforeGhost, setMapModeBeforeGhost] = useState<MapMode | null>(null);
@@ -371,6 +405,16 @@ const App: React.FC = () => {
   const handleAcceptRouteProposal = React.useCallback((proposal: RouteProposal) => {
     if (proposal.status === 'PROHIBITED' || proposal.waypoints.length === 0) return;
     const waypoints = proposal.waypoints.map(position => ({ ...position }));
+    const routeWaypoints = waypoints.map((position, index) => {
+      const matchingEntity = entities.find(entity => (
+        entity.position.lat === position.lat && entity.position.lon === position.lon
+      ));
+      return {
+        id: `${proposal.id}:waypoint:${index + 1}`,
+        label: matchingEntity?.label ?? `WP${index + 1}`,
+        position: { ...position },
+      };
+    });
     const firstWaypoint = waypoints[0];
     setOwnship(prev => ({
       ...prev,
@@ -382,9 +426,17 @@ const App: React.FC = () => {
       ),
       waypoints,
     }));
+    setActiveSimulatedRoute({
+      id: proposal.id,
+      label: proposal.label,
+      origin: { ...ownship.position },
+      waypoints: routeWaypoints,
+      remainingWaypointCount: routeWaypoints.length,
+      hidden: false,
+    });
     setAcceptedRouteProposalId(proposal.id);
     setJustificationPair(null);
-  }, []);
+  }, [entities, ownship.position]);
 
   const handleRejectRouteProposals = React.useCallback(() => {
     setRouteProposalSet(null);
@@ -423,15 +475,30 @@ const App: React.FC = () => {
   }, [issueCommand]);
 
   const handleAcceptProposal = React.useCallback(() => {
-    setCommandState(prev => {
-      if (!prev.directToProposal) return prev;
-      return dispatchCommand(prev, {
+    const proposal = commandState.directToProposal;
+    if (!proposal || proposal.status !== 'PROPOSED') return;
+
+    setActiveSimulatedRoute({
+      id: proposal.id,
+      label: `DCT ${proposal.targetLabel}`,
+      origin: { ...ownship.position },
+      waypoints: [{
+        id: `${proposal.id}:waypoint:1`,
+        label: proposal.targetLabel,
+        position: { ...proposal.position },
+      }],
+      remainingWaypointCount: 1,
+      hidden: false,
+    });
+    setCommandState(previous => {
+      if (!previous.directToProposal || previous.directToProposal.id !== proposal.id) return previous;
+      return dispatchCommand(previous, {
         type: 'ACCEPT_ROUTE_PROPOSAL',
-        proposalId: prev.directToProposal.id,
+        proposalId: proposal.id,
         authorizedAt: Date.now(),
       });
     });
-  }, []);
+  }, [commandState.directToProposal, ownship.position]);
 
   const handleRejectProposal = React.useCallback(() => {
     setCommandState(prev => {
@@ -759,6 +826,7 @@ const App: React.FC = () => {
             groundSpeed={simulationGroundSpeed}
             scenarioTimeMs={simulationControls.simTimeMs}
             localTimeZone={localTimeZone}
+            activeRoute={activeRouteForPalette}
           />
         </React.Suspense>
       )}

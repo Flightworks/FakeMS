@@ -37,6 +37,9 @@ const COMMAND_TOKENS = new Set([
   'TIME',
   'DIST',
   'GS',
+  'ROUTE',
+  'LEG',
+  'NEXT',
 ]);
 
 const stripDiacritics = (value: string): string =>
@@ -600,6 +603,57 @@ const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand 
   return createResult('MEASUREMENT', tokens, parameters);
 };
 
+const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
+  const commandToken = tokens[0]?.normalized ?? '';
+  const subcommand = tokens[1]?.normalized;
+  const errors: CommandParseError[] = [];
+  let command: string;
+
+  if (commandToken === 'ROUTE') {
+    if (!subcommand) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'ROUTE requires STATUS or ETE.',
+        hint: 'Use ROUTE STATUS or ROUTE ETE.',
+      });
+      command = 'STATUS';
+    } else if (subcommand === 'STATUS' || subcommand === 'ETE') {
+      command = subcommand;
+    } else {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected route argument: ${subcommand}.`,
+        hint: 'Use ROUTE STATUS or ROUTE ETE.',
+      });
+      command = subcommand;
+    }
+    if (tokens.length > 2) {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected route argument: ${tokens.slice(2).map(token => token.normalized).join(' ')}.`,
+      });
+    }
+  } else if (commandToken === 'LEG' || commandToken === 'NEXT') {
+    command = commandToken;
+    if (tokens.length > 1) {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected ${commandToken} argument: ${tokens.slice(1).map(token => token.normalized).join(' ')}.`,
+      });
+    }
+  } else {
+    command = commandToken;
+  }
+
+  return createResult(
+    'ROUTE',
+    tokens,
+    { command },
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIntentType => {
   if (looksLikeProjection(normalizedInput, tokens)) return 'PROJECTION';
 
@@ -616,6 +670,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'SEARCH') return 'SEARCH';
   if (command === 'NOTE') return 'NOTE';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
+  if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
   if (command === 'CALC' || /(?:^|\s)[+*/%=^-](?:\s|$)/.test(normalizedInput)) return 'CALCULATION';
   return 'NOTE';
 };
@@ -656,6 +711,8 @@ export const parseCommand = (input: string): ParsedCommand => {
       query: tokens.slice(1).map(token => token.normalized).join(' '),
     });
   }
+
+  if (type === 'ROUTE') return parseRoute(tokens);
 
   if (type === 'CALCULATION') {
     if (tokens[0].normalized === 'TIME' || tokens[0].normalized === 'DIST' || tokens[0].normalized === 'GS') {

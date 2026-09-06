@@ -105,6 +105,8 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
     } else if (typeof parameters.expression === 'string') {
       details.push(`EXPRESSION: ${parameters.expression}`);
     }
+  } else if (parsed.type === 'ROUTE' && typeof parameters.command === 'string') {
+    details.push(`COMMAND: ${parameters.command}`);
   } else if (parsed.type === 'SEARCH' && typeof parameters.query === 'string') {
     details.push(`QUERY: ${parameters.query}`);
   } else if (parsed.type === 'SYSTEM' && typeof parameters.system === 'string') {

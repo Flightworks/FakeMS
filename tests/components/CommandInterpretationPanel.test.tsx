@@ -66,4 +66,19 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('SPEED: 120.0 KT');
     expect(panel).toHaveTextContent('TARGET: N/A');
   });
+
+  it('explains a route summary command as a read-only local display', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('ROUTE STATUS')}
+        effect="LOCAL DISPLAY ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: ROUTE');
+    expect(panel).toHaveTextContent('COMMAND: STATUS');
+    expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
+    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+  });
 });

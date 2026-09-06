@@ -532,5 +532,54 @@ describe('CommandRegistry', () => {
       expect(undoLastDesignation).toHaveBeenCalledOnce();
       expect(context.proposeClearDesignations).not.toHaveBeenCalled();
     });
+
+    it('reports the absence of an active simulated route', () => {
+      const command = getCommands('ROUTE STATUS', mockContext)
+        .find(candidate => candidate.id === 'route-status');
+
+      expect(command?.label).toBe('ROUTE STATUS: NO ACTIVE SIM ROUTE');
+      expect(command?.subLabel).toContain('READ-ONLY SIMULATION STATE');
+    });
+
+    it('summarizes an active hidden route without focusing or changing the map', () => {
+      const focusMapAt = vi.fn();
+      const context = {
+        ...mockContext,
+        focusMapAt,
+        activeRoute: {
+          id: 'route-alpha',
+          label: 'ALPHA ROUTE',
+          origin: { lat: 0, lon: 0 },
+          waypoints: [
+            { id: 'wp-1', label: 'BRAVO', position: { lat: 0.1, lon: 0 } },
+            { id: 'wp-2', label: 'CHARLIE', position: { lat: 0.2, lon: 0 } },
+          ],
+          remainingWaypointCount: 2,
+          hidden: true,
+        },
+        groundSpeed: {
+          speedKnots: 120,
+          source: 'SIMULATION' as const,
+          qualification: 'SIMULATED' as const,
+        },
+        scenarioTimeMs: 1_000,
+      };
+
+      const status = getCommands('ROUTE STATUS', context).find(candidate => candidate.id === 'route-status');
+      const leg = getCommands('LEG', context).find(candidate => candidate.id === 'route-leg');
+      const next = getCommands('NEXT', context).find(candidate => candidate.id === 'route-next');
+      const ete = getCommands('ROUTE ETE', context).find(candidate => candidate.id === 'route-ete');
+
+      expect(status?.label).toBe('ROUTE STATUS: ALPHA ROUTE');
+      expect(status?.subLabel).toContain('HIDDEN');
+      expect(status?.subLabel).toContain('BRANCH 1/2');
+      expect(status?.subLabel).toContain('NEXT: BRAVO');
+      expect(leg?.label).toBe('LEG 1/2');
+      expect(next?.label).toBe('NEXT: BRAVO');
+      expect(ete?.label).toContain('ROUTE ETE:');
+      expect(status?.subLabel).toContain('ETA UTC:');
+      status?.action?.();
+      expect(focusMapAt).not.toHaveBeenCalled();
+    });
   });
 });

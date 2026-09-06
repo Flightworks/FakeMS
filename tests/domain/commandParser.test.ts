@@ -187,4 +187,32 @@ describe('typed tactical command parser', () => {
     });
     expect(speed.errors).toEqual([]);
   });
+
+  it('parses read-only route summary commands and rejects extra route arguments', () => {
+    const status = parseCommand('ROUTE STATUS');
+    expect(status.type).toBe('ROUTE');
+    expect(status.parameters).toMatchObject({ command: 'STATUS' });
+    expect(status.errors).toEqual([]);
+
+    const leg = parseCommand('LEG');
+    expect(leg.type).toBe('ROUTE');
+    expect(leg.parameters).toMatchObject({ command: 'LEG' });
+    expect(leg.errors).toEqual([]);
+
+    const next = parseCommand('NEXT');
+    expect(next.type).toBe('ROUTE');
+    expect(next.parameters).toMatchObject({ command: 'NEXT' });
+    expect(next.errors).toEqual([]);
+
+    const ete = parseCommand('ROUTE ETE');
+    expect(ete.type).toBe('ROUTE');
+    expect(ete.parameters).toMatchObject({ command: 'ETE' });
+    expect(ete.errors).toEqual([]);
+
+    const invalid = parseCommand('ROUTE HIDDEN');
+    expect(invalid.type).toBe('ROUTE');
+    expect(invalid.errors).toEqual([
+      expect.objectContaining({ code: 'UNEXPECTED_ARGUMENT' }),
+    ]);
+  });
 });

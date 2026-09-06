@@ -271,4 +271,33 @@ describe('CommandPalette Component', () => {
     expect(previewProjection).not.toHaveBeenCalled();
     expect(mockProps.onClose).not.toHaveBeenCalled();
   });
+
+  it('renders the active route summary without opening a map preview', () => {
+    render(
+      <CommandPalette
+        {...mockProps}
+        activeRoute={{
+          id: 'route-alpha',
+          label: 'ALPHA ROUTE',
+          origin: { lat: 0, lon: 0 },
+          waypoints: [
+            { id: 'wp-1', label: 'BRAVO', position: { lat: 0.1, lon: 0 } },
+          ],
+          remainingWaypointCount: 1,
+          hidden: true,
+        }}
+        groundSpeed={{ speedKnots: 120, source: 'SIMULATION', qualification: 'SIMULATED' }}
+        scenarioTimeMs={1_000}
+      />,
+    );
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'ROUTE STATUS' } });
+
+    const result = screen.getByRole('option', { name: /ROUTE STATUS: ALPHA ROUTE.*NEXT: BRAVO/i });
+    expect(result).toBeInTheDocument();
+    expect(result).toHaveTextContent('HIDDEN');
+    expect(screen.queryByRole('region', { name: 'Projection preview' })).not.toBeInTheDocument();
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+  });
 });

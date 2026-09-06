@@ -23,6 +23,12 @@ import {
 } from '../domain/tacticalMeasurements';
 import { createProjectionPreview } from '../domain/designations';
 import { formatTimeDistanceSpeed, solveTimeDistanceSpeed } from '../domain/timeDistanceSpeed';
+import {
+    formatRouteSummary,
+    summarizeRoute,
+    type ActiveSimulatedRoute,
+    type RouteSummaryCommand,
+} from '../domain/routeSummary';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
@@ -59,6 +65,7 @@ export interface CommandContext {
     groundSpeed?: GroundSpeedInput;
     scenarioTimeMs?: number;
     localTimeZone?: string;
+    activeRoute?: ActiveSimulatedRoute;
 }
 
 export interface CommandOption {
@@ -269,6 +276,7 @@ export const getCommands = (
         groundSpeed,
         scenarioTimeMs,
         localTimeZone,
+        activeRoute,
     } = context;
     const commands: CommandOption[] = [];
 
@@ -694,6 +702,34 @@ export const getCommands = (
             });
         } catch {
             // The typed parser already reports invalid quantities; no result is emitted here.
+        }
+    }
+
+    const parsedRoute = parseCommand(q);
+    if (parsedRoute.type === 'ROUTE' && parsedRoute.errors.length === 0) {
+        const routeCommand = parsedRoute.parameters.command;
+        if (routeCommand === 'STATUS' || routeCommand === 'LEG'
+            || routeCommand === 'NEXT' || routeCommand === 'ETE') {
+            const summary = summarizeRoute(activeRoute, {
+                currentPosition: { ...ownship.position },
+                speed: groundSpeed,
+                scenarioTimeMs,
+            });
+            const display = formatRouteSummary(routeCommand as RouteSummaryCommand, summary);
+            commands.push({
+                id: `route-${routeCommand.toLowerCase()}`,
+                label: display.label,
+                subLabel: display.subLabel,
+                icon: Navigation,
+                keywords: ['route', 'leg', 'next', 'ete', 'simulated', summary.routeLabel ?? 'route'],
+                historyValue: q,
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
         }
     }
 
