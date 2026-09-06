@@ -6,6 +6,7 @@ import type { SimulatedDesignation } from '../../domain/designations';
 import { createLayerState } from '../../domain/layers';
 import { createDeclutterState } from '../../domain/declutter';
 import { createGridState } from '../../domain/grid';
+import { createDefaultZones } from '../../domain/zones';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1189,6 +1190,30 @@ describe('CommandRegistry', () => {
       const invalid = getCommands('GRID MGRS ON', context).find(command => command.id === 'grid-unavailable');
       expect(invalid?.label).toBe('GRID UNAVAILABLE');
       expect(invalid?.subLabel).toContain('MGRS');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
+
+    it('lists local zones, shows a zone, and checks point membership', () => {
+      const zones = createDefaultZones();
+      const setVisibleZone = vi.fn();
+      const localOwnship = { ...mockOwnship, position: { lat: 34.05, lon: -118.2 } };
+      const context = { ...mockContext, ownship: localOwnship, zones, setVisibleZone, visibleZoneId: null };
+      const list = getCommands('ZONE LIST', context).find(command => command.id === 'zones-list');
+      expect(list?.subLabel).toContain('TRAINING-A');
+      expect(list?.subLabel).toContain('TRAINING-CIRCLE');
+
+      const show = getCommands('ZONE SHOW TRAINING-A', context).find(command => command.id === 'zone-show');
+      expect(show?.subLabel).toContain('RECTANGLE');
+      show?.action?.();
+      expect(setVisibleZone).toHaveBeenCalledWith('TRAINING-A');
+
+      const inside = getCommands('ZONE CHECK OWNSHIP TRAINING-A', context).find(command => command.id === 'zone-check');
+      expect(inside?.subLabel).toContain('INSIDE');
+      const outside = getCommands('ZONE CHECK TARGET1 TRAINING-A', context).find(command => command.id === 'zone-check');
+      expect(outside?.subLabel).toContain('OUTSIDE');
+
+      const unknown = getCommands('ZONE SHOW UNKNOWN', context).find(command => command.id === 'zone-unavailable');
+      expect(unknown?.label).toBe('ZONE UNAVAILABLE');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
   });

@@ -76,6 +76,12 @@ import {
     type GridState,
 } from '../domain/grid';
 import {
+    checkZoneContainment,
+    createDefaultZones,
+    getZone,
+    type NamedZone,
+} from '../domain/zones';
+import {
     createLayerState,
     setLayerVisibility,
     type TacticalLayerId,
@@ -163,6 +169,9 @@ export interface CommandContext {
     setDeclutter?: (state: DeclutterState) => void;
     grid?: GridState;
     setGrid?: (state: GridState) => void;
+    zones?: NamedZone[];
+    visibleZoneId?: string | null;
+    setVisibleZone?: (zoneId: string | null) => void;
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
     simulationTimeMs?: number;
@@ -644,6 +653,9 @@ export const getCommands = (
         setDeclutter,
         grid,
         setGrid,
+        zones,
+        visibleZoneId,
+        setVisibleZone,
         simulationStatus,
         simulationIsRunning,
         simulationTimeMs,
@@ -1091,6 +1103,95 @@ export const getCommands = (
                     isPreview: true,
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
+            }
+        }
+    }
+
+    const zoneCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM' && zoneCommand === 'ZONE') {
+        const currentZones = zones ?? createDefaultZones();
+        const requestedZoneCommand = parsedMeasurement.parameters.zoneCommand;
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'zone-unavailable',
+                label: 'ZONE UNAVAILABLE',
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID ZONE COMMAND'} · LOCAL STATE UNCHANGED`,
+                icon: MapPin,
+                keywords: ['zone', 'unavailable', 'local'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (requestedZoneCommand === 'LIST') {
+            const summary = currentZones
+                .map(zone => `${zone.label} ${zone.geometry.kind} · ${zone.source} · ${zone.simulatedState}`)
+                .join(' · ');
+            commands.push({
+                id: 'zones-list',
+                label: 'ZONE LIST',
+                subLabel: `${summary} · LOCAL ONLY`,
+                icon: MapPin,
+                keywords: ['zone', 'list', 'local', ...currentZones.map(zone => zone.label.toLowerCase())],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.zoneReference === 'string') {
+            const zone = getZone(currentZones, parsedMeasurement.parameters.zoneReference);
+            if (!zone) {
+                commands.push({
+                    id: 'zone-unavailable',
+                    label: 'ZONE UNAVAILABLE',
+                    subLabel: `${parsedMeasurement.parameters.zoneReference} · UNKNOWN LOCAL ZONE · NO STATE CREATED`,
+                    icon: MapPin,
+                    keywords: ['zone', 'unavailable', 'unknown'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else if (requestedZoneCommand === 'SHOW') {
+                commands.push({
+                    id: 'zone-show',
+                    label: `ZONE SHOW ${zone.label}`,
+                    subLabel: `${zone.geometry.kind} · SOURCE: ${zone.source} · STATE: ${zone.simulatedState} · VISIBLE: ${visibleZoneId === zone.id ? 'ON' : 'OFF'}`,
+                    icon: MapPin,
+                    action: () => setVisibleZone?.(zone.id),
+                    keywords: ['zone', 'show', zone.label.toLowerCase(), zone.geometry.kind.toLowerCase(), zone.source.toLowerCase()],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else if (requestedZoneCommand === 'CHECK' && typeof parsedMeasurement.parameters.pointReference === 'string') {
+                const resolution = resolveEntityReference(parsedMeasurement.parameters.pointReference, entities, ownship);
+                if (resolution.status !== 'RESOLVED' || !resolution.entity) {
+                    commands.push({
+                        id: 'zone-unavailable',
+                        label: 'ZONE UNAVAILABLE',
+                        subLabel: `${parsedMeasurement.parameters.pointReference} · POINT ${resolution.status} · CHECK NOT EXECUTED`,
+                        icon: MapPin,
+                        keywords: ['zone', 'check', 'ambiguous', 'unknown'],
+                        historyValue: q,
+                        isPreview: true,
+                        keepPaletteOpen: true,
+                        ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                    });
+                } else {
+                    const containment = checkZoneContainment(zone, resolution.entity.position);
+                    commands.push({
+                        id: 'zone-check',
+                        label: `ZONE CHECK ${resolution.entity.label} ${zone.label}`,
+                        subLabel: `RESULT: ${containment} · POINT: ${resolution.entity.label} · ${zone.geometry.kind} · SOURCE: ${zone.source} · STATE: ${zone.simulatedState}`,
+                        icon: MapPin,
+                        keywords: ['zone', 'check', zone.label.toLowerCase(), resolution.entity.label.toLowerCase(), containment.toLowerCase()],
+                        historyValue: q,
+                        isPreview: true,
+                        keepPaletteOpen: true,
+                        ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                    });
+                }
             }
         }
     }

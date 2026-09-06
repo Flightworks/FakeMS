@@ -37,6 +37,7 @@ import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { TacticalLayerState } from '../domain/layers';
 import type { GridState } from '../domain/grid';
+import type { NamedZone } from '../domain/zones';
 import type { DeclutterState } from '../domain/declutter';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
@@ -107,6 +108,9 @@ interface CommandPaletteProps {
   setDeclutter?: (state: DeclutterState) => void;
   grid?: GridState;
   setGrid?: (state: GridState) => void;
+  zones?: NamedZone[];
+  visibleZoneId?: string | null;
+  setVisibleZone?: (zoneId: string | null) => void;
 }
 
 interface VisualViewportRect {
@@ -232,6 +236,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   setDeclutter,
   grid,
   setGrid,
+  zones,
+  visibleZoneId,
+  setVisibleZone,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -390,6 +397,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       setDeclutter,
       grid,
       setGrid,
+      zones,
+      visibleZoneId,
+      setVisibleZone,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context, mathProvider ?? undefined);
@@ -447,6 +457,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setDeclutter,
     grid,
     setGrid,
+    zones,
+    visibleZoneId,
+    setVisibleZone,
     mathProvider,
   ]);
 

@@ -65,6 +65,7 @@ const COMMAND_TOKENS = new Set([
   'DECLUTTER',
   'LEGEND',
   'GRID',
+  'ZONE',
   'TIME',
   'DIST',
   'GS',
@@ -1181,6 +1182,29 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseZoneCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const zoneCommand = tokens[1]?.normalized ?? '';
+  const parameters: Record<string, CommandParameter> = {
+    system: 'ZONE',
+    command: 'ZONE',
+    zoneCommand: zoneCommand || null,
+  };
+  const errors: CommandParseError[] = [];
+  if (zoneCommand === 'LIST') {
+    if (tokens.length !== 2) errors.push({ code: 'INVALID_SYNTAX', message: 'Use ZONE LIST.' });
+  } else if (zoneCommand === 'SHOW') {
+    parameters.zoneReference = tokens.slice(2).map(token => token.normalized).join(' ') || null;
+    if (tokens.length < 3) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'ZONE SHOW requires a zone reference.' });
+  } else if (zoneCommand === 'CHECK') {
+    parameters.pointReference = tokens[2]?.normalized ?? null;
+    parameters.zoneReference = tokens.slice(3).map(token => token.normalized).join(' ') || null;
+    if (tokens.length < 4) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'Use ZONE CHECK <POINT> <ZONE>.' });
+  } else {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use ZONE LIST, ZONE SHOW <ZONE>, or ZONE CHECK <POINT> <ZONE>.' });
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseGridCommand = (tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, CommandParameter> = {
     system: 'GRID',
@@ -1590,7 +1614,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
-  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND', 'GRID'].includes(command)) {
+  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND', 'GRID', 'ZONE'].includes(command)) {
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
@@ -1633,6 +1657,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'ZONE') return parseZoneCommand(tokens);
     if (tokens[0]?.normalized === 'GRID') return parseGridCommand(tokens);
     if (tokens[0]?.normalized === 'LEGEND') return parseLegendCommand(tokens);
     if (tokens[0]?.normalized === 'DECLUTTER') return parseDeclutterCommand(tokens);

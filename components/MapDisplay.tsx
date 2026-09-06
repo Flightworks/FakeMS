@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Pane, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, Rectangle, Polygon, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
@@ -13,6 +13,7 @@ import type { TacticalLayerState } from '../domain/layers';
 import { createLayerState } from '../domain/layers';
 import type { GridState } from '../domain/grid';
 import { buildGridLines, createGridState } from '../domain/grid';
+import type { NamedZone } from '../domain/zones';
 import {
   createDeclutterState,
   isDeclutterCategoryHidden,
@@ -79,6 +80,7 @@ interface MapDisplayProps {
   activeRoute?: ActiveSimulatedRoute;
   declutter?: DeclutterState;
   grid?: GridState;
+  visibleZone?: NamedZone | null;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
@@ -335,6 +337,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   activeRoute,
   declutter = createDeclutterState(),
   grid = createGridState(),
+  visibleZone = null,
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
@@ -953,6 +956,33 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 pathOptions={{ color: '#64748b', weight: 1, opacity: 0.55, dashArray: '3 5' }}
               />
             ))}
+          </Pane>
+        )}
+
+        {visibleZone && (
+          <Pane name="namedZoneLayer" className="named-zone-layer" style={{ pointerEvents: 'none' }}>
+            {visibleZone.geometry.kind === 'RECTANGLE' && (
+              <Rectangle
+                bounds={[
+                  [visibleZone.geometry.bounds.minLat, visibleZone.geometry.bounds.minLon],
+                  [visibleZone.geometry.bounds.maxLat, visibleZone.geometry.bounds.maxLon],
+                ]}
+                pathOptions={{ color: '#a78bfa', weight: 2, opacity: 0.9, fillOpacity: 0.08, dashArray: '8 5' }}
+              />
+            )}
+            {visibleZone.geometry.kind === 'CIRCLE' && (
+              <Circle
+                center={[visibleZone.geometry.center.lat, visibleZone.geometry.center.lon]}
+                radius={visibleZone.geometry.radiusNm * 1852}
+                pathOptions={{ color: '#a78bfa', weight: 2, opacity: 0.9, fillOpacity: 0.08, dashArray: '8 5' }}
+              />
+            )}
+            {visibleZone.geometry.kind === 'POLYGON' && (
+              <Polygon
+                positions={visibleZone.geometry.points.map(point => [point.lat, point.lon] as [number, number])}
+                pathOptions={{ color: '#a78bfa', weight: 2, opacity: 0.9, fillOpacity: 0.08, dashArray: '8 5' }}
+              />
+            )}
           </Pane>
         )}
 

@@ -56,6 +56,10 @@ import {
   createGridState,
   type GridState,
 } from './domain/grid';
+import {
+  createDefaultZones,
+  type NamedZone,
+} from './domain/zones';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
@@ -115,6 +119,8 @@ const App: React.FC = () => {
   const [layerState, setLayerState] = useState<TacticalLayerState>(() => createLayerState());
   const [declutterState, setDeclutterState] = useState<DeclutterState>(() => createDeclutterState());
   const [gridState, setGridState] = useState<GridState>(() => createGridState());
+  const [zones] = useState<NamedZone[]>(() => createDefaultZones());
+  const [visibleZoneId, setVisibleZoneId] = useState<string | null>(null);
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
   const requestSimulationReset = React.useCallback(() => setSimulationProposal('RESET'), []);
@@ -901,6 +907,9 @@ const App: React.FC = () => {
         setDeclutter: setDeclutterState,
         grid: gridState,
         setGrid: setGridState,
+        zones,
+        visibleZoneId,
+        setVisibleZone: setVisibleZoneId,
         toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
       };
 
@@ -963,6 +972,7 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
             declutter={declutterState}
             grid={gridState}
+            visibleZone={zones.find(zone => zone.id === visibleZoneId) ?? null}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
@@ -1049,6 +1059,9 @@ const App: React.FC = () => {
             setDeclutter={setDeclutterState}
             grid={gridState}
             setGrid={setGridState}
+            zones={zones}
+            visibleZoneId={visibleZoneId}
+            setVisibleZone={setVisibleZoneId}
           />
         </React.Suspense>
       )}

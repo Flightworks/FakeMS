@@ -27,6 +27,25 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses local named-zone commands', () => {
+    expect(parseCommand('ZONE LIST')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'ZONE', command: 'ZONE', zoneCommand: 'LIST' },
+      errors: [],
+    });
+    expect(parseCommand('ZONE SHOW TRAINING-A')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'ZONE', command: 'ZONE', zoneCommand: 'SHOW', zoneReference: 'TRAINING-A' },
+      errors: [],
+    });
+    expect(parseCommand('ZONE CHECK BRAVO TRAINING-A')).toMatchObject({
+      type: 'SYSTEM',
+      parameters: { system: 'ZONE', command: 'ZONE', zoneCommand: 'CHECK', pointReference: 'BRAVO', zoneReference: 'TRAINING-A' },
+      errors: [],
+    });
+    expect(parseCommand('ZONE SHOW UNKNOWN').parameters.zoneReference).toBe('UNKNOWN');
+  });
+
   it('parses local latitude/longitude grid controls', () => {
     expect(parseCommand('GRID LATLON ON')).toMatchObject({
       type: 'SYSTEM',
