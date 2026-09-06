@@ -31,3 +31,37 @@ test('previews a future position locally and clears it without mission effects',
   await page.keyboard.press('Escape');
   await expect(page.getByRole('region', { name: 'Future position preview' })).toHaveCount(0);
 });
+
+test('keeps PREDICT executable on the shared drag-and-drop path', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await input.fill('PREDICT HOSTILE 1 +2MIN');
+  const command = page.getByRole('option', { name: /^PREDICT HOSTILE 1 \+2MIN ·/i });
+  await expect(command).toBeVisible();
+
+  await command.evaluate((element) => {
+    const dataTransfer = new DataTransfer();
+    element.dispatchEvent(new DragEvent('dragstart', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+    const map = document.querySelector('.leaflet-container');
+    if (!map) throw new Error('Map container not found');
+    map.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+    map.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+  });
+
+  await expect(page.getByRole('region', { name: 'Future position preview' })).toBeVisible();
+  await expect(page.getByTestId('future-position-preview-point')).toBeVisible();
+});

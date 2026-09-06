@@ -817,6 +817,7 @@ const App: React.FC = () => {
         previewProjection,
         previewIntersection,
         previewBullseyeProjection,
+        previewFuturePosition,
         bullseye: bullseyeState.bullseye,
         proposeSetBullseye,
         proposeClearBullseye,
