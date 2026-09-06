@@ -89,8 +89,22 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
   } else if (parsed.type === 'COORDINATE') {
     if (typeof parameters.latitude === 'number') details.push(`LATITUDE: ${formatCoordinate(parameters.latitude)}°`);
     if (typeof parameters.longitude === 'number') details.push(`LONGITUDE: ${formatCoordinate(parameters.longitude)}°`);
-  } else if (parsed.type === 'CALCULATION' && typeof parameters.expression === 'string') {
-    details.push(`EXPRESSION: ${parameters.expression}`);
+  } else if (parsed.type === 'CALCULATION') {
+    const command = typeof parameters.command === 'string' ? parameters.command : undefined;
+    if (command === 'TIME' || command === 'DIST' || command === 'GS') {
+      details.push(`COMMAND: ${command}`);
+      if (typeof parameters.distance === 'number' && typeof parameters.distanceUnit === 'string') {
+        details.push(`DISTANCE: ${parameters.distance.toFixed(1)} ${parameters.distanceUnit}`);
+      }
+      if (typeof parameters.time === 'number' && typeof parameters.timeUnit === 'string') {
+        details.push(`TIME: ${parameters.time.toFixed(1)} ${parameters.timeUnit}`);
+      }
+      if (typeof parameters.speed === 'number' && typeof parameters.speedUnit === 'string') {
+        details.push(`SPEED: ${parameters.speed.toFixed(1)} ${parameters.speedUnit}`);
+      }
+    } else if (typeof parameters.expression === 'string') {
+      details.push(`EXPRESSION: ${parameters.expression}`);
+    }
   } else if (parsed.type === 'SEARCH' && typeof parameters.query === 'string') {
     details.push(`QUERY: ${parameters.query}`);
   } else if (parsed.type === 'SYSTEM' && typeof parameters.system === 'string') {

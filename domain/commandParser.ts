@@ -4,7 +4,13 @@ import type {
   CommandToken,
   ParsedCommand,
 } from './commandLanguage';
-import { createTacticalQuantity, convertTacticalQuantity, normalizeTacticalUnit, TacticalUnitError } from './tacticalUnits';
+import {
+  createTacticalQuantity,
+  convertTacticalQuantity,
+  normalizeTacticalUnit,
+  TacticalUnitError,
+  type TacticalQuantity,
+} from './tacticalUnits';
 
 const NON_FINITE_MARKER = '<NON_FINITE>';
 const COMMAND_TOKENS = new Set([
@@ -28,6 +34,9 @@ const COMMAND_TOKENS = new Set([
   'SEARCH',
   'NOTE',
   'CALC',
+  'TIME',
+  'DIST',
+  'GS',
 ]);
 
 const stripDiacritics = (value: string): string =>
@@ -463,6 +472,103 @@ const parseEtaEte = (input: string, tokens: CommandToken[]): ParsedCommand => {
   return createResult('MEASUREMENT', tokens, parameters, [], [], assumptions);
 };
 
+const TDS_QUANTITY_PATTERN = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+|NAN|INFINITY|INF))\s*(.*)$/i;
+
+type TdsQuantityDimension = TacticalQuantity['dimension'];
+
+const parseTdsQuantity = (
+  raw: string,
+  dimension: TdsQuantityDimension,
+  key: string,
+  parameters: Record<string, string | number | null>,
+  errors: CommandParseError[],
+): TacticalQuantity | undefined => {
+  const match = raw.trim().match(TDS_QUANTITY_PATTERN);
+  if (!match) {
+    errors.push({ code: 'INVALID_NUMBER', message: `${key} must be numeric.` });
+    return undefined;
+  }
+
+  const rawValue = match[1];
+  const unitText = match[2].trim();
+  if (isNonFiniteLexeme(rawValue)) {
+    errors.push(nonFiniteError());
+    parameters[key] = null;
+    return undefined;
+  }
+
+  const value = Number(rawValue);
+  parameters[key] = Number.isFinite(value) ? value : null;
+  parameters[`${key}Unit`] = unitText || null;
+  if (!unitText) {
+    errors.push({
+      code: 'MISSING_UNIT',
+      message: `${key} requires an explicit unit.`,
+      hint: 'Use NM, KM, M, FT, KT, KMH, S, MIN, or H as appropriate.',
+    });
+    return undefined;
+  }
+
+  try {
+    const quantity = createTacticalQuantity(value, unitText);
+    if (quantity.dimension !== dimension) {
+      errors.push({
+        code: 'INCOMPATIBLE_UNIT',
+        message: `${key} requires a ${dimension.toLowerCase()} unit.`,
+      });
+      return undefined;
+    }
+
+    parameters[key] = quantity.value;
+    parameters[`${key}Unit`] = quantity.unit;
+    parameters[`${key}Original`] = quantity.originalValue;
+    parameters[`${key}OriginalUnit`] = quantity.originalUnit;
+    return quantity;
+  } catch (error) {
+    const code = error instanceof TacticalUnitError && error.code === 'UNKNOWN_UNIT'
+      ? 'UNKNOWN_UNIT'
+      : 'INVALID_NUMBER';
+    errors.push({
+      code,
+      message: code === 'UNKNOWN_UNIT' ? `Unknown unit for ${key}.` : `${key} must be positive and finite.`,
+    });
+    return undefined;
+  }
+};
+
+const parseTimeDistanceSpeed = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const body = input.trim().replace(/^\S+\s*/u, '');
+  const separator = command === 'GS' ? '/' : '@';
+  const parts = body.split(separator).map(part => part.trim());
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+
+  if (parts.length !== 2 || parts.some(part => part.length === 0)) {
+    errors.push({
+      code: 'INVALID_SYNTAX',
+      message: `${command} requires two quantities separated by ${separator}.`,
+      hint: command === 'GS' ? 'Use GS <DISTANCE> / <TIME>.' : `Use ${command} <QUANTITY> @ <SPEED>.`,
+    });
+  } else if (command === 'TIME') {
+    parseTdsQuantity(parts[0], 'DISTANCE', 'distance', parameters, errors);
+    parseTdsQuantity(parts[1], 'SPEED', 'speed', parameters, errors);
+  } else if (command === 'DIST') {
+    parseTdsQuantity(parts[0], 'TIME', 'time', parameters, errors);
+    parseTdsQuantity(parts[1], 'SPEED', 'speed', parameters, errors);
+  } else {
+    parseTdsQuantity(parts[0], 'DISTANCE', 'distance', parameters, errors);
+    parseTdsQuantity(parts[1], 'TIME', 'time', parameters, errors);
+  }
+
+  return createResult(
+    'CALCULATION',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
 const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand => {
   const normalizedInput = normalizeText(input);
   const match = normalizedInput.match(/^(BRG\/RNG|BRG|RNG)(?:\s+(.*))?$/);
@@ -509,6 +615,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   }
   if (command === 'SEARCH') return 'SEARCH';
   if (command === 'NOTE') return 'NOTE';
+  if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
   if (command === 'CALC' || /(?:^|\s)[+*/%=^-](?:\s|$)/.test(normalizedInput)) return 'CALCULATION';
   return 'NOTE';
 };
@@ -551,6 +658,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'CALCULATION') {
+    if (tokens[0].normalized === 'TIME' || tokens[0].normalized === 'DIST' || tokens[0].normalized === 'GS') {
+      return parseTimeDistanceSpeed(input, tokens);
+    }
     const expression = tokens.slice(tokens[0].normalized === 'CALC' ? 1 : 0)
       .map(token => token.normalized)
       .join(' ');

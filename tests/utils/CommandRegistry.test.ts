@@ -248,6 +248,31 @@ describe('CommandRegistry', () => {
       expect(commands[0]?.id).not.toBe('save-text-note');
     });
 
+    it('solves TIME, DIST, and GS locally without changing the map', () => {
+      const focusMapAt = vi.fn();
+      const context = { ...mockContext, focusMapAt };
+
+      const time = getCommands('TIME 45NM @ 120KT', context).find(command => command.id === 'tds-time');
+      const distance = getCommands('DIST 15MIN @ 120KT', context).find(command => command.id === 'tds-dist');
+      const speed = getCommands('GS 40NM / 20MIN', context).find(command => command.id === 'tds-gs');
+
+      expect(time?.label).toBe('TIME: 22 min 30 s');
+      expect(time?.subLabel).toContain('DIST: 45.0 NM');
+      expect(time?.subLabel).toContain('GS: 120.0 KT');
+      expect(distance?.label).toBe('DIST: 30.0 NM');
+      expect(distance?.subLabel).toContain('TIME: 15 min 0 s');
+      expect(speed?.label).toBe('GS: 120.0 KT');
+      expect(speed?.subLabel).toContain('DIST: 40.0 NM');
+      expect(focusMapAt).not.toHaveBeenCalled();
+    });
+
+    it('blocks a time-distance-speed command with a missing unit', () => {
+      const commands = getCommands('TIME 45 @ 120KT', mockContext);
+
+      expect(commands.some(command => command.id === 'tds-time')).toBe(false);
+      expect(commands.some(command => command.id === 'save-text-note')).toBe(true);
+    });
+
 
     it('puts an exact projection first and excludes unrelated fallbacks', () => {
       const bravoContext = {

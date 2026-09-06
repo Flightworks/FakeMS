@@ -22,6 +22,7 @@ import {
     type TacticalPositionFreshness,
 } from '../domain/tacticalMeasurements';
 import { createProjectionPreview } from '../domain/designations';
+import { formatTimeDistanceSpeed, solveTimeDistanceSpeed } from '../domain/timeDistanceSpeed';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
@@ -640,9 +641,64 @@ export const getCommands = (
         });
     }
 
+    const parsedMeasurement = parseCommand(q);
+    const calculationCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    if (parsedMeasurement.type === 'CALCULATION'
+        && (calculationCommand === 'TIME' || calculationCommand === 'DIST' || calculationCommand === 'GS')
+        && parsedMeasurement.errors.length === 0) {
+        try {
+            const distance = typeof parsedMeasurement.parameters.distance === 'number'
+                && typeof parsedMeasurement.parameters.distanceUnit === 'string'
+                ? createTacticalQuantity(parsedMeasurement.parameters.distance, parsedMeasurement.parameters.distanceUnit)
+                : undefined;
+            const speed = typeof parsedMeasurement.parameters.speed === 'number'
+                && typeof parsedMeasurement.parameters.speedUnit === 'string'
+                ? createTacticalQuantity(parsedMeasurement.parameters.speed, parsedMeasurement.parameters.speedUnit)
+                : undefined;
+            const time = typeof parsedMeasurement.parameters.time === 'number'
+                && typeof parsedMeasurement.parameters.timeUnit === 'string'
+                ? createTacticalQuantity(parsedMeasurement.parameters.time, parsedMeasurement.parameters.timeUnit)
+                : undefined;
+            const result = calculationCommand === 'TIME'
+                ? solveTimeDistanceSpeed({ solveFor: 'TIME', distance, speed })
+                : calculationCommand === 'DIST'
+                    ? solveTimeDistanceSpeed({ solveFor: 'DISTANCE', time, speed })
+                    : solveTimeDistanceSpeed({ solveFor: 'SPEED', distance, time });
+            const display = formatTimeDistanceSpeed(result);
+            const label = calculationCommand === 'TIME'
+                ? `TIME: ${display.time}`
+                : calculationCommand === 'DIST'
+                    ? `DIST: ${display.distance}`
+                    : `GS: ${display.speed}`;
+
+            commands.push({
+                id: `tds-${calculationCommand.toLowerCase()}`,
+                label,
+                subLabel: `DIST: ${display.distance} · GS: ${display.speed} · TIME: ${display.time}`,
+                icon: Calculator,
+                action: () => {
+                    if (navigator.clipboard) {
+                        void navigator.clipboard.writeText(`${label} · ${display.distance} · ${display.speed} · ${display.time}`);
+                    }
+                },
+                keywords: ['time', 'distance', 'speed', 'ground speed'],
+                historyValue: q,
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
+        } catch {
+            // The typed parser already reports invalid quantities; no result is emitted here.
+        }
+    }
+
     // 5. Tactical BRG/RNG measurements. These results are pure, local
     // calculations and never create navigation, route, or designation state.
-    const parsedMeasurement = parseCommand(q);
     const measurementCommand = typeof parsedMeasurement.parameters.command === 'string'
         ? parsedMeasurement.parameters.command
         : undefined;

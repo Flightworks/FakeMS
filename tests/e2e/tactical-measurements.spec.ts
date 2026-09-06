@@ -64,3 +64,27 @@ test('renders ETE separately for an explicit origin and destination', async ({ p
     name: /^ETE G01 → BRAVO.*ETE:.*ETA UTC:.*SRC: USER_INPUT/i,
   })).toBeVisible();
 });
+
+test('solves time, distance, and ground speed without a map preview', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+
+  await input.fill('TIME 45NM @ 120KT');
+  await expect(page.getByRole('option', {
+    name: /^TIME: 22 min 30 s.*DIST: 45\.0 NM.*GS: 120\.0 KT/i,
+  })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
+
+  await input.fill('DIST 15MIN @ 120KT');
+  await expect(page.getByRole('option', {
+    name: /^DIST: 30\.0 NM.*TIME: 15 min 0 s/i,
+  })).toBeVisible();
+
+  await input.fill('GS 40NM / 20MIN');
+  await expect(page.getByRole('option', {
+    name: /^GS: 120\.0 KT.*DIST: 40\.0 NM.*TIME: 20 min 0 s/i,
+  })).toBeVisible();
+});

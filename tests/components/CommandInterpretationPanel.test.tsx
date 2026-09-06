@@ -50,4 +50,20 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
     expect(panel).toHaveTextContent('STATUS: SIMULATED');
   });
+
+  it('explains normalized time-distance-speed quantities before execution', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('TIME 45NM @ 120KT')}
+        effect="CALCULATION ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: CALCULATION');
+    expect(panel).toHaveTextContent('COMMAND: TIME');
+    expect(panel).toHaveTextContent('DISTANCE: 45.0 NM');
+    expect(panel).toHaveTextContent('SPEED: 120.0 KT');
+    expect(panel).toHaveTextContent('TARGET: N/A');
+  });
 });

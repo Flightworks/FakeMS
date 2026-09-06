@@ -154,4 +154,37 @@ describe('typed tactical command parser', () => {
     ]);
     expect(parsed.warnings).toContain('EXECUTION_NOT_ATTEMPTED');
   });
+
+  it('parses TIME, DIST, and GS commands with normalized quantities', () => {
+    const time = parseCommand('TIME 45NM @ 120KT');
+    expect(time.type).toBe('CALCULATION');
+    expect(time.parameters).toMatchObject({
+      command: 'TIME',
+      distance: 45,
+      distanceUnit: 'NM',
+      speed: 120,
+      speedUnit: 'KT',
+    });
+    expect(time.errors).toEqual([]);
+
+    const distance = parseCommand('DIST 15MIN @ 120KT');
+    expect(distance.parameters).toMatchObject({
+      command: 'DIST',
+      time: 15,
+      timeUnit: 'MIN',
+      speed: 120,
+      speedUnit: 'KT',
+    });
+    expect(distance.errors).toEqual([]);
+
+    const speed = parseCommand('GS 40NM / 20MIN');
+    expect(speed.parameters).toMatchObject({
+      command: 'GS',
+      distance: 40,
+      distanceUnit: 'NM',
+      time: 20,
+      timeUnit: 'MIN',
+    });
+    expect(speed.errors).toEqual([]);
+  });
 });
