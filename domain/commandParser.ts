@@ -11,6 +11,7 @@ import {
   TacticalUnitError,
   type TacticalQuantity,
 } from './tacticalUnits';
+import { parseCoordinate as parseCoordinateValue, type CoordinateFormat } from './coordinateFormats';
 
 const NON_FINITE_MARKER = '<NON_FINITE>';
 const COMMAND_TOKENS = new Set([
@@ -18,6 +19,7 @@ const COMMAND_TOKENS = new Set([
   'PROJECTION',
   'COORD',
   'COORDINATE',
+  'COPY',
   'ETA',
   'ETE',
   'BRG',
@@ -665,6 +667,91 @@ const parseNearest = (tokens: CommandToken[]): ParsedCommand => {
   );
 };
 
+const COORDINATE_FORMATS: CoordinateFormat[] = ['DD', 'DDM', 'DMS'];
+
+const isCoordinateFormat = (value: string | undefined): value is CoordinateFormat =>
+  value !== undefined && COORDINATE_FORMATS.includes(value as CoordinateFormat);
+
+const coordinateLiteral = (value: string): boolean => (
+  /[,]/.test(value)
+  || /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(value)
+  || /^[NSEW]\s*\d/.test(value)
+  || /^(?:NAN|INFINITY|INF)(?:\s|$)/.test(value)
+);
+
+const parseCoordinateCommand = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const normalizedInput = normalizeText(input);
+  const copyCommand = /^COPY POS(?:\s|$)/.test(normalizedInput);
+  const malformedCopyCommand = tokens[0]?.normalized === 'COPY' && !copyCommand;
+  const command = copyCommand ? 'COPY POS' : tokens[0]?.normalized ?? 'COORD';
+  const prefix = copyCommand ? /^COPY POS(?:\s+|$)/ : /^(?:COORDINATE|COORD)\s*/;
+  const body = normalizedInput.replace(prefix, '').trim();
+  const parts = body ? body.split(/\s+/) : [];
+  const finalPart = parts.at(-1);
+  const unknownFormatCandidate = finalPart !== undefined
+    && parts.length > 1
+    && /^[A-Z]+$/.test(finalPart);
+  const hasFormat = isCoordinateFormat(finalPart) || unknownFormatCandidate;
+  const format = isCoordinateFormat(finalPart)
+    ? finalPart
+    : unknownFormatCandidate
+      ? finalPart
+      : copyCommand
+        ? 'DD'
+        : undefined;
+  const coordinateParts = hasFormat && finalPart ? parts.slice(0, -1) : parts;
+  const coordinateText = coordinateParts.join(' ');
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+
+  if (malformedCopyCommand) {
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: 'COPY requires the exact POS subcommand.',
+      hint: 'Use COPY POS BRAVO.',
+    });
+  } else if (!copyCommand && !hasFormat) {
+    if (coordinateLiteral(coordinateText)) {
+      return parseCoordinate(tokens);
+    }
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires a reference and output format.`,
+      hint: 'Use COORD BRAVO DD, DDM, or DMS.',
+    });
+  } else if (!format || !isCoordinateFormat(format)) {
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: `Unsupported coordinate format: ${format ?? '<MISSING>'}.`,
+      hint: 'Use DD, DDM, or DMS. MGRS requires a separate datum-qualified feature.',
+    });
+  } else if (!coordinateText) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires a coordinate or entity reference.`,
+    });
+  } else if (coordinateLiteral(coordinateText)) {
+    try {
+      const position = parseCoordinateValue(coordinateText);
+      parameters.latitude = position.lat;
+      parameters.longitude = position.lon;
+    } catch {
+      errors.push({ code: 'INVALID_NUMBER', message: 'Coordinate values are invalid.' });
+    }
+  } else {
+    parameters.reference = coordinateText;
+  }
+
+  if (format) parameters.format = format;
+  return createResult(
+    'COORDINATE',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
   const commandToken = tokens[0]?.normalized ?? '';
   const subcommand = tokens[1]?.normalized;
@@ -722,7 +809,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   const command = tokens[0]?.normalized ?? '';
 
   if (command === 'PROJ' || command === 'PROJECTION') return 'PROJECTION';
-  if (command === 'COORD' || command === 'COORDINATE') return 'COORDINATE';
+  if (command === 'COORD' || command === 'COORDINATE' || command === 'COPY') return 'COORDINATE';
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
@@ -747,7 +834,14 @@ export const parseCommand = (input: string): ParsedCommand => {
 
   const type = inferIntent(tokens, normalizedInput);
   if (type === 'PROJECTION') return parseProjection(input, tokens);
-  if (type === 'COORDINATE') return parseCoordinate(tokens);
+  if (type === 'COORDINATE') {
+    if (tokens[0]?.normalized === 'COPY'
+      || tokens[0]?.normalized === 'COORD'
+      || tokens[0]?.normalized === 'COORDINATE') {
+      return parseCoordinateCommand(input, tokens);
+    }
+    return parseCoordinate(tokens);
+  }
 
   if (type === 'SYSTEM') {
     return createResult('SYSTEM', tokens, { system: tokens[1]?.normalized ?? tokens[0].normalized });

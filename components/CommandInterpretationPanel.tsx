@@ -87,6 +87,8 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
   } else if (parsed.type === 'MEASUREMENT' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
   } else if (parsed.type === 'COORDINATE') {
+    if (typeof parameters.command === 'string') details.push(`COMMAND: ${parameters.command}`);
+    if (typeof parameters.format === 'string') details.push(`FORMAT: ${parameters.format}`);
     if (typeof parameters.latitude === 'number') details.push(`LATITUDE: ${formatCoordinate(parameters.latitude)}°`);
     if (typeof parameters.longitude === 'number') details.push(`LONGITUDE: ${formatCoordinate(parameters.longitude)}°`);
   } else if (parsed.type === 'CALCULATION') {

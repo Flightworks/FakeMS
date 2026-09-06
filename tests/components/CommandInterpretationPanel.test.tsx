@@ -99,4 +99,20 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('TARGET: N/A');
     expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
   });
+
+  it('explains a coordinate conversion format before any copy action', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('COORD BRAVO DDM')}
+        effect="LOCAL DISPLAY ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: COORDINATE');
+    expect(panel).toHaveTextContent('REFERENCE: BRAVO');
+    expect(panel).toHaveTextContent('COMMAND: COORD');
+    expect(panel).toHaveTextContent('FORMAT: DDM');
+    expect(panel).toHaveTextContent('TARGET: N/A');
+  });
 });

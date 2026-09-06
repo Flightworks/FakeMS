@@ -34,6 +34,10 @@ import {
     type NearestCandidate,
     type NearestCategory,
 } from '../domain/spatialQueries';
+import {
+    formatCoordinate,
+    type CoordinateFormat,
+} from '../domain/coordinateFormats';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
@@ -262,6 +266,16 @@ const formatNearestCandidate = (candidate: NearestCandidate): string => {
         ? ''
         : ` · UNCERTAINTY: ${candidate.uncertaintyMeters.toFixed(0)} M`;
     return `RNG: ${candidate.rangeNauticalMiles.toFixed(1)} NM · BRG: ${bearing} · FRESHNESS: ${candidate.freshness} · QUALITY: ${candidate.quality} · SRC: ${candidate.source}${uncertainty}`;
+};
+
+const isCoordinateDisplayFormat = (value: string | number | null): value is CoordinateFormat => (
+    value === 'DD' || value === 'DDM' || value === 'DMS'
+);
+
+const coordinateRoundingLabel = (format: CoordinateFormat): string => {
+    if (format === 'DD') return '0.00001°';
+    if (format === 'DDM') return "0.01'";
+    return '0.1"';
 };
 
 export const getCommands = (
@@ -834,6 +848,91 @@ export const getCommands = (
                         },
                     });
                 });
+            }
+        }
+    }
+
+    // 4c. Coordinate conversion and local clipboard copy. These commands only
+    // format scenario coordinates; they never change navigation or map state.
+    const coordinateCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    const coordinateFormat = parsedMeasurement.parameters.format;
+    if (parsedMeasurement.type === 'COORDINATE'
+        && (coordinateCommand === 'COORD' || coordinateCommand === 'COPY POS')
+        && parsedMeasurement.errors.length === 0
+        && isCoordinateDisplayFormat(coordinateFormat)) {
+        const latitude = parsedMeasurement.parameters.latitude;
+        const longitude = parsedMeasurement.parameters.longitude;
+        const reference = parsedMeasurement.parameters.reference;
+        const resolvedReference = typeof reference === 'string'
+            ? resolveEntityReference(reference, entities, ownship)
+            : undefined;
+        const coordinatePosition = typeof latitude === 'number'
+            && Number.isFinite(latitude)
+            && typeof longitude === 'number'
+            && Number.isFinite(longitude)
+            ? { lat: latitude, lon: longitude }
+            : resolvedReference?.entity?.position;
+
+        if (resolvedReference && (!resolvedReference.executable || !resolvedReference.entity)) {
+            commands.push({
+                id: `coordinate-reference-status-${resolvedReference.status.toLowerCase()}`,
+                label: `${coordinateCommand} ${resolvedReference.status}: ${resolvedReference.reference}`,
+                subLabel: 'Coordinate conversion blocked · choose an unambiguous reference',
+                icon: MapPin,
+                keywords: ['coord', 'copy', 'reference', resolvedReference.status.toLowerCase()],
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
+        } else if (coordinatePosition) {
+            try {
+                const formatted = formatCoordinate(coordinatePosition, coordinateFormat);
+                const referenceLabel = resolvedReference?.entity?.label;
+                const baseLabel = coordinateCommand === 'COPY POS'
+                    ? `COPY POS ${referenceLabel ?? 'COORDINATE'}`
+                    : referenceLabel
+                        ? `COORD ${referenceLabel}`
+                        : 'COORD';
+                const id = coordinateCommand === 'COPY POS'
+                    ? `copy-pos-${resolvedReference?.entity?.id ?? coordinateFormat.toLowerCase()}`
+                    : referenceLabel
+                        ? `coord-format-${resolvedReference?.entity?.id}-${coordinateFormat.toLowerCase()}`
+                        : `coord-literal-${coordinateFormat.toLowerCase()}`;
+                const copyAction = coordinateCommand === 'COPY POS'
+                    ? () => {
+                        try {
+                            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                                void navigator.clipboard.writeText(formatted).catch(() => undefined);
+                            }
+                        } catch {
+                            // Clipboard permission is optional; the rendered text remains selectable.
+                        }
+                    }
+                    : undefined;
+                commands.push({
+                    id,
+                    label: `${baseLabel}: ${formatted}`,
+                    subLabel: coordinateCommand === 'COPY POS'
+                        ? `LOCAL CLIPBOARD · COPY IF PERMITTED · FORMAT: ${coordinateFormat} · ROUNDING: ${coordinateRoundingLabel(coordinateFormat)}`
+                        : `LOCAL DISPLAY · FORMAT: ${coordinateFormat} · ROUNDING: ${coordinateRoundingLabel(coordinateFormat)}`,
+                    icon: MapPin,
+                    ...(copyAction ? { action: copyAction } : {}),
+                    keywords: ['coord', 'coordinate', coordinateFormat, referenceLabel ?? 'literal'],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
+                });
+            } catch {
+                // The typed parser validates the source; malformed runtime data stays unavailable.
             }
         }
     }

@@ -647,6 +647,37 @@ describe('CommandRegistry', () => {
       expect(commands.filter(command => command.id.startsWith('nearest-result-'))).toHaveLength(0);
     });
 
+    it('formats a referenced position and a literal coordinate locally', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { ...mockEntities[1], id: 'bravo', label: 'BRAVO', type: EntityType.WAYPOINT },
+        ],
+      };
+
+      const referenced = getCommands('COORD BRAVO DDM', context)
+        .find(command => command.id === 'coord-format-bravo-ddm');
+      expect(referenced?.label).toBe("COORD BRAVO: N10°00.00' E010°00.00'");
+      expect(referenced?.subLabel).toContain('LOCAL DISPLAY');
+      expect(referenced?.subLabel).toContain("ROUNDING: 0.01'");
+
+      const literal = getCommands('COORD 34.08,-118.15 DMS', context)
+        .find(command => command.id === 'coord-literal-dms');
+      expect(literal?.label).toBe('COORD: N34°04\'48.0" W118°09\'00.0"');
+      expect(literal?.subLabel).toContain('ROUNDING: 0.1"');
+    });
+
+    it('offers COPY POS without claiming clipboard success', () => {
+      const copy = getCommands('COPY POS TARGET1', mockContext)
+        .find(command => command.id === 'copy-pos-target1');
+
+      expect(copy?.label).toBe('COPY POS TARGET1: 10.00000, 10.00000');
+      expect(copy?.subLabel).toContain('LOCAL CLIPBOARD');
+      expect(copy?.subLabel).toContain('ROUNDING: 0.00001°');
+      expect(() => copy?.action?.()).not.toThrow();
+    });
+
     it('reports an invalid resolved reference position without throwing', () => {
       const context = {
         ...mockContext,

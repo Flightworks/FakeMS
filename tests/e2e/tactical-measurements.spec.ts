@@ -102,3 +102,21 @@ test('lists nearest waypoints in range order without a map preview', async ({ pa
   await expect(results.nth(1)).toHaveAccessibleName(/BRAVO.*RNG:.*BRG:.*FRESHNESS: UNKNOWN.*QUALITY: UNKNOWN/i);
   await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
 });
+
+test('converts and copies coordinates locally without claiming permission', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('COORD BRAVO DDM');
+  await expect(page.getByRole('option', {
+    name: /COORD BRAVO: N34°04\.80' W118°09\.00'.*LOCAL DISPLAY.*FORMAT: DDM/i,
+  })).toBeVisible();
+
+  await input.fill('COPY POS BRAVO');
+  await expect(page.getByRole('option', {
+    name: /COPY POS BRAVO: 34\.08000, -118\.15000.*LOCAL CLIPBOARD.*COPY IF PERMITTED/i,
+  })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
+});

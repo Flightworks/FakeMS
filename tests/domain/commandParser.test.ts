@@ -246,6 +246,16 @@ describe('typed tactical command parser', () => {
     expect(fromReference.errors).toEqual([]);
   });
 
+  it('rejects unknown coordinate formats and COPY POS prefixes', () => {
+    for (const input of ['COPY POS BRAVO MGRS', 'COPY POSITIVE BRAVO DD']) {
+      const parsed = parseCommand(input);
+
+      expect(parsed.type).toBe('COORDINATE');
+      expect(parsed.errors.length).toBeGreaterThan(0);
+      expect(parsed.warnings).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
+
   it('rejects an unknown nearest category and invalid result limits', () => {
     for (const input of ['NEAREST PARK', 'NEAREST 0 TRACKS', 'NEAREST 1.5 TRACKS']) {
       const parsed = parseCommand(input);
@@ -255,5 +265,41 @@ describe('typed tactical command parser', () => {
       ]);
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
+  });
+
+  it('parses coordinate display formats and local coordinate copy commands', () => {
+    for (const format of ['DD', 'DDM', 'DMS']) {
+      const parsed = parseCommand(`COORD BRAVO ${format}`);
+      expect(parsed.type, format).toBe('COORDINATE');
+      expect(parsed.parameters, format).toMatchObject({
+        command: 'COORD',
+        reference: 'BRAVO',
+        format,
+      });
+      expect(parsed.errors, format).toEqual([]);
+    }
+
+    const literal = parseCommand('COORD 34.08,-118.15 DDM');
+    expect(literal.parameters).toMatchObject({
+      command: 'COORD',
+      latitude: 34.08,
+      longitude: -118.15,
+      format: 'DDM',
+    });
+    expect(literal.errors).toEqual([]);
+
+    const copy = parseCommand('COPY POS BRAVO');
+    expect(copy.type).toBe('COORDINATE');
+    expect(copy.parameters).toMatchObject({ command: 'COPY POS', reference: 'BRAVO', format: 'DD' });
+    expect(copy.errors).toEqual([]);
+  });
+
+  it('rejects unsupported coordinate output formats before execution', () => {
+    const parsed = parseCommand('COORD BRAVO MGRS');
+    expect(parsed.type).toBe('COORDINATE');
+    expect(parsed.errors).toEqual([
+      expect.objectContaining({ code: 'UNEXPECTED_ARGUMENT' }),
+    ]);
+    expect(parsed.warnings).toContain('EXECUTION_NOT_ATTEMPTED');
   });
 });
