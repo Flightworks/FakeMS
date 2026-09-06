@@ -36,6 +36,24 @@ export interface NearestSearchResult {
   candidates: NearestCandidate[];
 }
 
+export type WithinCategory = NearestCategory;
+
+export interface WithinQuery {
+  reference: Entity;
+  entities: readonly Entity[];
+  rangeNauticalMiles: number;
+  category?: WithinCategory;
+  freshnessOf?: (entity: Entity) => NearestFreshness;
+}
+
+export interface WithinSearchResult {
+  status: 'OK' | 'EMPTY';
+  referenceId: string;
+  rangeNauticalMiles: number;
+  category?: WithinCategory;
+  candidates: NearestCandidate[];
+}
+
 const validPosition = (entity: Pick<Entity, 'position'>): boolean => (
   Number.isFinite(entity.position.lat)
   && Number.isFinite(entity.position.lon)
@@ -120,6 +138,41 @@ export const findNearestEntities = (query: NearestQuery): NearestSearchResult =>
     referenceId: query.reference.id,
     category: query.category,
     limit: query.limit,
+    candidates,
+  };
+};
+
+export const findWithinEntities = (query: WithinQuery): WithinSearchResult => {
+  if (!Number.isFinite(query.rangeNauticalMiles) || query.rangeNauticalMiles <= 0) {
+    throw new Error('Within range must be a positive finite number');
+  }
+  if (!validPosition(query.reference)) {
+    throw new Error('Within reference position is invalid');
+  }
+
+  const categories: WithinCategory[] = query.category
+    ? [query.category]
+    : ['WAYPOINT', 'TRACK', 'AIRPORT'];
+  const candidates = categories
+    .flatMap(category => findNearestEntities({
+      reference: query.reference,
+      entities: query.entities,
+      category,
+      limit: Math.max(1, query.entities.length),
+      freshnessOf: query.freshnessOf,
+    }).candidates)
+    .filter(candidate => candidate.rangeNauticalMiles <= query.rangeNauticalMiles + 1e-9)
+    .sort((left, right) => {
+      const distanceDifference = left.rangeNauticalMiles - right.rangeNauticalMiles;
+      if (Math.abs(distanceDifference) > 1e-9) return distanceDifference;
+      return left.id.localeCompare(right.id);
+    });
+
+  return {
+    status: candidates.length > 0 ? 'OK' : 'EMPTY',
+    referenceId: query.reference.id,
+    rangeNauticalMiles: query.rangeNauticalMiles,
+    ...(query.category ? { category: query.category } : {}),
     candidates,
   };
 };

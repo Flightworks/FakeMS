@@ -1020,5 +1020,19 @@ describe('CommandRegistry', () => {
       expect(removeFavorite).toHaveBeenCalledWith(1);
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers within results from the loaded scenario without mission effects', () => {
+      const context = {
+        ...mockContext,
+        measurementPositionFreshness: () => 'CURRENT' as const,
+      };
+      const result = getCommands('WITHIN 1000NM TYPE TRACK', context)
+        .find(command => command.id === 'within-result-track-target1');
+      expect(result?.label).toBe('TARGET1');
+      expect(result?.subLabel).toContain('RNG');
+      expect(result?.subLabel).toContain('CURRENT');
+      expect(result?.action).toBeUndefined();
+      expect(context.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

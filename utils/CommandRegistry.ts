@@ -33,8 +33,10 @@ import {
 } from '../domain/routeSummary';
 import {
     findNearestEntities,
+    findWithinEntities,
     type NearestCandidate,
     type NearestCategory,
+    type WithinCategory,
 } from '../domain/spatialQueries';
 import {
     projectFuturePosition,
@@ -1618,7 +1620,93 @@ export const getCommands = (
         }
     }
 
-    // 4c. Coordinate conversion and local clipboard copy. These commands only
+    // 4c. Within spatial search. This is a local read-only scenario query.
+    const withinCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    const withinReference = parsedMeasurement.parameters.reference;
+    const withinRange = parsedMeasurement.parameters.range;
+    const withinUnit = parsedMeasurement.parameters.rangeUnit;
+    const withinCategory = parsedMeasurement.parameters.category as WithinCategory | undefined;
+    if (parsedMeasurement.type === 'SEARCH'
+        && withinCommand === 'WITHIN'
+        && parsedMeasurement.errors.length === 0
+        && typeof withinReference === 'string'
+        && typeof withinRange === 'number'
+        && withinUnit === 'NM'
+        && (withinCategory === undefined
+            || withinCategory === 'TRACK'
+            || withinCategory === 'WAYPOINT'
+            || withinCategory === 'AIRPORT')) {
+        const resolution = resolveEntityReference(withinReference, entities, ownship);
+        if (!resolution.executable || !resolution.entity) {
+            commands.push({
+                id: `within-reference-status-${resolution.status.toLowerCase()}`,
+                label: `WITHIN ${resolution.status}: ${resolution.reference}`,
+                subLabel: 'WITHIN search blocked · choose an unambiguous reference',
+                icon: Crosshair,
+                keywords: ['within', 'reference', resolution.status.toLowerCase()],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else {
+            let result: ReturnType<typeof findWithinEntities> | undefined;
+            try {
+                result = findWithinEntities({
+                    reference: resolution.entity,
+                    entities,
+                    rangeNauticalMiles: withinRange,
+                    category: withinCategory as WithinCategory | undefined,
+                    freshnessOf: context.measurementPositionFreshness,
+                });
+            } catch {
+                commands.push({
+                    id: 'within-invalid-reference-position',
+                    label: `WITHIN INVALID_REFERENCE_POSITION: ${resolution.reference}`,
+                    subLabel: 'WITHIN search unavailable · reference position is invalid',
+                    icon: Crosshair,
+                    keywords: ['within', 'reference', 'invalid', 'position'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
+            if (result?.status === 'EMPTY') {
+                commands.push({
+                    id: `within-empty-${String(withinCategory ?? 'all').toLowerCase()}`,
+                    label: `WITHIN ${withinRange}NM: NONE`,
+                    subLabel: 'NO LOADED SCENARIO OBJECTS MATCH THE QUERY',
+                    icon: Crosshair,
+                    keywords: ['within', 'none', String(withinCategory ?? 'all').toLowerCase()],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else if (result) {
+                result.candidates.forEach(candidate => {
+                    const resultCategory = withinCategory
+                        ?? (candidate.type === 'WAYPOINT' ? 'WAYPOINT' : candidate.type === 'AIRPORT' ? 'AIRPORT' : 'TRACK');
+                    commands.push({
+                        id: `within-result-${resultCategory.toLowerCase()}-${candidate.id}`,
+                        label: candidate.label,
+                        subLabel: formatNearestCandidate(candidate),
+                        icon: Crosshair,
+                        keywords: ['within', resultCategory.toLowerCase(), candidate.label, candidate.type, candidate.id],
+                        historyValue: q,
+                        isPreview: true,
+                        keepPaletteOpen: true,
+                        ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                    });
+                });
+            }
+        }
+    }
+
+    // 4d. Coordinate conversion and local clipboard copy. These commands only
     // format scenario coordinates; they never change navigation or map state.
     const coordinateCommand = typeof parsedMeasurement.parameters.command === 'string'
         ? parsedMeasurement.parameters.command

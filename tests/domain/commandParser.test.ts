@@ -551,4 +551,22 @@ describe('typed tactical command parser', () => {
       expect.objectContaining({ code: 'INVALID_NUMBER' }),
     ]);
   });
+
+  it('parses local within queries with optional reference and type', () => {
+    expect(parseCommand('WITHIN 10NM')).toMatchObject({
+      type: 'SEARCH',
+      parameters: { command: 'WITHIN', reference: 'OWNSHIP', range: 10, rangeUnit: 'NM' },
+      errors: [],
+    });
+
+    expect(parseCommand('WITHIN BRAVO 5NM TYPE TRACK')).toMatchObject({
+      type: 'SEARCH',
+      parameters: { command: 'WITHIN', reference: 'BRAVO', range: 5, rangeUnit: 'NM', category: 'TRACK' },
+      errors: [],
+    });
+
+    expect(parseCommand('WITHIN BRAVO 5KT').errors).toEqual([
+      expect.objectContaining({ code: 'INCOMPATIBLE_UNIT' }),
+    ]);
+  });
 });

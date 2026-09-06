@@ -55,6 +55,7 @@ const COMMAND_TOKENS = new Set([
   'TEMPLATE',
   'FAVORITES',
   'UNPIN',
+  'WITHIN',
   'TIME',
   'DIST',
   'GS',
@@ -1171,6 +1172,60 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseWithinCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, string | number | null> = {
+    command: 'WITHIN',
+    reference: 'OWNSHIP',
+    range: null,
+    rangeUnit: null,
+  };
+  const errors: CommandParseError[] = [];
+  let rangeIndex = -1;
+  let rangeEndIndex = -1;
+  let rangeParts: ReturnType<typeof splitNumericAndUnit> = { numberToken: null, unitToken: undefined };
+  for (let index = 1; index < tokens.length; index += 1) {
+    const compactParts = splitNumericAndUnit(tokens[index].normalized);
+    const separatedParts = tokens[index + 1]
+      ? splitNumericAndUnit(`${tokens[index].normalized}${tokens[index + 1].normalized}`)
+      : compactParts;
+    const usesSeparatedUnit = !compactParts.unitToken && Boolean(separatedParts.unitToken);
+    const candidateParts = compactParts.unitToken ? compactParts : separatedParts;
+    if (candidateParts.numberToken !== null && candidateParts.unitToken) {
+      rangeIndex = index;
+      rangeEndIndex = usesSeparatedUnit ? index + 1 : index;
+      rangeParts = candidateParts;
+      break;
+    }
+  }
+  if (rangeIndex < 0) {
+    errors.push({ code: 'INCOMPLETE_COMMAND', message: 'WITHIN requires a range such as 10NM.' });
+  } else {
+    const parts = rangeParts;
+    const range = parts.numberToken && parts.numberToken !== NON_FINITE_MARKER ? Number(parts.numberToken) : null;
+    parameters.range = Number.isFinite(range) ? range : null;
+    parameters.rangeUnit = parts.unitToken;
+    const reference = tokens.slice(1, rangeIndex).map(token => token.normalized).join(' ');
+    if (reference) parameters.reference = reference;
+    if (parts.unitToken !== 'NM') {
+      errors.push({ code: 'INCOMPATIBLE_UNIT', message: 'WITHIN range must use NM.' });
+    }
+    const suffix = tokens.slice(rangeEndIndex + 1);
+    if (suffix.length > 0) {
+      if (suffix[0]?.normalized !== 'TYPE' || suffix.length !== 2) {
+        errors.push({ code: 'INVALID_SYNTAX', message: 'Use optional TYPE TRACK, TYPE WAYPOINT, or TYPE AIRPORT.' });
+      } else if (suffix[1]?.normalized === 'TRACK' || suffix[1]?.normalized === 'WAYPOINT' || suffix[1]?.normalized === 'AIRPORT') {
+        parameters.category = suffix[1].normalized;
+      } else {
+        errors.push({ code: 'INVALID_SYNTAX', message: 'WITHIN type must be TRACK, WAYPOINT, or AIRPORT.' });
+      }
+    }
+    if (typeof range !== 'number' || !Number.isFinite(range) || range <= 0) {
+      errors.push({ code: 'INVALID_NUMBER', message: 'WITHIN range must be a positive number.' });
+    }
+  }
+  return createResult('SEARCH', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseFavoriteCommand = (tokens: CommandToken[]): ParsedCommand => {
   const first = tokens[0]?.normalized ?? '';
   const parameters: Record<string, string | number | null> = { command: first };
@@ -1323,7 +1378,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'PROJ' || command === 'PROJECTION') return 'PROJECTION';
   if (command === 'INT') return 'INTERSECTION';
   if (command === 'COORD' || command === 'COORDINATE' || command === 'COPY') return 'COORDINATE';
-  if (command === 'PIN' || command === 'FAVORITES' || command === 'UNPIN') return 'SEARCH';
+  if (command === 'PIN' || command === 'FAVORITES' || command === 'UNPIN' || command === 'WITHIN') return 'SEARCH';
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
@@ -1390,6 +1445,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'SEARCH') {
     if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
     if (tokens[0]?.normalized === 'PREDICT') return parsePredict(tokens);
+    if (tokens[0]?.normalized === 'WITHIN') return parseWithinCommand(tokens);
     if (tokens[0]?.normalized === 'PIN'
       || tokens[0]?.normalized === 'FAVORITES'
       || tokens[0]?.normalized === 'UNPIN') return parseFavoriteCommand(tokens);
