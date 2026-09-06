@@ -693,5 +693,53 @@ describe('CommandRegistry', () => {
       expect(commands.some(command => command.label.includes('INVALID_REFERENCE_POSITION'))).toBe(true);
       expect(commands.filter(command => command.id.startsWith('nearest-result-'))).toHaveLength(0);
     });
+
+    it('offers a local bearing intersection with both legs and no navigation side effect', () => {
+      const previewIntersection = vi.fn();
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { id: 'bravo', label: 'BRAVO', type: EntityType.WAYPOINT, position: { lat: 0, lon: 0 } },
+          { id: 'g01', label: 'G01', type: EntityType.WAYPOINT, position: { lat: 1, lon: 1 } },
+        ],
+        previewIntersection,
+        proposeDirectTo: vi.fn(),
+        proposeRoute: vi.fn(),
+      };
+
+      const intersection = getCommands('INT BRAVO/090 G01/180', context)
+        .find(command => command.id === 'intersection-bravo-g01');
+
+      expect(intersection?.label).toContain('INT BRAVO/090 G01/180');
+      expect(intersection?.label).toContain('0.00000, 1.00000');
+      expect(intersection?.subLabel).toContain('BRAVO');
+      expect(intersection?.subLabel).toContain('G01');
+      expect(intersection?.subLabel).toContain('QUALITY: GOOD');
+      intersection?.action?.();
+      expect(previewIntersection).toHaveBeenCalledOnce();
+      expect(context.proposeDirectTo).not.toHaveBeenCalled();
+      expect(context.proposeRoute).not.toHaveBeenCalled();
+    });
+
+    it('blocks a weak bearing intersection instead of offering confirmation', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { id: 'bravo', label: 'BRAVO', type: EntityType.WAYPOINT, position: { lat: 0, lon: 0 } },
+          { id: 'g01', label: 'G01', type: EntityType.WAYPOINT, position: { lat: 0.05, lon: 1 } },
+        ],
+        proposeDirectTo: vi.fn(),
+        proposeRoute: vi.fn(),
+      };
+
+      const commands = getCommands('INT BRAVO/090 G01/090.5', context);
+
+      expect(commands.some(command => command.label.includes('GEOMETRY WEAK'))).toBe(true);
+      expect(commands.filter(command => command.id === 'intersection-bravo-g01')).toHaveLength(0);
+      expect(context.proposeDirectTo).not.toHaveBeenCalled();
+      expect(context.proposeRoute).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,5 +1,6 @@
 export type CommandIntentType =
   | 'PROJECTION'
+  | 'INTERSECTION'
   | 'COORDINATE'
   | 'MEASUREMENT'
   | 'SYSTEM'

@@ -302,4 +302,28 @@ describe('typed tactical command parser', () => {
     ]);
     expect(parsed.warnings).toContain('EXECUTION_NOT_ATTEMPTED');
   });
+
+  it('parses two explicit bearing lines without executing an intersection', () => {
+    const parsed = parseCommand('INT BRAVO/090 G01/180');
+
+    expect(parsed.type).toBe('INTERSECTION');
+    expect(parsed.parameters).toMatchObject({
+      command: 'INT',
+      firstReference: 'BRAVO',
+      firstBearing: 90,
+      secondReference: 'G01',
+      secondBearing: 180,
+    });
+    expect(parsed.errors).toEqual([]);
+  });
+
+  it('rejects incomplete or out-of-range bearing intersections', () => {
+    for (const input of ['INT BRAVO/090', 'INT BRAVO/360 G01/180', 'INT BRAVO/090 G01/-1']) {
+      const parsed = parseCommand(input);
+
+      expect(parsed.type, input).toBe('INTERSECTION');
+      expect(parsed.errors.length, input).toBeGreaterThan(0);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });

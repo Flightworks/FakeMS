@@ -25,6 +25,7 @@ import { MissionActionIntent } from './application/missionActionReducer';
 import { createMissionActionState, dispatchMissionAction } from './application/missionActionReducer';
 import type { MissionActionRequest } from './domain/missionActions';
 import type { ProjectionPreview } from './domain/designations';
+import type { BearingIntersectionResult } from './domain/bearingIntersection';
 import type { ActiveSimulatedRoute } from './domain/routeSummary';
 import { createDesignationState, designationReducer } from './application/designationReducer';
 import type { MissionObjective } from './domain/intent';
@@ -130,6 +131,7 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [designationState, setDesignationState] = useState(() => createDesignationState());
+  const [intersectionPreview, setIntersectionPreview] = useState<BearingIntersectionResult | null>(null);
   const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
   const [mapReady, setMapReady] = useState(false);
@@ -174,6 +176,7 @@ const App: React.FC = () => {
 
   const closeCommandPalette = React.useCallback(() => {
     setCommandPaletteOpen(false);
+    setIntersectionPreview(null);
     setDesignationState(prev => prev.phase === 'PREVIEWED'
       ? designationReducer(prev, { type: 'CANCEL_DESIGNATION' })
       : prev);
@@ -184,6 +187,21 @@ const App: React.FC = () => {
       type: 'PREVIEW_DESIGNATION',
       preview,
     }));
+  }, []);
+
+  const previewIntersection = React.useCallback((preview: BearingIntersectionResult) => {
+    setIntersectionPreview({
+      ...preview,
+      position: { ...preview.position },
+      legs: [
+        { ...preview.legs[0], position: { ...preview.legs[0].position } },
+        { ...preview.legs[1], position: { ...preview.legs[1].position } },
+      ],
+    });
+  }, []);
+
+  const clearIntersectionPreview = React.useCallback(() => {
+    setIntersectionPreview(null);
   }, []);
 
   const confirmDesignation = React.useCallback(() => {
@@ -703,6 +721,7 @@ const App: React.FC = () => {
         toggleSystem,
         focusMapAt: handleFocusMapAt,
         previewProjection,
+        previewIntersection,
         proposeDirectTo: handleProposeDirectTo,
         proposeRoute: handleProposeRoute,
         requestMissionAction: issueMissionAction,
@@ -768,10 +787,12 @@ const App: React.FC = () => {
             onGhostEvent={handleGhostEvent}
             onMissionAction={issueMissionAction}
             projectionPreview={projectionPreview}
+            intersectionPreview={intersectionPreview}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
             onClearProjectionPreview={cancelDesignation}
+            onClearIntersectionPreview={clearIntersectionPreview}
               />
             </React.Suspense>
           ) : (
@@ -806,6 +827,7 @@ const App: React.FC = () => {
             onClose={closeCommandPalette}
             focusMapAt={handleFocusMapAt}
             previewProjection={previewProjection}
+            previewIntersection={previewIntersection}
             designations={designationState.confirmedDesignations}
             listDesignations={listDesignations}
             renameDesignation={renameDesignation}

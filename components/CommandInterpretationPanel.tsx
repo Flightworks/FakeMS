@@ -1,4 +1,5 @@
 import type { ParsedCommand } from '../domain/commandLanguage';
+import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import type { ProjectionPreview } from '../domain/designations';
 import {
   convertTacticalQuantity,
@@ -9,6 +10,7 @@ import {
 export interface CommandInterpretationPanelProps {
   parsed: ParsedCommand;
   projection?: ProjectionPreview;
+  intersection?: BearingIntersectionResult;
   effect?: string;
   source?: string;
 }
@@ -47,8 +49,17 @@ const formatRange = (parsed: ParsedCommand, projection?: ProjectionPreview): str
   }
 };
 
+const formatIntersectionBearing = (value: number): string => (
+  Number.isInteger(value)
+    ? value.toFixed(0).padStart(3, '0')
+    : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+);
+
 const getReference = (parsed: ParsedCommand): string => {
   const parameters = parsed.parameters;
+  if (typeof parameters.firstReference === 'string' && typeof parameters.secondReference === 'string') {
+    return `${parameters.firstReference} ↔ ${parameters.secondReference}`;
+  }
   if (typeof parameters.reference === 'string') return parameters.reference;
   if (typeof parameters.fromReference === 'string' && typeof parameters.toReference === 'string') {
     return `${parameters.fromReference} → ${parameters.toReference}`;
@@ -59,9 +70,16 @@ const getReference = (parsed: ParsedCommand): string => {
   return 'N/A';
 };
 
-const getTarget = (parsed: ParsedCommand, projection?: ProjectionPreview): string => {
+const getTarget = (
+  parsed: ParsedCommand,
+  projection?: ProjectionPreview,
+  intersection?: BearingIntersectionResult,
+): string => {
   if (projection) {
     return `${formatCoordinate(projection.targetPosition.lat)}, ${formatCoordinate(projection.targetPosition.lon)}`;
+  }
+  if (intersection) {
+    return `${formatCoordinate(intersection.position.lat)}, ${formatCoordinate(intersection.position.lon)}`;
   }
 
   if (parsed.type === 'COORDINATE'
@@ -73,7 +91,11 @@ const getTarget = (parsed: ParsedCommand, projection?: ProjectionPreview): strin
   return 'N/A';
 };
 
-const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): string[] => {
+const getDetails = (
+  parsed: ParsedCommand,
+  projection?: ProjectionPreview,
+  intersection?: BearingIntersectionResult,
+): string[] => {
   const details: string[] = [];
   const parameters = parsed.parameters;
 
@@ -84,6 +106,13 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
       details.push('BEARING: N/A');
     }
     details.push(`RANGE: ${formatRange(parsed, projection)}`);
+  } else if (parsed.type === 'INTERSECTION' && intersection) {
+    intersection.legs.forEach(leg => {
+      details.push(`${leg.reference} BRG: ${formatIntersectionBearing(leg.bearingDegrees)}° TRUE / RNG: ${leg.rangeNauticalMiles.toFixed(1)} NM`);
+    });
+    details.push(`CROSSING ANGLE: ${intersection.crossingAngleDegrees.toFixed(2)}°`);
+    details.push(`QUALITY: ${intersection.quality}`);
+    details.push(`METHOD: ${intersection.method}`);
   } else if (parsed.type === 'MEASUREMENT' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
   } else if (parsed.type === 'COORDINATE') {
@@ -125,6 +154,7 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
 export const CommandInterpretationPanel = ({
   parsed,
   projection,
+  intersection,
   effect = 'SIMULATED CALCULATION',
   source = 'LOCAL SCENARIO',
 }: CommandInterpretationPanelProps) => {
@@ -134,8 +164,8 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, projection),
-    `TARGET: ${getTarget(parsed, projection)}`,
+    ...getDetails(parsed, projection, intersection),
+    `TARGET: ${getTarget(parsed, projection, intersection)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,
     `EFFECT: ${effect}`,

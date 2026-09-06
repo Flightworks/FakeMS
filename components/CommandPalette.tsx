@@ -6,6 +6,7 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
+import { intersectBearings, type BearingIntersectionResult } from '../domain/bearingIntersection';
 import { createProjectionPreview, type ProjectionPreview, type SimulatedDesignation } from '../domain/designations';
 import { resolveEntityReference } from '../domain/entityResolution';
 import { convertTacticalQuantity, createTacticalQuantity } from '../domain/tacticalUnits';
@@ -25,6 +26,7 @@ interface CommandPaletteProps {
   onClose: () => void;
   focusMapAt: (position: { lat: number, lon: number }) => void;
   previewProjection?: (preview: ProjectionPreview) => void;
+  previewIntersection?: (preview: BearingIntersectionResult) => void;
   designations?: SimulatedDesignation[];
   listDesignations?: () => void;
   renameDesignation?: (designationId: string, label: string) => void;
@@ -116,6 +118,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   focusMapAt,
   previewProjection,
+  previewIntersection,
   designations = [],
   listDesignations,
   renameDesignation,
@@ -224,6 +227,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       toggleSystem,
       focusMapAt,
       previewProjection,
+      previewIntersection,
       designations,
       listDesignations,
       renameDesignation,
@@ -253,6 +257,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     toggleSystem,
     focusMapAt,
     previewProjection,
+    previewIntersection,
     designations,
     listDesignations,
     renameDesignation,
@@ -304,13 +309,54 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [parsedCommand, entities, ownship]);
 
+  const interpretationIntersection = useMemo<BearingIntersectionResult | undefined>(() => {
+    if (parsedCommand.type !== 'INTERSECTION' || parsedCommand.errors.length > 0) return undefined;
+
+    const firstReference = parsedCommand.parameters.firstReference;
+    const firstBearing = parsedCommand.parameters.firstBearing;
+    const secondReference = parsedCommand.parameters.secondReference;
+    const secondBearing = parsedCommand.parameters.secondBearing;
+    if (typeof firstReference !== 'string' || typeof firstBearing !== 'number'
+      || typeof secondReference !== 'string' || typeof secondBearing !== 'number'
+      || !Number.isFinite(firstBearing) || !Number.isFinite(secondBearing)) {
+      return undefined;
+    }
+
+    const firstResolution = resolveEntityReference(firstReference, entities, ownship);
+    const secondResolution = resolveEntityReference(secondReference, entities, ownship);
+    if (!firstResolution.executable || !firstResolution.entity
+      || !secondResolution.executable || !secondResolution.entity
+      || firstResolution.entity.id === secondResolution.entity.id) {
+      return undefined;
+    }
+
+    try {
+      return intersectBearings(
+        {
+          reference: firstResolution.entity.label,
+          position: { ...firstResolution.entity.position },
+          bearingDegrees: firstBearing,
+        },
+        {
+          reference: secondResolution.entity.label,
+          position: { ...secondResolution.entity.position },
+          bearingDegrees: secondBearing,
+        },
+      );
+    } catch {
+      return undefined;
+    }
+  }, [parsedCommand, entities, ownship]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
     && parsedCommand.errors.length === 0;
   const interpretationEffect = parsedCommand.type === 'PROJECTION'
     ? interpretationProjection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
-    : parsedCommand.type === 'MEASUREMENT' || parsedCommand.type === 'CALCULATION'
+    : parsedCommand.type === 'INTERSECTION'
+      ? interpretationIntersection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
+      : parsedCommand.type === 'MEASUREMENT' || parsedCommand.type === 'CALCULATION'
       ? 'CALCULATION ONLY'
       : parsedCommand.type === 'COORDINATE'
         ? 'MAP DISPLAY ONLY'
@@ -537,7 +583,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ))}
           </div>
         )}
-
         {isMathProviderPending && (
           <div className="shrink-0 px-4 py-2 border-b border-slate-800 text-[10px] text-amber-300 font-mono" role="status" aria-live="polite">
             CALCULATOR LOADING…
@@ -547,6 +592,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <CommandInterpretationPanel
             parsed={parsedCommand}
             projection={interpretationProjection}
+            intersection={interpretationIntersection}
             effect={interpretationEffect}
           />
         )}
@@ -582,9 +628,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                      ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
                    `}
                     onClick={() => {
-                       if (isMathProviderPending) return;
-                       executeCommand(cmd);
-                     }}
+                      if (isMathProviderPending) return;
+                      executeCommand(cmd);
+                    }}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
                   >

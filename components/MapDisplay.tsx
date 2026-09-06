@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
 import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
+import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -53,14 +54,21 @@ interface MapDisplayProps {
   onGhostEvent?: (isGhost: boolean) => void;
   onMissionAction?: (request: MissionActionRequest) => void;
   projectionPreview?: ProjectionPreview | null;
+  intersectionPreview?: BearingIntersectionResult | null;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
   onClearProjectionPreview?: () => void;
+  onClearIntersectionPreview?: () => void;
 }
 
 
 const EARTH_RADIUS = 6378137;
+const formatIntersectionBearing = (value: number): string => (
+  Number.isInteger(value)
+    ? value.toFixed(0).padStart(3, '0')
+    : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+);
 
 // Deprecated projection helpers. We now use native lat/lon. Validate if still needed elsewhere.
 // const metersToLatLon = ...
@@ -289,10 +297,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onGhostEvent,
   onMissionAction,
   projectionPreview,
+  intersectionPreview,
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
   onClearProjectionPreview,
+  onClearIntersectionPreview,
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -704,7 +714,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     target instanceof Element && Boolean(target.closest('.leaflet-marker-icon, .custom-entity-icon'));
 
   const isProjectionPreviewTarget = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane, .simulated-designation-pane'));
+    target instanceof Element && Boolean(target.closest('[data-projection-preview-overlay], .projection-preview-pane, .bearing-intersection-preview-overlay, .bearing-intersection-pane, .simulated-designation-pane'));
 
   const cancelProjectionPreviewInteraction = (event: React.PointerEvent<HTMLDivElement>): boolean => {
     if (!isProjectionPreviewTarget(event.target)) return false;
@@ -767,6 +777,12 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   const projectionLinePositions: LatLngExpression[] = projectionPreview
     ? projectionPreview.line.map(position => [position.lat, position.lon] as [number, number])
+    : [];
+  const intersectionLinePositions: LatLngExpression[][] = intersectionPreview
+    ? intersectionPreview.legs.map(leg => [
+        [leg.position.lat, leg.position.lon],
+        [intersectionPreview.position.lat, intersectionPreview.position.lon],
+      ])
     : [];
 
   return (
@@ -939,6 +955,41 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
           </Pane>
         )}
 
+        {intersectionPreview && (
+          <Pane
+            name="bearingIntersectionPane"
+            className="bearing-intersection-pane"
+            style={{ pointerEvents: 'auto' }}
+          >
+            {intersectionLinePositions.map((positions, index) => (
+              <Polyline
+                key={`bearing-intersection-leg-${index}`}
+                positions={positions}
+                interactive={false}
+                pane="bearingIntersectionPane"
+                pathOptions={{
+                  color: '#f97316',
+                  dashArray: '6 5',
+                  weight: 3,
+                  opacity: 0.9,
+                }}
+              />
+            ))}
+            <CircleMarker
+              center={[intersectionPreview.position.lat, intersectionPreview.position.lon]}
+              radius={8}
+              interactive={false}
+              pane="bearingIntersectionPane"
+              pathOptions={{
+                color: '#fb923c',
+                fillColor: '#fb923c',
+                fillOpacity: 0.9,
+                weight: 2,
+              }}
+            />
+          </Pane>
+        )}
+
       </MapContainer>
 
       {(confirmedDesignations.length > 0 || showDesignationList) && (
@@ -1009,6 +1060,48 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               }}
             >
               CANCEL PREVIEW
+            </button>
+          )}
+        </section>
+      )}
+
+      {intersectionPreview && (
+        <section
+          className="bearing-intersection-preview-overlay absolute top-4 right-4 z-[110] w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-orange-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          data-bearing-intersection-preview-overlay
+          role="region"
+          aria-label="Bearing intersection preview"
+          aria-live="polite"
+        >
+          <div className="mb-2 flex items-center justify-between border-b border-slate-800 pb-2 text-orange-300">
+            <span>BEARING INTERSECTION PREVIEW</span>
+            <span className="text-[10px] text-slate-400">LOCAL · SIMULATED</span>
+          </div>
+          <div className="space-y-1">
+            <div data-testid="bearing-intersection-preview-point">
+              POINT {intersectionPreview.position.lat.toFixed(5)}, {intersectionPreview.position.lon.toFixed(5)}
+            </div>
+            {intersectionPreview.legs.map(leg => (
+              <div key={leg.reference}>
+                {leg.reference} BRG {formatIntersectionBearing(leg.bearingDegrees)}°T / RNG {leg.rangeNauticalMiles.toFixed(1)} NM
+              </div>
+            ))}
+            <div className="text-emerald-300">
+              ANGLE {intersectionPreview.crossingAngleDegrees.toFixed(2)}° · QUALITY {intersectionPreview.quality}
+            </div>
+            <div className="text-slate-400">METHOD {intersectionPreview.method}</div>
+          </div>
+          {onClearIntersectionPreview && (
+            <button
+              type="button"
+              className="mt-3 min-h-[32px] w-full rounded border border-amber-400/70 px-2 py-1 text-amber-300 hover:bg-amber-400/10"
+              aria-label="Cancel bearing intersection preview"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClearIntersectionPreview();
+              }}
+            >
+              CANCEL INTERSECTION PREVIEW
             </button>
           )}
         </section>

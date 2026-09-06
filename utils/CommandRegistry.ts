@@ -35,6 +35,11 @@ import {
     type NearestCategory,
 } from '../domain/spatialQueries';
 import {
+    intersectBearings,
+    BearingIntersectionError,
+    type BearingIntersectionResult,
+} from '../domain/bearingIntersection';
+import {
     formatCoordinate,
     type CoordinateFormat,
 } from '../domain/coordinateFormats';
@@ -57,6 +62,7 @@ export interface CommandContext {
     toggleSystem: (sys: keyof SystemStatus) => void;
     focusMapAt: (position: Position) => void;
     previewProjection?: (preview: ProjectionPreview) => void;
+    previewIntersection?: (preview: BearingIntersectionResult) => void;
     proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
     proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
     requestMissionAction: (request: MissionActionRequest) => void;
@@ -268,6 +274,19 @@ const formatNearestCandidate = (candidate: NearestCandidate): string => {
     return `RNG: ${candidate.rangeNauticalMiles.toFixed(1)} NM · BRG: ${bearing} · FRESHNESS: ${candidate.freshness} · QUALITY: ${candidate.quality} · SRC: ${candidate.source}${uncertainty}`;
 };
 
+const formatIntersectionBearing = (bearing: number): string => (
+    Number.isInteger(bearing)
+        ? bearing.toFixed(0).padStart(3, '0')
+        : bearing.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+);
+
+const formatIntersectionResult = (result: BearingIntersectionResult): string => {
+    const legs = result.legs.map(leg => (
+        `${leg.reference} BRG ${formatIntersectionBearing(leg.bearingDegrees)}°T / RNG ${leg.rangeNauticalMiles.toFixed(1)} NM`
+    )).join(' · ');
+    return `${legs} · ANGLE: ${result.crossingAngleDegrees.toFixed(2)}° · QUALITY: ${result.quality} · METHOD: ${result.method}`;
+};
+
 const isCoordinateDisplayFormat = (value: string | number | null): value is CoordinateFormat => (
     value === 'DD' || value === 'DDM' || value === 'DMS'
 );
@@ -291,6 +310,7 @@ export const getCommands = (
         setMapMode,
         toggleSystem,
         focusMapAt,
+        previewIntersection,
         proposeDirectTo,
         proposeRoute,
         requestMissionAction,
@@ -937,7 +957,150 @@ export const getCommands = (
         }
     }
 
-    // 5. Tactical BRG/RNG measurements. These results are pure, local
+    // 5. Bearing intersection. This is a local geometric preview only: it
+    // never proposes a route, direct-to, heading, or speed change.
+    const intersectionCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    if (parsedMeasurement.type === 'INTERSECTION'
+        && intersectionCommand === 'INT'
+        && parsedMeasurement.errors.length === 0) {
+        const firstReference = typeof parsedMeasurement.parameters.firstReference === 'string'
+            ? parsedMeasurement.parameters.firstReference
+            : undefined;
+        const firstBearing = typeof parsedMeasurement.parameters.firstBearing === 'number'
+            ? parsedMeasurement.parameters.firstBearing
+            : undefined;
+        const secondReference = typeof parsedMeasurement.parameters.secondReference === 'string'
+            ? parsedMeasurement.parameters.secondReference
+            : undefined;
+        const secondBearing = typeof parsedMeasurement.parameters.secondBearing === 'number'
+            ? parsedMeasurement.parameters.secondBearing
+            : undefined;
+
+        if (firstReference && firstBearing !== undefined && secondReference && secondBearing !== undefined) {
+            const firstResolution = resolveEntityReference(firstReference, entities, ownship);
+            const secondResolution = resolveEntityReference(secondReference, entities, ownship);
+            const failedResolution = [firstResolution, secondResolution]
+                .find(resolution => resolution.status !== 'RESOLVED');
+
+            if (failedResolution) {
+                commands.push({
+                    id: `intersection-reference-status-${failedResolution.status.toLowerCase()}`,
+                    label: `INT ${failedResolution.status}: ${failedResolution.reference}`,
+                    subLabel: 'Intersection blocked · choose an unambiguous reference',
+                    icon: MapPin,
+                    keywords: ['int', 'intersection', 'reference', failedResolution.status.toLowerCase()],
+                    keepPaletteOpen: true,
+                    ranking: {
+                        category: 'STRUCTURED_PARTIAL',
+                        completeness: 2,
+                        match: 'PREFIX',
+                        intent: 'INTERSECTION',
+                    },
+                });
+            } else if (firstResolution.entity && secondResolution.entity
+                && firstResolution.entity.id === secondResolution.entity.id) {
+                commands.push({
+                    id: 'intersection-duplicate-reference',
+                    label: 'INT: DISTINCT REFERENCES REQUIRED',
+                    subLabel: 'Intersection blocked · use two different entities',
+                    icon: MapPin,
+                    keywords: ['int', 'intersection', 'duplicate', 'reference'],
+                    keepPaletteOpen: true,
+                    ranking: {
+                        category: 'STRUCTURED_PARTIAL',
+                        completeness: 2,
+                        match: 'EXACT',
+                        intent: 'INTERSECTION',
+                    },
+                });
+            } else if (firstResolution.entity && secondResolution.entity) {
+                const firstEntity = firstResolution.entity;
+                const secondEntity = secondResolution.entity;
+                const queryLabel = `INT ${firstEntity.label}/${formatIntersectionBearing(firstBearing)} ${secondEntity.label}/${formatIntersectionBearing(secondBearing)}`;
+                try {
+                    const result = intersectBearings(
+                        {
+                            reference: firstEntity.label,
+                            position: { ...firstEntity.position },
+                            bearingDegrees: firstBearing,
+                        },
+                        {
+                            reference: secondEntity.label,
+                            position: { ...secondEntity.position },
+                            bearingDegrees: secondBearing,
+                        },
+                    );
+                    const details = formatIntersectionResult(result);
+                    if (!result.canConfirm) {
+                        commands.push({
+                            id: `intersection-status-geometry-weak-${firstEntity.id}-${secondEntity.id}`,
+                            label: `${queryLabel}: GEOMETRY WEAK`,
+                            subLabel: `${details} · CONFIRMATION BLOCKED`,
+                            icon: MapPin,
+                            keywords: ['int', 'intersection', 'geometry', 'weak', firstEntity.label, secondEntity.label],
+                            historyValue: q,
+                            isPreview: true,
+                            keepPaletteOpen: true,
+                            ranking: {
+                                category: 'STRUCTURED_EXACT',
+                                completeness: 3,
+                                match: 'EXACT',
+                                intent: 'INTERSECTION',
+                            },
+                        });
+                    } else {
+                        commands.push({
+                            id: `intersection-${firstEntity.id}-${secondEntity.id}`,
+                            label: `${queryLabel}: ${result.position.lat.toFixed(5)}, ${result.position.lon.toFixed(5)}`,
+                            subLabel: details,
+                            icon: MapPin,
+                            action: () => {
+                                if (previewIntersection) {
+                                    previewIntersection(result);
+                                    return;
+                                }
+                                focusMapAt({ ...result.position });
+                            },
+                            keywords: ['int', 'intersection', firstEntity.label, secondEntity.label],
+                            historyValue: q,
+                            isPreview: true,
+                            keepPaletteOpen: true,
+                            ranking: {
+                                category: 'STRUCTURED_EXACT',
+                                completeness: 3,
+                                match: 'EXACT',
+                                intent: 'INTERSECTION',
+                            },
+                        });
+                    }
+                } catch (error) {
+                    const intersectionError = error instanceof BearingIntersectionError
+                        ? error
+                        : undefined;
+                    const code = intersectionError?.code ?? 'UNAVAILABLE';
+                    const message = intersectionError?.message ?? 'Intersection is unavailable for these inputs.';
+                    commands.push({
+                        id: `intersection-status-${code.toLowerCase()}`,
+                        label: `${queryLabel}: ${code}`,
+                        subLabel: message,
+                        icon: MapPin,
+                        keywords: ['int', 'intersection', code.toLowerCase()],
+                        keepPaletteOpen: true,
+                        ranking: {
+                            category: 'STRUCTURED_PARTIAL',
+                            completeness: 2,
+                            match: 'EXACT',
+                            intent: 'INTERSECTION',
+                        },
+                    });
+                }
+            }
+        }
+    }
+
+    // 6. Tactical BRG/RNG measurements. These results are pure, local
     // calculations and never create navigation, route, or designation state.
     const measurementCommand = typeof parsedMeasurement.parameters.command === 'string'
         ? parsedMeasurement.parameters.command

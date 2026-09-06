@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CommandInterpretationPanel } from '../../components/CommandInterpretationPanel';
 import { createProjectionPreview } from '../../domain/designations';
+import { intersectBearings } from '../../domain/bearingIntersection';
 import { parseCommand } from '../../domain/commandParser';
 
 const projection = createProjectionPreview(
@@ -9,6 +10,19 @@ const projection = createProjectionPreview(
   { lat: 34.91682, lon: -120 },
   180,
   5,
+);
+
+const intersection = intersectBearings(
+  {
+    reference: 'BRAVO',
+    position: { lat: 0, lon: 0 },
+    bearingDegrees: 90,
+  },
+  {
+    reference: 'G01',
+    position: { lat: 1, lon: 1 },
+    bearingDegrees: 180,
+  },
 );
 
 describe('CommandInterpretationPanel', () => {
@@ -114,5 +128,27 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('COMMAND: COORD');
     expect(panel).toHaveTextContent('FORMAT: DDM');
     expect(panel).toHaveTextContent('TARGET: N/A');
+  });
+
+  it('explains a bearing intersection without implying navigation or confirmation', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('INT BRAVO/090 G01/180')}
+        intersection={intersection}
+        effect="MAP PREVIEW ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: INTERSECTION');
+    expect(panel).toHaveTextContent('REFERENCE: BRAVO ↔ G01');
+    expect(panel).toHaveTextContent('BRAVO BRG: 090° TRUE / RNG: 60.1 NM');
+    expect(panel).toHaveTextContent('G01 BRG: 180° TRUE / RNG: 60.1 NM');
+    expect(panel).toHaveTextContent('TARGET: 0.00000, 1.00000');
+    expect(panel).toHaveTextContent('CROSSING ANGLE: 90.00°');
+    expect(panel).toHaveTextContent('QUALITY: GOOD');
+    expect(panel).toHaveTextContent('METHOD: SPHERICAL GREAT CIRCLE');
+    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
+    expect(panel).toHaveTextContent('STATUS: SIMULATED');
   });
 });

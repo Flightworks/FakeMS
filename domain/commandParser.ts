@@ -17,6 +17,7 @@ const NON_FINITE_MARKER = '<NON_FINITE>';
 const COMMAND_TOKENS = new Set([
   'PROJ',
   'PROJECTION',
+  'INT',
   'COORD',
   'COORDINATE',
   'COPY',
@@ -752,6 +753,58 @@ const parseCoordinateCommand = (input: string, tokens: CommandToken[]): ParsedCo
   );
 };
 
+const INTERSECTION_NUMBER_PATTERN = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+|NAN|INFINITY|INF)';
+const INTERSECTION_PATTERN = new RegExp(
+  `^(.+?)\\s*/\\s*(${INTERSECTION_NUMBER_PATTERN})\\s+(.+?)\\s*/\\s*(${INTERSECTION_NUMBER_PATTERN})$`,
+  'i',
+);
+
+const parseIntersection = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const body = normalizeText(input).replace(/^INT(?:\s+|$)/, '').trim();
+  const match = body.match(INTERSECTION_PATTERN);
+  const parameters: Record<string, string | number | null> = { command: 'INT' };
+  const errors: CommandParseError[] = [];
+
+  if (!match) {
+    errors.push({
+      code: body ? 'INVALID_SYNTAX' : 'INCOMPLETE_COMMAND',
+      message: body
+        ? 'INT requires two references in the form REF/BRG REF/BRG.'
+        : 'INT requires two bearing lines.',
+      hint: 'Use INT BRAVO/090 G01/180.',
+    });
+  } else {
+    const [, firstReference, rawFirstBearing, secondReference, rawSecondBearing] = match;
+    const firstBearing = parseNormalizedNumber(normalizeProjectionPart(rawFirstBearing));
+    const secondBearing = parseNormalizedNumber(normalizeProjectionPart(rawSecondBearing));
+    parameters.firstReference = firstReference.trim();
+    parameters.firstBearing = firstBearing;
+    parameters.secondReference = secondReference.trim();
+    parameters.secondBearing = secondBearing;
+
+    if (rawFirstBearing.match(/^(?:NAN|INFINITY|INF)$/i)
+      || rawSecondBearing.match(/^(?:NAN|INFINITY|INF)$/i)) {
+      errors.push(nonFiniteError());
+    } else if (firstBearing === null || secondBearing === null) {
+      errors.push({ code: 'INVALID_NUMBER', message: 'Intersection bearings must be numeric.' });
+    } else if (firstBearing < 0 || firstBearing >= 360 || secondBearing < 0 || secondBearing >= 360) {
+      errors.push({
+        code: 'INVALID_BEARING',
+        message: 'Intersection bearings must be between 000 and 359.999 degrees.',
+        hint: 'Normalize each true bearing to the range [000, 360).',
+      });
+    }
+  }
+
+  return createResult(
+    'INTERSECTION',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
   const commandToken = tokens[0]?.normalized ?? '';
   const subcommand = tokens[1]?.normalized;
@@ -809,6 +862,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   const command = tokens[0]?.normalized ?? '';
 
   if (command === 'PROJ' || command === 'PROJECTION') return 'PROJECTION';
+  if (command === 'INT') return 'INTERSECTION';
   if (command === 'COORD' || command === 'COORDINATE' || command === 'COPY') return 'COORDINATE';
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
@@ -834,6 +888,7 @@ export const parseCommand = (input: string): ParsedCommand => {
 
   const type = inferIntent(tokens, normalizedInput);
   if (type === 'PROJECTION') return parseProjection(input, tokens);
+  if (type === 'INTERSECTION') return parseIntersection(input, tokens);
   if (type === 'COORDINATE') {
     if (tokens[0]?.normalized === 'COPY'
       || tokens[0]?.normalized === 'COORD'
