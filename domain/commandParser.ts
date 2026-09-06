@@ -1029,17 +1029,17 @@ const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
     if (!subcommand) {
       errors.push({
         code: 'INCOMPLETE_COMMAND',
-        message: 'ROUTE requires STATUS or ETE.',
-        hint: 'Use ROUTE STATUS or ROUTE ETE.',
+        message: 'ROUTE requires STATUS, ETE, SHOW, HIDE, or CLEAR.',
+        hint: 'Use ROUTE STATUS, ROUTE ETE, ROUTE SHOW, ROUTE HIDE, or ROUTE CLEAR.',
       });
       command = 'STATUS';
-    } else if (subcommand === 'STATUS' || subcommand === 'ETE') {
+    } else if (subcommand === 'STATUS' || subcommand === 'ETE' || subcommand === 'SHOW' || subcommand === 'HIDE' || subcommand === 'CLEAR') {
       command = subcommand;
     } else {
       errors.push({
         code: 'UNEXPECTED_ARGUMENT',
         message: `Unexpected route argument: ${subcommand}.`,
-        hint: 'Use ROUTE STATUS or ROUTE ETE.',
+        hint: 'Use ROUTE STATUS, ROUTE ETE, ROUTE SHOW, ROUTE HIDE, or ROUTE CLEAR.',
       });
       command = subcommand;
     }

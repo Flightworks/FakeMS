@@ -1216,5 +1216,38 @@ describe('CommandRegistry', () => {
       expect(unknown?.label).toBe('ZONE UNAVAILABLE');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+    it('controls local route visibility and proposes an authorized clear', () => {
+      const activeRoute = {
+        id: 'route-1', label: 'SIM ROUTE', origin: { lat: 34, lon: -118 },
+        waypoints: [{ id: 'route-1:wp1', label: 'BRAVO', position: { lat: 34.1, lon: -118.1 } }],
+        remainingWaypointCount: 1, hidden: false,
+      };
+      const setRouteVisibility = vi.fn();
+      const requestMissionAction = vi.fn();
+      const context = { ...mockContext, activeRoute, setRouteVisibility, requestMissionAction };
+      const hide = getCommands('ROUTE HIDE', context).find(command => command.id === 'route-hide');
+      expect(hide?.subLabel).toContain('ACTIVE');
+      hide?.action?.();
+      expect(setRouteVisibility).toHaveBeenCalledWith(false);
+
+      const show = getCommands('ROUTE SHOW', { ...context, activeRoute: { ...activeRoute, hidden: true } })
+        .find(command => command.id === 'route-show');
+      expect(show?.subLabel).toContain('HIDDEN');
+      show?.action?.();
+      expect(setRouteVisibility).toHaveBeenCalledWith(true);
+
+      const clear = getCommands('ROUTE CLEAR', context).find(command => command.id === 'route-clear');
+      expect(clear?.subLabel).toContain('CONFIRMATION REQUIRED');
+      clear?.action?.();
+      expect(requestMissionAction).toHaveBeenCalledWith(expect.objectContaining({
+        label: 'ROUTE CLEAR',
+        implementation: 'SIMULATED_EFFECT',
+        requiresAuthorization: true,
+      }));
+
+      const unavailable = getCommands('ROUTE CLEAR', { ...context, activeRoute: undefined })
+        .find(command => command.id === 'route-unavailable');
+      expect(unavailable?.label).toBe('NO ACTIVE SIM ROUTE');
+    });
   });
 });

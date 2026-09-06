@@ -550,9 +550,24 @@ const App: React.FC = () => {
     setMissionActionPanelOpen(false);
   }, []);
 
-  const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
-    setMissionActionState(prev => dispatchMissionAction(prev, intent));
+  const setActiveRouteVisibility = React.useCallback((visible: boolean) => {
+    setActiveSimulatedRoute(previous => previous ? { ...previous, hidden: !visible } : previous);
   }, []);
+
+  const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
+    setMissionActionState(prev => dispatchMissionAction(prev, intent, {
+      executeSimulatedEffect: action => action.id.startsWith('command:view:route-clear:')
+        ? { ok: true, detail: 'ACTIVE SIM ROUTE CLEARED' }
+        : { ok: false, reason: 'No local simulated effect is available for this action' },
+    }));
+  }, []);
+
+  useEffect(() => {
+    const activeAction = missionActionState.active;
+    if (activeAction?.status !== 'COMPLETED_SIM' || !activeAction.id.startsWith('command:view:route-clear:')) return;
+    setActiveSimulatedRoute(undefined);
+    setAcceptedRouteProposalId(null);
+  }, [missionActionState.active]);
 
   const handleProposeRoute = React.useCallback((
     target: Pick<Entity, 'id' | 'label' | 'position'>,
@@ -1053,6 +1068,7 @@ const App: React.FC = () => {
             scenarioTimeMs={simulationControls.simTimeMs}
             localTimeZone={localTimeZone}
             activeRoute={activeRouteForPalette}
+            setRouteVisibility={setActiveRouteVisibility}
             layers={layerState}
             setLayers={setLayerState}
             declutter={declutterState}

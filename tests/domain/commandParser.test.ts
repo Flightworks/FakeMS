@@ -340,6 +340,15 @@ describe('typed tactical command parser', () => {
     ]);
   });
 
+  it('parses local route visibility and clear commands', () => {
+    for (const command of ['SHOW', 'HIDE', 'CLEAR']) {
+      const parsed = parseCommand(`ROUTE ${command}`);
+      expect(parsed.type, command).toBe('ROUTE');
+      expect(parsed.parameters).toMatchObject({ command });
+      expect(parsed.errors, command).toEqual([]);
+    }
+  });
+
   it('parses nearest queries with a category, optional limit, and optional reference', () => {
     const waypoint = parseCommand('NEAREST WAYPOINT');
     expect(waypoint.type).toBe('SEARCH');

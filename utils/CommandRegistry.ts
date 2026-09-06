@@ -183,6 +183,7 @@ export interface CommandContext {
     requestSimulationReplay?: () => void;
     localTimeZone?: string;
     activeRoute?: ActiveSimulatedRoute;
+    setRouteVisibility?: (visible: boolean) => void;
 }
 
 export interface CommandOption {
@@ -667,6 +668,7 @@ export const getCommands = (
         requestSimulationReplay,
         localTimeZone,
         activeRoute,
+        setRouteVisibility,
     } = context;
     const commands: CommandOption[] = [];
 
@@ -2101,6 +2103,54 @@ export const getCommands = (
                     match: 'EXACT',
                 },
             });
+        } else if (routeCommand === 'SHOW' || routeCommand === 'HIDE' || routeCommand === 'CLEAR') {
+            const hasActiveRoute = Boolean(activeRoute && activeRoute.waypoints.length > 0);
+            if (!hasActiveRoute) {
+                commands.push({
+                    id: 'route-unavailable',
+                    label: 'NO ACTIVE SIM ROUTE',
+                    subLabel: `ROUTE ${routeCommand} UNAVAILABLE · NO STATE CHANGED`,
+                    icon: Navigation,
+                    keywords: ['route', routeCommand.toLowerCase(), 'no active route', 'simulated'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else if (routeCommand === 'SHOW' || routeCommand === 'HIDE') {
+                const visible = routeCommand === 'SHOW';
+                commands.push({
+                    id: `route-${routeCommand.toLowerCase()}`,
+                    label: `ROUTE ${routeCommand}`,
+                    subLabel: `ACTIVE · ${activeRoute?.hidden ? 'HIDDEN' : 'VISIBLE'} → ${visible ? 'VISIBLE' : 'HIDDEN'} · LOCAL DISPLAY ONLY`,
+                    icon: Navigation,
+                    action: () => setRouteVisibility?.(visible),
+                    keywords: ['route', routeCommand.toLowerCase(), 'visibility', 'simulated'],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                commands.push({
+                    id: 'route-clear',
+                    label: 'ROUTE CLEAR',
+                    subLabel: `ACTIVE · ${activeRoute?.label ?? 'SIM ROUTE'} · CONFIRMATION REQUIRED · LOCAL SIMULATION ONLY`,
+                    icon: Trash2,
+                    action: () => requestMissionAction({
+                        id: `command:view:route-clear:${activeRoute?.id ?? 'unknown'}:${Date.now()}`,
+                        label: 'ROUTE CLEAR',
+                        category: 'VIEW',
+                        ...(activeRoute?.id ? { targetId: activeRoute.id } : {}),
+                        issuedAt: Date.now(),
+                        implementation: 'SIMULATED_EFFECT',
+                        requiresAuthorization: true,
+                    }),
+                    keywords: ['route', 'clear', 'confirm', 'simulated'],
+                    historyValue: q,
+                    isPreview: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
         }
     }
 

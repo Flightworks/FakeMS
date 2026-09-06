@@ -102,6 +102,7 @@ interface CommandPaletteProps {
   scenarioTimeMs?: number;
   localTimeZone?: string;
   activeRoute?: ActiveSimulatedRoute;
+  setRouteVisibility?: (visible: boolean) => void;
   layers?: TacticalLayerState;
   setLayers?: (state: TacticalLayerState) => void;
   declutter?: DeclutterState;
@@ -230,6 +231,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   scenarioTimeMs,
   localTimeZone,
   activeRoute,
+  setRouteVisibility,
   layers,
   setLayers,
   declutter,
@@ -391,6 +393,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       scenarioTimeMs,
       localTimeZone,
       activeRoute,
+      setRouteVisibility,
       layers,
       setLayers,
       declutter,
@@ -451,6 +454,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     scenarioTimeMs,
     localTimeZone,
     activeRoute,
+    setRouteVisibility,
     layers,
     setLayers,
     declutter,
