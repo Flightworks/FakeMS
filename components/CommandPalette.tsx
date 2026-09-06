@@ -56,6 +56,14 @@ interface VisualViewportRect {
 }
 
 const COMPACT_VIEWPORT_HEIGHT = 520;
+const MATH_FUNCTION_PREFIX = /^(sin|cos|tan|asin|acos|atan|sqrt|log|abs|exp)/i;
+
+const needsMathProvider = (trimmedQuery: string): boolean => trimmedQuery.length > 1 && (
+  /^[-+]?\d/.test(trimmedQuery)
+  || /^[.(]/.test(trimmedQuery)
+  || MATH_FUNCTION_PREFIX.test(trimmedQuery)
+  || /\b(?:to|in)\b/i.test(trimmedQuery)
+);
 
 const readVisualViewportRect = (): VisualViewportRect => {
   if (typeof window === 'undefined') {
@@ -163,6 +171,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [history, setHistory] = useState<HistoryEntry[]>(readStoredHistory);
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
   const [mathProvider, setMathProvider] = useState<MathCommandProvider | null>(null);
+  const isMathProviderPending = needsMathProvider(query.trim()) && !mathProvider;
 
   useEffect(() => {
     if (isOpen) {
@@ -183,12 +192,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   useEffect(() => {
     const trimmedQuery = query.trim();
-    const needsMathProvider = trimmedQuery.length > 1 && (
-      /^[-+]?\d|^[.(]/.test(trimmedQuery)
-      || /^(sin|cos|tan|asin|acos|atan|sqrt|log|abs|exp)/i.test(trimmedQuery)
-      || /\b(?:to|in)\b/i.test(trimmedQuery)
-    );
-    if (!needsMathProvider || mathProvider) return;
+    if (!needsMathProvider(trimmedQuery) || mathProvider) return;
 
     let cancelled = false;
     void import('../utils/mathEvaluator').then(({ createMathCommandProvider }) => {
@@ -383,6 +387,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (isMathProviderPending) return;
       if (commands[selectedIndex]) executeCommand(commands[selectedIndex]);
     } else if (e.key === 'Escape') {
       onClose();
@@ -402,6 +407,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Swipe Gesture Handler
   const handleSwipe = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, cmd: CommandOption) => {
+    if (isMathProviderPending) return;
     if (info.offset.x > 100) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(50); // Haptic feedback for the same command path.
@@ -532,6 +538,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </div>
         )}
 
+        {isMathProviderPending && (
+          <div className="shrink-0 px-4 py-2 border-b border-slate-800 text-[10px] text-amber-300 font-mono" role="status" aria-live="polite">
+            CALCULATOR LOADING…
+          </div>
+        )}
         {shouldShowInterpretation && (
           <CommandInterpretationPanel
             parsed={parsedCommand}
@@ -540,7 +551,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           />
         )}
 
-        <ul ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results">
+        <ul ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results" aria-busy={isMathProviderPending}>
           {commands.length === 0 ? (
             <li className="px-4 py-8 text-center text-slate-500 text-sm">
               No commands found for "{query}"
@@ -570,7 +581,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                      group px-4 py-4 min-h-[60px] flex items-center gap-4 cursor-pointer relative
                      ${isSelected ? 'bg-emerald-900/20 border-l-4 border-emerald-500' : 'border-l-4 border-transparent hover:bg-slate-800/50'}
                    `}
-                    onClick={() => executeCommand(cmd)}
+                    onClick={() => {
+                       if (isMathProviderPending) return;
+                       executeCommand(cmd);
+                     }}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
                   >
