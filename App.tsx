@@ -37,9 +37,23 @@ import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
 import type { CommandContext } from './utils/CommandRegistry';
 import { resolveCommandIntent, type CommandIntent as CommandExecutionIntent } from './application/commandExecutor';
 import { useSimulation } from './utils/useSimulation';
+import {
+  addScenarioTimer,
+  advanceScenarioTimers,
+  cancelScenarioTimer,
+  createTimerState,
+  resetScenarioTimers,
+} from './domain/simulationTimers';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
+
+const formatTimerRemaining = (milliseconds: number): string => {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
 
 const INITIAL_OWNSHIP: Entity = {
   id: 'ownship',
@@ -106,6 +120,17 @@ const App: React.FC = () => {
   }, [simulationControls.status]);
 
   useEffect(() => {
+    if (simulationControls.status === 'RESET · PAUSED' || simulationControls.status === 'REPLAY · RUNNING') {
+      setTimerState(resetScenarioTimers);
+    }
+  }, [simulationControls.status]);
+
+  useEffect(() => {
+    const running = simulationControls.status === 'RUNNING' || simulationControls.status === 'REPLAY · RUNNING';
+    setTimerState(previous => advanceScenarioTimers(previous, simulationControls.simTimeMs, running));
+  }, [simulationControls.simTimeMs, simulationControls.status]);
+
+  useEffect(() => {
     setActiveSimulatedRoute(previous => {
       if (!previous) return previous;
       const remainingWaypointCount = ownship.waypoints
@@ -144,6 +169,7 @@ const App: React.FC = () => {
   const [bullseyeProjectionPreview, setBullseyeProjectionPreview] = useState<BullseyeProjectionPreview | null>(null);
   const [intersectionPreview, setIntersectionPreview] = useState<BearingIntersectionResult | null>(null);
   const [futurePositionPreview, setFuturePositionPreview] = useState<FuturePositionPreview | null>(null);
+  const [timerState, setTimerState] = useState(() => createTimerState());
   const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
   const [mapReady, setMapReady] = useState(false);
@@ -261,6 +287,18 @@ const App: React.FC = () => {
 
   const clearFuturePositionPreview = React.useCallback(() => {
     setFuturePositionPreview(null);
+  }, []);
+
+  const createTimer = React.useCallback((durationMs: number, label: string, checkReference?: string) => {
+    setTimerState(previous => addScenarioTimer(previous, {
+      durationMs,
+      label,
+      checkReference,
+    }, simulationControls.simTimeMs).state);
+  }, [simulationControls.simTimeMs]);
+
+  const cancelTimer = React.useCallback((timerId: number) => {
+    setTimerState(previous => cancelScenarioTimer(previous, timerId));
   }, []);
 
   const proposeSetBullseye = React.useCallback((nextBullseye: BullseyeReference) => {
@@ -935,6 +973,9 @@ const App: React.FC = () => {
             previewIntersection={previewIntersection}
             previewBullseyeProjection={previewBullseyeProjection}
             previewFuturePosition={previewFuturePosition}
+            timerState={timerState}
+            createTimer={createTimer}
+            cancelTimer={cancelTimer}
             bullseye={bullseyeState.bullseye}
             proposeSetBullseye={proposeSetBullseye}
             proposeClearBullseye={proposeClearBullseye}
@@ -961,6 +1002,30 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
           />
         </React.Suspense>
+      )}
+
+      {timerState.timers.length > 0 && (
+        <section
+          className="fixed top-20 right-4 z-[105] w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-amber-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          role="status"
+          aria-label="Scenario timers"
+          data-testid="scenario-timers"
+          aria-live="polite"
+        >
+          <div className="mb-2 border-b border-slate-800 pb-2 text-amber-300">SCENARIO TIMERS · SIMULATED</div>
+          <div className="space-y-1">
+            {timerState.timers.map(timer => {
+              const remaining = timer.status === 'ACTIVE'
+                ? formatTimerRemaining(timer.dueAtSimTimeMs - simulationControls.simTimeMs)
+                : timer.status;
+              return (
+                <div key={timer.id} data-testid={`scenario-timer-${timer.id}`}>
+                  TIMER {timer.id} · {timer.label} · {timer.status} · {remaining}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {bullseyeProposal && (

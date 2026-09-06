@@ -934,5 +934,45 @@ describe('CommandRegistry', () => {
       expect(stale?.subLabel.indexOf('OLDER AGE')).toBeLessThan(stale?.subLabel.indexOf('OLD AGE'));
       expect(context.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers local scenario timers without automatic actions', () => {
+      const createTimer = vi.fn();
+      const cancelTimer = vi.fn();
+      const context = {
+        ...mockContext,
+        createTimer,
+        cancelTimer,
+        timerState: {
+          timers: [{
+            id: 1,
+            label: 'CHECK BRAVO',
+            checkReference: 'BRAVO',
+            createdAtSimTimeMs: 1_000,
+            dueAtSimTimeMs: 301_000,
+            status: 'ACTIVE' as const,
+          }],
+          events: [],
+          nextId: 2,
+        },
+        scenarioTimeMs: 10_000,
+      };
+
+      const timer = getCommands('TIMER 5MIN CHECK BRAVO', context)
+        .find(command => command.id === 'timer-create');
+      expect(timer?.label).toContain('TIMER +5MIN');
+      expect(timer?.subLabel).toContain('CHECK BRAVO');
+      timer?.action?.();
+      expect(createTimer).toHaveBeenCalledWith(300_000, 'CHECK BRAVO', 'BRAVO');
+
+      const list = getCommands('TIMERS', context).find(command => command.id === 'timer-list');
+      expect(list?.subLabel).toContain('CHECK BRAVO');
+
+      const cancel = getCommands('CANCEL TIMER 1', context)
+        .find(command => command.id === 'timer-cancel-1');
+      expect(cancel?.subLabel).toContain('CHECK BRAVO');
+      cancel?.action?.();
+      expect(cancelTimer).toHaveBeenCalledWith(1);
+      expect(context.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

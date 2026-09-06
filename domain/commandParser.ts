@@ -48,6 +48,8 @@ const COMMAND_TOKENS = new Set([
   'AGE',
   'QUALITY',
   'STALE',
+  'TIMER',
+  'TIMERS',
   'TIME',
   'DIST',
   'GS',
@@ -1164,6 +1166,47 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseTimerCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const first = tokens[0]?.normalized ?? '';
+  const isCancel = first === 'CANCEL' && tokens[1]?.normalized === 'TIMER';
+  const command = isCancel ? 'CANCEL TIMER' : first;
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+
+  if (first === 'TIMERS') {
+    if (tokens.length > 1) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'TIMERS does not accept arguments.' });
+  } else if (isCancel) {
+    const timerId = parseFiniteNumber(tokens[2]);
+    parameters.timerId = timerId;
+    if (!tokens[2]) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'CANCEL TIMER requires a timer id.' });
+    else if (timerId === null || !Number.isInteger(timerId) || timerId <= 0) {
+      errors.push({ code: 'INVALID_NUMBER', message: 'Timer id must be a positive integer.' });
+    }
+    if (tokens.length > 3) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'CANCEL TIMER accepts one timer id.' });
+  } else {
+    const durationToken = tokens[1];
+    const parts = splitNumericAndUnit(durationToken?.normalized);
+    const durationValue = parts.numberToken && parts.numberToken !== NON_FINITE_MARKER
+      ? Number(parts.numberToken)
+      : null;
+    parameters.durationValue = Number.isFinite(durationValue) ? durationValue : null;
+    parameters.durationUnit = parts.unitToken;
+    if (!durationToken) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'TIMER requires a duration.' });
+    else if (parts.numberToken === NON_FINITE_MARKER || !Number.isFinite(durationValue)) errors.push(nonFiniteError());
+    else if (durationValue === null || durationValue <= 0) errors.push({ code: 'INVALID_NUMBER', message: 'Timer duration must be positive.' });
+    else if (parts.unitToken !== 'MIN') errors.push({ code: 'UNKNOWN_UNIT', message: 'Timer duration requires MIN.' });
+    if (tokens.length > 2) {
+      if (tokens[2]?.normalized !== 'CHECK' || tokens.length < 4) {
+        errors.push({ code: 'INVALID_SYNTAX', message: 'Use TIMER <N>MIN CHECK <REF>.' });
+      } else {
+        parameters.checkReference = tokens.slice(3).map(token => token.normalized).join(' ');
+      }
+    }
+  }
+
+  return createResult('SEARCH', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseTrackInfoCommand = (tokens: CommandToken[]): ParsedCommand => {
   const command = tokens[0]?.normalized ?? '';
   const parameters: Record<string, string | number | null> = { command };
@@ -1211,7 +1254,9 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
-    || command === 'INFO' || command === 'AGE' || command === 'QUALITY' || command === 'STALE') return 'SEARCH';
+    || command === 'INFO' || command === 'AGE' || command === 'QUALITY' || command === 'STALE'
+    || command === 'TIMER' || command === 'TIMERS'
+    || (command === 'CANCEL' && tokens[1]?.normalized === 'TIMER')) return 'SEARCH';
   if (command === 'BULL'
     || (command === 'SET' && tokens[1]?.normalized === 'BULL')
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
@@ -1267,6 +1312,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'SEARCH') {
     if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
     if (tokens[0]?.normalized === 'PREDICT') return parsePredict(tokens);
+    if (tokens[0]?.normalized === 'TIMER'
+      || tokens[0]?.normalized === 'TIMERS'
+      || (tokens[0]?.normalized === 'CANCEL' && tokens[1]?.normalized === 'TIMER')) return parseTimerCommand(tokens);
     if (tokens[0]?.normalized === 'INFO'
       || tokens[0]?.normalized === 'AGE'
       || tokens[0]?.normalized === 'QUALITY'

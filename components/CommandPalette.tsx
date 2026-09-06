@@ -38,6 +38,7 @@ import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../domain/trackDetails';
+import type { ScenarioTimerState } from '../domain/simulationTimers';
 
 type CommandPaletteCloseOptions = {
   preserveFuturePosition?: boolean;
@@ -52,6 +53,9 @@ interface CommandPaletteProps {
   previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
   previewFuturePosition?: (preview: FuturePositionPreview) => void;
   previewRelativeMotion?: (preview: RelativeMotionPreview) => void;
+  timerState?: ScenarioTimerState;
+  createTimer?: (durationMs: number, label: string, checkReference?: string) => void;
+  cancelTimer?: (timerId: number) => void;
   bullseye?: BullseyeReference | null;
   proposeSetBullseye?: (bullseye: BullseyeReference) => void;
   proposeClearBullseye?: () => void;
@@ -150,6 +154,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   previewBullseyeProjection,
   previewFuturePosition,
   previewRelativeMotion,
+  timerState,
+  createTimer,
+  cancelTimer,
   bullseye,
   proposeSetBullseye,
   proposeClearBullseye,
@@ -265,6 +272,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       previewBullseyeProjection,
       previewFuturePosition,
       previewRelativeMotion,
+      timerState,
+      createTimer,
+      cancelTimer,
       bullseye,
       proposeSetBullseye,
       proposeClearBullseye,
@@ -301,6 +311,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     previewBullseyeProjection,
     previewFuturePosition,
     previewRelativeMotion,
+    timerState,
+    createTimer,
+    cancelTimer,
     bullseye,
     proposeSetBullseye,
     proposeClearBullseye,

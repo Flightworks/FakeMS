@@ -487,4 +487,28 @@ describe('typed tactical command parser', () => {
       expect.objectContaining({ code: 'UNEXPECTED_ARGUMENT' }),
     ]);
   });
+
+  it('parses scenario timers without execution', () => {
+    const timer = parseCommand('TIMER 5MIN');
+    expect(timer.type).toBe('SEARCH');
+    expect(timer.parameters).toMatchObject({ command: 'TIMER', durationValue: 5, durationUnit: 'MIN' });
+    expect(timer.errors).toEqual([]);
+
+    const check = parseCommand('TIMER 5MIN CHECK BRAVO');
+    expect(check.parameters).toMatchObject({
+      command: 'TIMER',
+      durationValue: 5,
+      durationUnit: 'MIN',
+      checkReference: 'BRAVO',
+    });
+    expect(check.errors).toEqual([]);
+
+    const list = parseCommand('TIMERS');
+    expect(list.parameters).toMatchObject({ command: 'TIMERS' });
+    expect(list.errors).toEqual([]);
+
+    const cancel = parseCommand('CANCEL TIMER 1');
+    expect(cancel.parameters).toMatchObject({ command: 'CANCEL TIMER', timerId: 1 });
+    expect(cancel.errors).toEqual([]);
+  });
 });

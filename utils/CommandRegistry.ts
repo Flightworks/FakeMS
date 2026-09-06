@@ -54,6 +54,7 @@ import {
     listStaleEntityDetails,
     type TrackDisplayDetails,
 } from '../domain/trackDetails';
+import type { ScenarioTimerState } from '../domain/simulationTimers';
 import {
     intersectBearings,
     BearingIntersectionError,
@@ -119,6 +120,9 @@ export interface CommandContext {
     measurementPositionFreshness?: (entity: Entity) => TacticalPositionFreshness;
     groundSpeed?: GroundSpeedInput;
     scenarioTimeMs?: number;
+    timerState?: ScenarioTimerState;
+    createTimer?: (durationMs: number, label: string, checkReference?: string) => void;
+    cancelTimer?: (timerId: number) => void;
     localTimeZone?: string;
     activeRoute?: ActiveSimulatedRoute;
 }
@@ -141,6 +145,7 @@ export interface CommandOption {
     relativeMotionResult?: RelativeMotionResult;
     trackDetails?: TrackDisplayDetails;
     staleTrackDetails?: TrackDisplayDetails[];
+    timerState?: ScenarioTimerState;
     keepPaletteOpen?: boolean;
 }
 
@@ -576,6 +581,9 @@ export const getCommands = (
         undoLastDesignation,
         groundSpeed,
         scenarioTimeMs,
+        timerState,
+        createTimer,
+        cancelTimer,
         localTimeZone,
         activeRoute,
     } = context;
@@ -1268,6 +1276,67 @@ export const getCommands = (
                     q,
                 ));
             }
+        }
+    }
+
+    const timerCommand = parsedMeasurement.parameters.command;
+    if (parsedMeasurement.type === 'SEARCH'
+        && (timerCommand === 'TIMER' || timerCommand === 'TIMERS' || timerCommand === 'CANCEL TIMER')
+        && parsedMeasurement.errors.length === 0) {
+        if (timerCommand === 'TIMER'
+            && typeof parsedMeasurement.parameters.durationValue === 'number'
+            && parsedMeasurement.parameters.durationUnit === 'MIN') {
+            const durationMinutes = parsedMeasurement.parameters.durationValue;
+            const checkReference = typeof parsedMeasurement.parameters.checkReference === 'string'
+                ? parsedMeasurement.parameters.checkReference
+                : undefined;
+            const timerLabel = checkReference ? `CHECK ${checkReference}` : 'TIMER';
+            commands.push({
+                id: 'timer-create',
+                label: `TIMER +${durationMinutes}MIN`,
+                subLabel: `${timerLabel} · LOCAL SCENARIO TIME · NO AUTOMATIC ACTION`,
+                icon: Compass,
+                action: createTimer ? () => createTimer(durationMinutes * 60_000, timerLabel, checkReference) : undefined,
+                keywords: ['timer', 'scenario', 'clock', 'check', checkReference ?? ''],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: false,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (timerCommand === 'TIMERS') {
+            const timers = timerState?.timers ?? [];
+            const summary = timers.length === 0
+                ? 'NO TIMERS'
+                : timers.map(timer => `${timer.id}: ${timer.label} · ${timer.status}`).join(' · ');
+            commands.push({
+                id: 'timer-list',
+                label: 'TIMERS',
+                subLabel: `${summary} · LOCAL SCENARIO TIME`,
+                icon: Compass,
+                keywords: ['timer', 'timers', 'scenario', 'clock'],
+                historyValue: q,
+                isPreview: true,
+                timerState,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (timerCommand === 'CANCEL TIMER' && typeof parsedMeasurement.parameters.timerId === 'number') {
+            const timerId = parsedMeasurement.parameters.timerId;
+            const timer = timerState?.timers.find(item => item.id === timerId);
+            commands.push({
+                id: `timer-cancel-${timerId}`,
+                label: `CANCEL TIMER ${timerId}`,
+                subLabel: timer
+                    ? `${timer.label} · STATUS: ${timer.status}`
+                    : 'TIMER NOT FOUND',
+                icon: Compass,
+                action: cancelTimer ? () => cancelTimer(timerId) : undefined,
+                keywords: ['timer', 'cancel', String(timerId)],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: false,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
         }
     }
 
