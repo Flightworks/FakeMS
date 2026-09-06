@@ -169,6 +169,10 @@ const App: React.FC = () => {
     }));
   }, []);
 
+  const undoLastDesignation = React.useCallback(() => {
+    setDesignationState(prev => designationReducer(prev, { type: 'UNDO_LAST_DESIGNATION' }));
+  }, []);
+
   const proposeClearDesignations = React.useCallback(() => {
     setDesignationState(prev => designationReducer(prev, {
       type: 'PROPOSE_CLEAR_DESIGNATIONS',
@@ -629,6 +633,7 @@ const App: React.FC = () => {
         renameDesignation,
         deleteDesignation,
         proposeClearDesignations,
+        undoLastDesignation,
         openDocument: setOpenDoc,
         ownshipNavMode,
         toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
@@ -728,6 +733,7 @@ const App: React.FC = () => {
             renameDesignation={renameDesignation}
             deleteDesignation={deleteDesignation}
             proposeClearDesignations={proposeClearDesignations}
+            undoLastDesignation={undoLastDesignation}
             proposeDirectTo={handleProposeDirectTo}
             proposeRoute={handleProposeRoute}
             requestMissionAction={issueMissionAction}

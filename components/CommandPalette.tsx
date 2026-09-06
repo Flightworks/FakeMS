@@ -7,6 +7,11 @@ import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
 import { getTacticalCompletions, type TacticalCompletion } from '../domain/commandCompletion';
+import {
+  appendCommandHistory,
+  canonicalizeCommandInput,
+  MAX_COMMAND_HISTORY_ENTRIES,
+} from '../domain/commandHistory';
 import type { MissionObjective } from '../domain/intent';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 
@@ -20,6 +25,7 @@ interface CommandPaletteProps {
   renameDesignation?: (designationId: string, label: string) => void;
   deleteDesignation?: (designationId: string) => void;
   proposeClearDesignations?: () => void;
+  undoLastDesignation?: () => void;
   proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
   proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
   requestMissionAction: (request: MissionActionRequest) => void;
@@ -56,6 +62,38 @@ const readVisualViewportRect = (): VisualViewportRect => {
   };
 };
 
+const readStoredHistory = (): HistoryEntry[] => {
+  const saved = sessionStorage.getItem('cmd_history');
+  if (!saved) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.flatMap((item): HistoryEntry[] => {
+      if (typeof item === 'string') {
+        const original = item.trim();
+        return original
+          ? [{ original, canonical: canonicalizeCommandInput(original), timestamp: Date.now() }]
+          : [];
+      }
+      if (!item || typeof item !== 'object') return [];
+
+      const record = item as Record<string, unknown>;
+      if (typeof record.original !== 'string' || typeof record.timestamp !== 'number') return [];
+      const original = record.original.trim();
+      const canonical = typeof record.canonical === 'string'
+        ? record.canonical.trim()
+        : canonicalizeCommandInput(original);
+      return original && canonical
+        ? [{ original, canonical, timestamp: record.timestamp }]
+        : [];
+    }).slice(0, MAX_COMMAND_HISTORY_ENTRIES);
+  } catch {
+    return [];
+  }
+};
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -66,6 +104,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   renameDesignation,
   deleteDesignation,
   proposeClearDesignations,
+  undoLastDesignation,
   proposeDirectTo,
   proposeRoute,
   requestMissionAction,
@@ -107,19 +146,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return () => window.removeEventListener('resize', updateVisualViewport);
   }, [isOpen]);
 
-  // History State
-  const [history, setHistory] = useState<HistoryEntry[]>(() => {
-    const saved = localStorage.getItem('cmd_history');
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      // Migrate old string arrays to objects
-      return parsed.map((item: any) => {
-        if (typeof item === 'string') return { original: item, timestamp: Date.now() };
-        return item;
-      });
-    } catch { return []; }
-  });
+  // History State: sessionStorage is scoped to the current browser tab.
+  const [history, setHistory] = useState<HistoryEntry[]>(readStoredHistory);
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
   const [mathProvider, setMathProvider] = useState<MathCommandProvider | null>(null);
 
@@ -158,13 +186,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     };
   }, [query, mathProvider]);
 
-  const addToHistory = (cmd: string) => {
-    if (!cmd.trim()) return;
-    const newEntry: HistoryEntry = { original: cmd, timestamp: Date.now() };
-    const previousFiltered = history.filter(h => h.original !== cmd);
-    const newHistory = [newEntry, ...previousFiltered].slice(0, 50);
-    setHistory(newHistory);
-    localStorage.setItem('cmd_history', JSON.stringify(newHistory));
+  const addToHistory = (original: string, canonical: string) => {
+    setHistory(previous => {
+      const next = appendCommandHistory(previous, {
+        original,
+        canonical,
+        timestamp: Date.now(),
+      });
+      sessionStorage.setItem('cmd_history', JSON.stringify(next));
+      return next;
+    });
   };
 
   const commands = useMemo(() => {
@@ -181,6 +212,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       renameDesignation,
       deleteDesignation,
       proposeClearDesignations,
+      undoLastDesignation,
       proposeDirectTo,
       proposeRoute,
       requestMissionAction,
@@ -205,6 +237,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     renameDesignation,
     deleteDesignation,
     proposeClearDesignations,
+    undoLastDesignation,
     proposeDirectTo,
     proposeRoute,
     requestMissionAction,
@@ -236,7 +269,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const executeCommand = (cmd: CommandOption) => {
     if (cmd.isHistory) {
-      setQuery(cmd.label);
+      setQuery(cmd.autocompleteValue || cmd.label);
       inputRef.current?.focus();
       return;
     }
@@ -245,7 +278,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       inputRef.current?.focus();
       return;
     }
-    addToHistory(cmd.historyValue || query);
+    addToHistory(query, cmd.historyValue || canonicalizeCommandInput(query));
     cmd.action?.();
     if (!cmd.keepPaletteOpen) onClose();
   };

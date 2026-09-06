@@ -206,4 +206,24 @@ describe('CommandPalette Component', () => {
     expect(mockProps.onClose).not.toHaveBeenCalled();
   });
 
+  it('replays history as canonical input without executing the stored action', () => {
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    const previewProjection = vi.fn();
+    render(<CommandPalette {...mockProps} previewProjection={previewProjection} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'target1 090/10' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(previewProjection).toHaveBeenCalledOnce();
+
+    vi.clearAllMocks();
+    fireEvent.change(input, { target: { value: '' } });
+    const historyEntry = screen.getByRole('option', { name: /target1 090\/10 · \d{1,2}:\d{2} (am|pm)$/i });
+    fireEvent.click(historyEntry);
+
+    expect(input).toHaveValue('TARGET1 090/10');
+    expect(previewProjection).not.toHaveBeenCalled();
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+  });
 });

@@ -9,6 +9,7 @@ export type DesignationEvent =
   | { type: 'CANCELLED'; cycleId: number }
   | { type: 'RENAMED'; designationId: string; label: string }
   | { type: 'DELETED'; designationId: string }
+  | { type: 'UNDONE'; designationId: string }
   | { type: 'CLEAR_PROPOSED'; designationIds: string[] }
   | { type: 'CLEARED'; designationIds: string[] }
   | { type: 'CLEAR_CANCELLED'; designationIds: string[] };
@@ -34,6 +35,7 @@ export type DesignationAction =
   | { type: 'CANCEL_DESIGNATION' }
   | { type: 'RENAME_DESIGNATION'; designationId: string; label: string }
   | { type: 'DELETE_DESIGNATION'; designationId: string }
+  | { type: 'UNDO_LAST_DESIGNATION' }
   | { type: 'PROPOSE_CLEAR_DESIGNATIONS' }
   | { type: 'CONFIRM_CLEAR_DESIGNATIONS' }
   | { type: 'CANCEL_CLEAR_DESIGNATIONS' };
@@ -160,6 +162,20 @@ export const designationReducer = (
         events: [
           ...state.events,
           { type: 'DELETED', designationId: action.designationId },
+        ],
+      };
+    }
+
+    case 'UNDO_LAST_DESIGNATION': {
+      const lastDesignation = state.confirmedDesignations.at(-1);
+      if (!lastDesignation) return state;
+
+      return {
+        ...state,
+        confirmedDesignations: state.confirmedDesignations.slice(0, -1),
+        events: [
+          ...state.events,
+          { type: 'UNDONE', designationId: lastDesignation.id },
         ],
       };
     }

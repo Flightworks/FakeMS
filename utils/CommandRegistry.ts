@@ -50,6 +50,7 @@ export interface CommandContext {
     renameDesignation?: (designationId: string, label: string) => void;
     deleteDesignation?: (designationId: string) => void;
     proposeClearDesignations?: () => void;
+    undoLastDesignation?: () => void;
     measurementPositionFreshness?: (entity: Entity) => TacticalPositionFreshness;
 }
 
@@ -257,6 +258,7 @@ export const getCommands = (
         renameDesignation,
         deleteDesignation,
         proposeClearDesignations,
+        undoLastDesignation,
     } = context;
     const commands: CommandOption[] = [];
 
@@ -293,7 +295,7 @@ export const getCommands = (
                     // Selecting a history entry only repopulates the input.
                     keywords: ['history'],
                     isHistory: true,
-                    autocompleteValue: entry.original
+                    autocompleteValue: entry.canonical
                 });
             });
         }
@@ -505,6 +507,23 @@ export const getCommands = (
                 ranking: createStructuredRanking(q, `DELETE ${designation.label}`),
             });
         }
+    }
+
+    if (normalizeRankingText(q) === 'UNDO LAST DESIGNATION') {
+        commands.push({
+            id: 'undo-last-designation',
+            label: 'UNDO LAST DESIGNATION',
+            subLabel: 'Remove the latest simulated designation only',
+            icon: Trash2,
+            action: () => undoLastDesignation?.(),
+            keywords: ['undo', 'last', 'designation', 'point'],
+            historyValue: 'UNDO LAST DESIGNATION',
+            ranking: {
+                category: 'STRUCTURED_EXACT',
+                completeness: 3,
+                match: 'EXACT',
+            },
+        });
     }
 
     if (normalizeRankingText(q) === 'CLEAR POINTS') {

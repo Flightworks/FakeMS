@@ -171,4 +171,34 @@ describe('designation reducer', () => {
     expect(cleared.confirmedDesignations).toEqual([]);
     expect(cleared.nextDesignationSequence).toBe(2);
   });
+
+  it('undoes only the last designation still present and is idempotent when empty', () => {
+    const firstConfirmed = reduce(
+      reduce(createDesignationState(), { type: 'PREVIEW_DESIGNATION', preview }),
+      { type: 'CONFIRM_DESIGNATION' },
+    );
+    const secondConfirmed = reduce(
+      reduce(firstConfirmed, {
+        type: 'PREVIEW_DESIGNATION',
+        preview: createProjectionPreview('G01', { lat: 48.1, lon: 2.1 }, 90, 3),
+      }),
+      { type: 'CONFIRM_DESIGNATION' },
+    );
+    const firstDeleted = reduce(secondConfirmed, {
+      type: 'DELETE_DESIGNATION',
+      designationId: 'designation-1',
+    });
+
+    const undone = reduce(firstDeleted, { type: 'UNDO_LAST_DESIGNATION' });
+
+    expect(undone.confirmedDesignations).toEqual([]);
+    expect(undone.events).toContainEqual({
+      type: 'UNDONE',
+      designationId: 'designation-2',
+    });
+    expect(firstDeleted.confirmedDesignations).toHaveLength(1);
+
+    const noOp = reduce(undone, { type: 'UNDO_LAST_DESIGNATION' });
+    expect(noOp).toBe(undone);
+  });
 });

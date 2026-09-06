@@ -58,6 +58,7 @@ export interface SystemStatus {
 
 export interface HistoryEntry {
   original: string;
+  canonical: string;
   timestamp: number;
 }
 

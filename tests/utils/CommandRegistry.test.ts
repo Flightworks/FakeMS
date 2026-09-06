@@ -75,7 +75,7 @@ describe('CommandRegistry', () => {
     it('should generate history commands when query is empty', () => {
       const historyContext = {
         ...mockContext,
-        history: [{ id: '1', timestamp: Date.now(), original: 'test command' }]
+        history: [{ id: '1', timestamp: Date.now(), original: 'test command', canonical: 'TEST COMMAND' }]
       };
       const commands = getCommands('', historyContext);
 
@@ -439,6 +439,22 @@ describe('CommandRegistry', () => {
 
       expect(commands.some(command => command.label.includes('AMBIGUOUS_REFERENCE'))).toBe(true);
       expect(commands.filter(command => command.id.startsWith('measurement-result-'))).toHaveLength(0);
+    });
+
+    it('offers UNDO LAST DESIGNATION as a local command', () => {
+      const undoLastDesignation = vi.fn();
+      const context = {
+        ...createPointContext(),
+        undoLastDesignation,
+      };
+
+      const command = getCommands('UNDO LAST DESIGNATION', context)
+        .find(candidate => candidate.id === 'undo-last-designation');
+
+      expect(command).toBeDefined();
+      command?.action?.();
+      expect(undoLastDesignation).toHaveBeenCalledOnce();
+      expect(context.proposeClearDesignations).not.toHaveBeenCalled();
     });
   });
 });

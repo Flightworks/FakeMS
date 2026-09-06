@@ -139,3 +139,37 @@ test('manages named designated points through the command palette', async ({ pag
     .getByRole('button', { name: 'Confirm clear points' }).click();
   await expect(page.getByRole('status', { name: 'Confirmed simulated designations' })).toHaveCount(0);
 });
+
+test('replays a command safely and undoes the latest simulated designation', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('bravo 180/5');
+  await page.getByRole('option', { name: /PROJ: BRAVO.*180.*5NM/ }).first().click();
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Confirm designation' }).click();
+  await expect(page.getByTestId('confirmed-designation-P1')).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await expect(input).toBeVisible();
+  await input.fill('');
+  const historyEntry = page.getByRole('option', { name: /bravo 180\/5 · \d{1,2}:\d{2} (AM|PM)$/i }).first();
+  await expect(historyEntry).toBeVisible();
+  await historyEntry.click();
+  await expect(input).toHaveValue('BRAVO 180/5');
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
+
+  await input.press('Enter');
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toBeVisible();
+  await expect(page.getByTestId('confirmed-designation-P1')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel projection preview' }).click();
+
+  await page.keyboard.press('Control+k');
+  await expect(input).toBeVisible();
+  await input.fill('UNDO LAST DESIGNATION');
+  await input.press('Enter');
+  await expect(page.getByTestId('confirmed-designation-P1')).toHaveCount(0);
+});
