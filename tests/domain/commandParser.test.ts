@@ -27,6 +27,15 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses local simulation controls without executing them', () => {
+    for (const action of ['STATUS', 'PAUSE', 'RESUME', 'RESET', 'REPLAY']) {
+      const parsed = parseCommand(`SIM ${action}`);
+      expect(parsed.type, action).toBe('SYSTEM');
+      expect(parsed.parameters, action).toMatchObject({ system: 'SIM', command: `SIM ${action}`, simulationCommand: action });
+      expect(parsed.errors, action).toEqual([]);
+    }
+  });
+
   it('recognizes each supported intent family without executing it', () => {
     const examples: Array<[string, CommandIntentType]> = [
       ['PROJ G01 090/10NM', 'PROJECTION'],

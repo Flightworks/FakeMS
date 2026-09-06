@@ -1049,5 +1049,37 @@ describe('CommandRegistry', () => {
       expect(required?.action).toBeUndefined();
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('exposes simulation controls locally and requires confirmation for reset or replay', () => {
+      const pauseSimulation = vi.fn();
+      const resumeSimulation = vi.fn();
+      const requestSimulationReset = vi.fn();
+      const requestSimulationReplay = vi.fn();
+      const context = {
+        ...mockContext,
+        simulationStatus: 'RUNNING' as const,
+        simulationIsRunning: true,
+        simulationTimeMs: 12_000,
+        pauseSimulation,
+        resumeSimulation,
+        requestSimulationReset,
+        requestSimulationReplay,
+      };
+
+      const status = getCommands('SIM STATUS', context).find(command => command.id === 'sim-status');
+      expect(status?.subLabel).toContain('RUNNING');
+      expect(status?.subLabel).toContain('LOCAL SIMULATION');
+      expect(status?.action).toBeUndefined();
+
+      getCommands('SIM PAUSE', context).find(command => command.id === 'sim-pause')?.action?.();
+      getCommands('SIM RESUME', context).find(command => command.id === 'sim-resume')?.action?.();
+      getCommands('SIM RESET', context).find(command => command.id === 'sim-reset')?.action?.();
+      getCommands('SIM REPLAY', context).find(command => command.id === 'sim-replay')?.action?.();
+      expect(pauseSimulation).toHaveBeenCalledTimes(1);
+      expect(resumeSimulation).toHaveBeenCalledTimes(1);
+      expect(requestSimulationReset).toHaveBeenCalledTimes(1);
+      expect(requestSimulationReplay).toHaveBeenCalledTimes(1);
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

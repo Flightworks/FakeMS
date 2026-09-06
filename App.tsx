@@ -99,8 +99,17 @@ const App: React.FC = () => {
   const [stabMode, setStabMode] = useState<StabMode>(StabMode.HELICO);
   const [frozenHeading, setFrozenHeading] = useState<number | null>(null);
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
+  const [simulationProposal, setSimulationProposal] = useState<'RESET' | 'REPLAY' | null>(null);
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
+  const requestSimulationReset = React.useCallback(() => setSimulationProposal('RESET'), []);
+  const requestSimulationReplay = React.useCallback(() => setSimulationProposal('REPLAY'), []);
+  const confirmSimulationProposal = React.useCallback(() => {
+    if (simulationProposal === 'RESET') simulationControls.reset();
+    if (simulationProposal === 'REPLAY') simulationControls.replay();
+    setSimulationProposal(null);
+  }, [simulationControls, simulationProposal]);
+  const cancelSimulationProposal = React.useCallback(() => setSimulationProposal(null), []);
   const localTimeZone = React.useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     [],
@@ -976,6 +985,13 @@ const App: React.FC = () => {
             timerState={timerState}
             createTimer={createTimer}
             cancelTimer={cancelTimer}
+            simulationStatus={simulationControls.status}
+            simulationIsRunning={simulationControls.isRunning}
+            simulationTimeMs={simulationControls.simTimeMs}
+            pauseSimulation={simulationControls.pause}
+            resumeSimulation={simulationControls.resume}
+            requestSimulationReset={requestSimulationReset}
+            requestSimulationReplay={requestSimulationReplay}
             bullseye={bullseyeState.bullseye}
             proposeSetBullseye={proposeSetBullseye}
             proposeClearBullseye={proposeClearBullseye}
@@ -1002,6 +1018,40 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
           />
         </React.Suspense>
+      )}
+
+      {simulationProposal && (
+        <div
+          className="fixed inset-0 z-[125] flex items-center justify-center bg-slate-950/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Confirm simulation ${simulationProposal.toLowerCase()}`}
+        >
+          <div className="w-[min(26rem,calc(100vw-2rem))] rounded-xl border border-cyan-400/70 bg-slate-950 p-5 font-mono text-sm text-slate-100 shadow-2xl">
+            <div className="mb-2 text-cyan-300">CONFIRM SIM {simulationProposal}?</div>
+            <p className="mb-4 text-xs text-slate-400">
+              This changes the local deterministic scenario only. No real GPS position or mission action is changed.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-cyan-400/70 px-3 py-2 text-cyan-300 hover:bg-cyan-400/10"
+                aria-label={`Confirm simulation ${simulationProposal.toLowerCase()}`}
+                onClick={confirmSimulationProposal}
+              >
+                CONFIRM
+              </button>
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-slate-600 px-3 py-2 text-slate-300 hover:bg-slate-800"
+                aria-label="Cancel simulation change"
+                onClick={cancelSimulationProposal}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {timerState.timers.length > 0 && (

@@ -1175,6 +1175,20 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseSimulationCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const action = tokens[1]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = {
+    system: 'SIM',
+    command: `SIM ${action}`.trim(),
+    simulationCommand: action || null,
+  };
+  const allowed = new Set(['STATUS', 'PAUSE', 'RESUME', 'RESET', 'REPLAY']);
+  const errors = action && allowed.has(action)
+    ? []
+    : [{ code: 'INVALID_SYNTAX' as const, message: 'Use SIM STATUS, PAUSE, RESUME, RESET, or REPLAY.' }];
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parsePrefixedUnit = (token: CommandToken | undefined, prefix: string, unit: string): number | null => {
   if (!token) return null;
   const match = token.normalized.match(new RegExp(`^${prefix}([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))${unit}$`));
@@ -1497,6 +1511,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'SIM') return parseSimulationCommand(tokens);
     return createResult('SYSTEM', tokens, { system: tokens[1]?.normalized ?? tokens[0].normalized });
   }
 

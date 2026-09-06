@@ -135,6 +135,13 @@ export interface CommandContext {
     favoriteState?: FavoriteState;
     addFavorite?: (request: FavoriteRequest) => void;
     removeFavorite?: (favoriteId: number) => void;
+    simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
+    simulationIsRunning?: boolean;
+    simulationTimeMs?: number;
+    pauseSimulation?: () => void;
+    resumeSimulation?: () => void;
+    requestSimulationReset?: () => void;
+    requestSimulationReplay?: () => void;
     localTimeZone?: string;
     activeRoute?: ActiveSimulatedRoute;
 }
@@ -601,6 +608,13 @@ export const getCommands = (
         favoriteState,
         addFavorite,
         removeFavorite,
+        simulationStatus,
+        simulationIsRunning,
+        simulationTimeMs,
+        pauseSimulation,
+        resumeSimulation,
+        requestSimulationReset,
+        requestSimulationReplay,
         localTimeZone,
         activeRoute,
     } = context;
@@ -976,6 +990,81 @@ export const getCommands = (
     }
 
     const parsedMeasurement = parseCommand(q);
+    const simulationCommand = parsedMeasurement.parameters.simulationCommand;
+    if (parsedMeasurement.type === 'SYSTEM'
+        && parsedMeasurement.parameters.system === 'SIM'
+        && parsedMeasurement.errors.length === 0
+        && (simulationCommand === 'STATUS'
+            || simulationCommand === 'PAUSE'
+            || simulationCommand === 'RESUME'
+            || simulationCommand === 'RESET'
+            || simulationCommand === 'REPLAY')) {
+        const status = simulationStatus ?? (simulationIsRunning ? 'RUNNING' : 'PAUSED');
+        const simulatedSeconds = typeof simulationTimeMs === 'number' ? Math.floor(simulationTimeMs / 1000) : null;
+        const statusSuffix = simulatedSeconds === null ? '' : ` · SIM T+${simulatedSeconds}s`;
+        if (simulationCommand === 'STATUS') {
+            commands.push({
+                id: 'sim-status',
+                label: 'SIM STATUS',
+                subLabel: `${status}${statusSuffix} · LOCAL SIMULATION · NO SIDE EFFECT`,
+                icon: Compass,
+                keywords: ['sim', 'simulation', 'status', status.toLowerCase()],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'PAUSE') {
+            commands.push({
+                id: 'sim-pause',
+                label: 'SIM PAUSE',
+                subLabel: `${status} · LOCAL SIMULATION · IDEMPOTENT`,
+                icon: Compass,
+                action: pauseSimulation,
+                keywords: ['sim', 'pause', 'simulation'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'RESUME') {
+            commands.push({
+                id: 'sim-resume',
+                label: 'SIM RESUME',
+                subLabel: `${status} · LOCAL SIMULATION · IDEMPOTENT`,
+                icon: Compass,
+                action: resumeSimulation,
+                keywords: ['sim', 'resume', 'simulation'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (simulationCommand === 'RESET') {
+            commands.push({
+                id: 'sim-reset',
+                label: 'SIM RESET',
+                subLabel: `${status} · LOCAL SIMULATION · CONFIRMATION REQUIRED`,
+                icon: Compass,
+                action: requestSimulationReset,
+                keywords: ['sim', 'reset', 'simulation', 'confirm'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else {
+            commands.push({
+                id: 'sim-replay',
+                label: 'SIM REPLAY',
+                subLabel: `${status} · LOCAL SIMULATION · CONFIRMATION REQUIRED`,
+                icon: Compass,
+                action: requestSimulationReplay,
+                keywords: ['sim', 'replay', 'simulation', 'confirm'],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        }
+    }
+
     const calculationCommand = typeof parsedMeasurement.parameters.command === 'string'
         ? parsedMeasurement.parameters.command
         : undefined;

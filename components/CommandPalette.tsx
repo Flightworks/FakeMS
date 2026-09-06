@@ -65,6 +65,13 @@ interface CommandPaletteProps {
   timerState?: ScenarioTimerState;
   createTimer?: (durationMs: number, label: string, checkReference?: string) => void;
   cancelTimer?: (timerId: number) => void;
+  simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
+  simulationIsRunning?: boolean;
+  simulationTimeMs?: number;
+  pauseSimulation?: () => void;
+  resumeSimulation?: () => void;
+  requestSimulationReset?: () => void;
+  requestSimulationReplay?: () => void;
   bullseye?: BullseyeReference | null;
   proposeSetBullseye?: (bullseye: BullseyeReference) => void;
   proposeClearBullseye?: () => void;
@@ -175,6 +182,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   timerState,
   createTimer,
   cancelTimer,
+  simulationStatus,
+  simulationIsRunning,
+  simulationTimeMs,
+  pauseSimulation,
+  resumeSimulation,
+  requestSimulationReset,
+  requestSimulationReplay,
   bullseye,
   proposeSetBullseye,
   proposeClearBullseye,
@@ -320,6 +334,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       timerState,
       createTimer,
       cancelTimer,
+      simulationStatus,
+      simulationIsRunning,
+      simulationTimeMs,
+      pauseSimulation,
+      resumeSimulation,
+      requestSimulationReset,
+      requestSimulationReplay,
       favoriteState,
       addFavorite: addFavoriteToStorage,
       removeFavorite: removeFavoriteFromStorage,
@@ -362,6 +383,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     timerState,
     createTimer,
     cancelTimer,
+    simulationStatus,
+    simulationIsRunning,
+    simulationTimeMs,
+    pauseSimulation,
+    resumeSimulation,
+    requestSimulationReset,
+    requestSimulationReplay,
     favoriteState,
     addFavoriteToStorage,
     removeFavoriteFromStorage,
