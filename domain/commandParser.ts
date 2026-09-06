@@ -66,6 +66,7 @@ const COMMAND_TOKENS = new Set([
   'LEGEND',
   'GRID',
   'ZONE',
+  'TRAIL',
   'TIME',
   'DIST',
   'GS',
@@ -1182,6 +1183,27 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseTrailCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const parameters: Record<string, CommandParameter> = { system: 'TRAIL', command: 'TRAIL' };
+  const errors: CommandParseError[] = [];
+  const subcommand = tokens[1]?.normalized;
+  if (subcommand === 'STATUS' && tokens.length === 2) {
+    parameters.trailCommand = 'STATUS';
+  } else if (subcommand === 'CLEAR') {
+    parameters.trailCommand = 'CLEAR';
+    parameters.targetReference = tokens.slice(2).map(token => token.normalized).join(' ') || null;
+    if (tokens.length < 3) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'TRAIL CLEAR requires a target reference.' });
+  } else if (tokens[tokens.length - 1]?.normalized === 'ON' || tokens[tokens.length - 1]?.normalized === 'OFF') {
+    parameters.trailCommand = 'VISIBILITY';
+    parameters.targetReference = tokens.slice(1, -1).map(token => token.normalized).join(' ') || null;
+    parameters.visible = tokens[tokens.length - 1]?.normalized === 'ON';
+    if (tokens.length < 3) errors.push({ code: 'INCOMPLETE_COMMAND', message: 'Use TRAIL <TARGET> ON or OFF.' });
+  } else {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use TRAIL <TARGET> ON/OFF, TRAIL STATUS, or TRAIL CLEAR <TARGET>.' });
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseZoneCommand = (tokens: CommandToken[]): ParsedCommand => {
   const zoneCommand = tokens[1]?.normalized ?? '';
   const parameters: Record<string, CommandParameter> = {
@@ -1614,7 +1636,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
-  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND', 'GRID', 'ZONE'].includes(command)) {
+  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER', 'LEGEND', 'GRID', 'ZONE', 'TRAIL'].includes(command)) {
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
@@ -1657,6 +1679,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'TRAIL') return parseTrailCommand(tokens);
     if (tokens[0]?.normalized === 'ZONE') return parseZoneCommand(tokens);
     if (tokens[0]?.normalized === 'GRID') return parseGridCommand(tokens);
     if (tokens[0]?.normalized === 'LEGEND') return parseLegendCommand(tokens);

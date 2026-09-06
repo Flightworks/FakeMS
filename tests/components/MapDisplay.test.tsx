@@ -5,6 +5,7 @@ import { MapDisplay } from '../../components/MapDisplay';
 import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
 import { createProjectionPreview } from '../../domain/designations';
 import type { SimulatedDesignation } from '../../domain/designations';
+import type { TrackTrailState } from '../../domain/trackTrails';
 
 // Mock Framer motion completely since useGesture and react-spring have complex internal physics
 vi.mock('@use-gesture/react', () => ({
@@ -265,6 +266,28 @@ describe('MapDisplay Component', () => {
 
     expect(screen.queryByRole('dialog', { name: 'MAP ACTION radial menu' })).not.toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it('renders visible historical trail segments separately from current markers', () => {
+    const trails: TrackTrailState = {
+      trails: {
+        target1: {
+          targetId: 'target1',
+          label: 'HOSTILE-1',
+          visible: true,
+          limited: false,
+          points: [
+            { position: { lat: 35.1, lon: -120.1 }, atMs: 1_000, segmentId: 1 },
+            { position: { lat: 35.11, lon: -120.1 }, atMs: 3_000, segmentId: 1 },
+          ],
+        },
+      },
+    };
+    const { rerender } = render(<MapDisplay {...defaultProps} trails={trails} />);
+    expect(document.querySelectorAll('.track-trail-line')).toHaveLength(1);
+
+    rerender(<MapDisplay {...defaultProps} trails={{ trails: { target1: { ...trails.trails.target1, visible: false } } }} />);
+    expect(document.querySelectorAll('.track-trail-line')).toHaveLength(0);
   });
 
   afterEach(() => {

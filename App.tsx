@@ -60,6 +60,14 @@ import {
   createDefaultZones,
   type NamedZone,
 } from './domain/zones';
+import {
+  appendTrailSample,
+  clearTrail,
+  createTrailState,
+  resetTrailState,
+  setTrailVisibility as setTrailVisibilityState,
+  type TrackTrailState,
+} from './domain/trackTrails';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
@@ -121,6 +129,8 @@ const App: React.FC = () => {
   const [gridState, setGridState] = useState<GridState>(() => createGridState());
   const [zones] = useState<NamedZone[]>(() => createDefaultZones());
   const [visibleZoneId, setVisibleZoneId] = useState<string | null>(null);
+  const [trailState, setTrailState] = useState<TrackTrailState>(() => createTrailState());
+  const trailResetStatusRef = useRef<string | null>(null);
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
   const requestSimulationReset = React.useCallback(() => setSimulationProposal('RESET'), []);
@@ -159,6 +169,47 @@ const App: React.FC = () => {
     const running = simulationControls.status === 'RUNNING' || simulationControls.status === 'REPLAY · RUNNING';
     setTimerState(previous => advanceScenarioTimers(previous, simulationControls.simTimeMs, running));
   }, [simulationControls.simTimeMs, simulationControls.status]);
+
+  useEffect(() => {
+    const status = simulationControls.status;
+    if (status === 'RESET · PAUSED') {
+      if (trailResetStatusRef.current !== status) {
+        trailResetStatusRef.current = status;
+        setTrailState(resetTrailState());
+      }
+      return;
+    }
+    if (status === 'REPLAY · RUNNING' && trailResetStatusRef.current !== status) {
+      trailResetStatusRef.current = status;
+      setTrailState(resetTrailState());
+      return;
+    }
+    if (status !== 'REPLAY · RUNNING') trailResetStatusRef.current = null;
+    const ownshipSource = ownshipNavMode === NavMode.SIM ? 'SIM' : navigationState.source;
+    setTrailState(previous => {
+      let next = previous;
+      if (ownshipNavMode === NavMode.SIM || (navigationState.source === 'GPS' && navigationState.validity === 'VALID')) {
+        next = appendTrailSample(previous, {
+          targetId: 'OWNSHIP',
+          label: ownship.label,
+          position: ownship.position,
+          atMs: simulationControls.simTimeMs,
+          source: ownshipSource,
+          accuracyMeters: navigationState.accuracyMeters,
+        }).state;
+      }
+      for (const entity of entities) {
+        next = appendTrailSample(next, {
+          targetId: entity.id,
+          label: entity.label,
+          position: entity.position,
+          atMs: simulationControls.simTimeMs,
+          source: 'SIM',
+        }).state;
+      }
+      return next;
+    });
+  }, [entities, navigationState.accuracyMeters, navigationState.source, navigationState.validity, ownship, ownshipNavMode, simulationControls.simTimeMs, simulationControls.status]);
 
   useEffect(() => {
     setActiveSimulatedRoute(previous => {
@@ -554,19 +605,30 @@ const App: React.FC = () => {
     setActiveSimulatedRoute(previous => previous ? { ...previous, hidden: !visible } : previous);
   }, []);
 
+  const setTrailVisibility = React.useCallback((targetId: string, visible: boolean, label?: string) => {
+    setTrailState(previous => setTrailVisibilityState(previous, targetId, visible, label));
+  }, []);
+
   const handleMissionActionIntent = React.useCallback((intent: MissionActionIntent) => {
     setMissionActionState(prev => dispatchMissionAction(prev, intent, {
       executeSimulatedEffect: action => action.id.startsWith('command:view:route-clear:')
         ? { ok: true, detail: 'ACTIVE SIM ROUTE CLEARED' }
-        : { ok: false, reason: 'No local simulated effect is available for this action' },
+        : action.id.startsWith('command:view:trail-clear:')
+          ? { ok: true, detail: 'TARGET TRAIL CLEARED' }
+          : { ok: false, reason: 'No local simulated effect is available for this action' },
     }));
   }, []);
 
   useEffect(() => {
     const activeAction = missionActionState.active;
-    if (activeAction?.status !== 'COMPLETED_SIM' || !activeAction.id.startsWith('command:view:route-clear:')) return;
-    setActiveSimulatedRoute(undefined);
-    setAcceptedRouteProposalId(null);
+    if (activeAction?.status !== 'COMPLETED_SIM') return;
+    if (activeAction.id.startsWith('command:view:route-clear:')) {
+      setActiveSimulatedRoute(undefined);
+      setAcceptedRouteProposalId(null);
+    }
+    if (activeAction.id.startsWith('command:view:trail-clear:') && activeAction.targetId) {
+      setTrailState(previous => clearTrail(previous, activeAction.targetId as string));
+    }
   }, [missionActionState.active]);
 
   const handleProposeRoute = React.useCallback((
@@ -987,6 +1049,7 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
             declutter={declutterState}
             grid={gridState}
+            trails={trailState}
             visibleZone={zones.find(zone => zone.id === visibleZoneId) ?? null}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
@@ -1069,6 +1132,8 @@ const App: React.FC = () => {
             localTimeZone={localTimeZone}
             activeRoute={activeRouteForPalette}
             setRouteVisibility={setActiveRouteVisibility}
+            trails={trailState}
+            setTrailVisibility={setTrailVisibility}
             layers={layerState}
             setLayers={setLayerState}
             declutter={declutterState}

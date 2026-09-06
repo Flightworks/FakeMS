@@ -35,6 +35,7 @@ import {
 import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
+import type { TrackTrailState } from '../domain/trackTrails';
 import type { TacticalLayerState } from '../domain/layers';
 import type { GridState } from '../domain/grid';
 import type { NamedZone } from '../domain/zones';
@@ -103,6 +104,8 @@ interface CommandPaletteProps {
   localTimeZone?: string;
   activeRoute?: ActiveSimulatedRoute;
   setRouteVisibility?: (visible: boolean) => void;
+  trails?: TrackTrailState;
+  setTrailVisibility?: (targetId: string, visible: boolean, label?: string) => void;
   layers?: TacticalLayerState;
   setLayers?: (state: TacticalLayerState) => void;
   declutter?: DeclutterState;
@@ -232,6 +235,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   localTimeZone,
   activeRoute,
   setRouteVisibility,
+  trails,
+  setTrailVisibility,
   layers,
   setLayers,
   declutter,
@@ -394,6 +399,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       localTimeZone,
       activeRoute,
       setRouteVisibility,
+      trails,
+      setTrailVisibility,
       layers,
       setLayers,
       declutter,
@@ -455,6 +462,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     localTimeZone,
     activeRoute,
     setRouteVisibility,
+    trails,
+    setTrailVisibility,
     layers,
     setLayers,
     declutter,

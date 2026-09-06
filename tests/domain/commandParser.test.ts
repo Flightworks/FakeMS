@@ -27,6 +27,21 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses local track-trail commands', () => {
+    expect(parseCommand('TRAIL OWNSHIP ON')).toMatchObject({
+      type: 'SYSTEM', parameters: { system: 'TRAIL', trailCommand: 'VISIBILITY', targetReference: 'OWNSHIP', visible: true }, errors: [],
+    });
+    expect(parseCommand('TRAIL BRAVO OFF')).toMatchObject({
+      type: 'SYSTEM', parameters: { system: 'TRAIL', trailCommand: 'VISIBILITY', targetReference: 'BRAVO', visible: false }, errors: [],
+    });
+    expect(parseCommand('TRAIL STATUS')).toMatchObject({
+      type: 'SYSTEM', parameters: { system: 'TRAIL', trailCommand: 'STATUS' }, errors: [],
+    });
+    expect(parseCommand('TRAIL CLEAR BRAVO')).toMatchObject({
+      type: 'SYSTEM', parameters: { system: 'TRAIL', trailCommand: 'CLEAR', targetReference: 'BRAVO' }, errors: [],
+    });
+  });
+
   it('parses local named-zone commands', () => {
     expect(parseCommand('ZONE LIST')).toMatchObject({
       type: 'SYSTEM',

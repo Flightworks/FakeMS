@@ -7,6 +7,7 @@ import { createLayerState } from '../../domain/layers';
 import { createDeclutterState } from '../../domain/declutter';
 import { createGridState } from '../../domain/grid';
 import { createDefaultZones } from '../../domain/zones';
+import { createTrailState } from '../../domain/trackTrails';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1248,6 +1249,33 @@ describe('CommandRegistry', () => {
       const unavailable = getCommands('ROUTE CLEAR', { ...context, activeRoute: undefined })
         .find(command => command.id === 'route-unavailable');
       expect(unavailable?.label).toBe('NO ACTIVE SIM ROUTE');
+    });
+
+    it('controls trail visibility and proposes target-only trail clearing', () => {
+      const baseTrailState = createTrailState();
+      const trails = {
+        trails: {
+          ...baseTrailState.trails,
+          target1: { targetId: 'target1', label: 'TARGET1', visible: false, limited: true, points: [{ position: { lat: 0, lon: 0 }, atMs: 1, segmentId: 1 }] },
+        },
+      };
+      const setTrailVisibility = vi.fn();
+      const requestMissionAction = vi.fn();
+      const context = { ...mockContext, trails, setTrailVisibility, requestMissionAction };
+      const on = getCommands('TRAIL TARGET1 ON', context).find(command => command.id === 'trail-visibility');
+      expect(on?.subLabel).toContain('HIDDEN');
+      on?.action?.();
+      expect(setTrailVisibility).toHaveBeenCalledWith('target1', true, 'TARGET1');
+
+      const status = getCommands('TRAIL STATUS', context).find(command => command.id === 'trail-status');
+      expect(status?.subLabel).toContain('TRAIL LIMITED');
+
+      const clear = getCommands('TRAIL CLEAR TARGET1', context).find(command => command.id === 'trail-clear');
+      expect(clear?.subLabel).toContain('CONFIRMATION REQUIRED');
+      clear?.action?.();
+      expect(requestMissionAction).toHaveBeenCalledWith(expect.objectContaining({
+        label: 'TRAIL CLEAR TARGET1', implementation: 'SIMULATED_EFFECT', requiresAuthorization: true,
+      }));
     });
   });
 });

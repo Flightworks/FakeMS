@@ -14,6 +14,8 @@ import { createLayerState } from '../domain/layers';
 import type { GridState } from '../domain/grid';
 import { buildGridLines, createGridState } from '../domain/grid';
 import type { NamedZone } from '../domain/zones';
+import type { TrackTrailState } from '../domain/trackTrails';
+import { getTrailSegments } from '../domain/trackTrails';
 import {
   createDeclutterState,
   isDeclutterCategoryHidden,
@@ -80,6 +82,7 @@ interface MapDisplayProps {
   activeRoute?: ActiveSimulatedRoute;
   declutter?: DeclutterState;
   grid?: GridState;
+  trails?: TrackTrailState;
   visibleZone?: NamedZone | null;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
@@ -337,6 +340,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   activeRoute,
   declutter = createDeclutterState(),
   grid = createGridState(),
+  trails = { trails: {} },
   visibleZone = null,
   confirmedDesignations = [],
   showDesignationList = false,
@@ -862,6 +866,17 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     ? buildGridLines(gridCenter, leafletZoom, grid.stepMinutes)
       .map(line => line.map(position => [position.lat, position.lon] as [number, number]))
     : [];
+  const trailLineSegments = Object.values(trails.trails).flatMap(trail => (
+    trail.visible
+      ? getTrailSegments(trail)
+        .filter(segment => segment.length > 1)
+        .map(segment => ({
+          id: `${trail.targetId}:${segment[0]?.segmentId ?? 0}`,
+          positions: segment.map(point => [point.position.lat, point.position.lon] as [number, number]),
+          color: trail.targetId === 'OWNSHIP' ? '#38bdf8' : '#f97316',
+        }))
+      : []
+  ));
 
   return (
     <div
@@ -983,6 +998,20 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 pathOptions={{ color: '#a78bfa', weight: 2, opacity: 0.9, fillOpacity: 0.08, dashArray: '8 5' }}
               />
             )}
+          </Pane>
+        )}
+
+        {trailLineSegments.length > 0 && (
+          <Pane name="trackTrailLayer" className="track-trail-layer" style={{ pointerEvents: 'none' }}>
+            {trailLineSegments.map(segment => (
+              <Polyline
+                key={`trail-${segment.id}`}
+                positions={segment.positions}
+                className="track-trail-line"
+                interactive={false}
+                pathOptions={{ color: segment.color, weight: 2, opacity: 0.65, dashArray: '2 5' }}
+              />
+            ))}
           </Pane>
         )}
 

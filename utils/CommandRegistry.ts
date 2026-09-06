@@ -81,6 +81,7 @@ import {
     getZone,
     type NamedZone,
 } from '../domain/zones';
+import type { TrackTrailState } from '../domain/trackTrails';
 import {
     createLayerState,
     setLayerVisibility,
@@ -184,6 +185,8 @@ export interface CommandContext {
     localTimeZone?: string;
     activeRoute?: ActiveSimulatedRoute;
     setRouteVisibility?: (visible: boolean) => void;
+    trails?: TrackTrailState;
+    setTrailVisibility?: (targetId: string, visible: boolean, label?: string) => void;
 }
 
 export interface CommandOption {
@@ -669,6 +672,8 @@ export const getCommands = (
         localTimeZone,
         activeRoute,
         setRouteVisibility,
+        trails,
+        setTrailVisibility,
     } = context;
     const commands: CommandOption[] = [];
 
@@ -2150,6 +2155,111 @@ export const getCommands = (
                     isPreview: true,
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
+            }
+        }
+    }
+
+    const trailCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM' && trailCommand === 'TRAIL') {
+        const requestedTrailCommand = parsedMeasurement.parameters.trailCommand;
+        const trailState = trails ?? { trails: {} };
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'trail-unavailable',
+                label: 'TRAIL UNAVAILABLE',
+                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID TRAIL COMMAND'} · NO STATE CHANGED`,
+                icon: History,
+                keywords: ['trail', 'unavailable'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (requestedTrailCommand === 'STATUS') {
+            const entries = Object.values(trailState.trails);
+            const summary = entries.length === 0
+                ? 'NO TRAIL HISTORY · HIDDEN BY DEFAULT'
+                : entries.map(trail => `${trail.label}: ${trail.visible ? 'VISIBLE' : 'HIDDEN'} · ${trail.points.length < 2 ? 'TRAIL INSUFFICIENT' : `${trail.points.length} POINTS`}${trail.limited ? ' · TRAIL LIMITED' : ''}`).join(' · ');
+            const ignoredSuffix = trailState.lastIgnoredReason ? ` · ${trailState.lastIgnoredReason}` : '';
+            commands.push({
+                id: 'trail-status',
+                label: 'TRAIL STATUS',
+                subLabel: `${summary}${ignoredSuffix} · LOCAL MEMORY ONLY`,
+                icon: History,
+                keywords: ['trail', 'status', 'history', 'local'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.targetReference === 'string') {
+            const resolution = resolveEntityReference(parsedMeasurement.parameters.targetReference, entities, ownship);
+            if (resolution.status !== 'RESOLVED' || !resolution.entity) {
+                commands.push({
+                    id: 'trail-unavailable',
+                    label: 'TRAIL UNAVAILABLE',
+                    subLabel: `${parsedMeasurement.parameters.targetReference} · TARGET ${resolution.status} · NO STATE CHANGED`,
+                    icon: History,
+                    keywords: ['trail', 'unknown', 'ambiguous'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                const targetId = resolution.entity.id === ownship.id ? 'OWNSHIP' : resolution.entity.id;
+                const currentTrail = trailState.trails[targetId];
+                if (requestedTrailCommand === 'VISIBILITY' && typeof parsedMeasurement.parameters.visible === 'boolean') {
+                    const visible = parsedMeasurement.parameters.visible;
+                    commands.push({
+                        id: 'trail-visibility',
+                        label: `TRAIL ${resolution.entity.label} ${visible ? 'ON' : 'OFF'}`,
+                        subLabel: `${currentTrail?.visible ? 'VISIBLE' : 'HIDDEN'} → ${visible ? 'VISIBLE' : 'HIDDEN'} · ${currentTrail ? (currentTrail.points.length < 2 ? 'TRAIL INSUFFICIENT' : `${currentTrail.points.length} POINTS`) : 'NO TRAIL HISTORY'} · HISTORICAL ONLY`,
+                        icon: History,
+                        action: () => setTrailVisibility?.(targetId, visible, resolution.entity?.label),
+                        keywords: ['trail', 'history', visible ? 'on' : 'off', resolution.entity.label.toLowerCase()],
+                        historyValue: q,
+                        isPreview: true,
+                        ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                    });
+                } else if (requestedTrailCommand === 'CLEAR') {
+                    if (!currentTrail || currentTrail.points.length === 0) {
+                        commands.push({
+                            id: 'trail-unavailable',
+                            label: 'TRAIL UNAVAILABLE',
+                            subLabel: `${resolution.entity.label} · NO TRAIL HISTORY · CLEAR NOT EXECUTED`,
+                            icon: History,
+                            keywords: ['trail', 'clear', 'no history'],
+                            historyValue: q,
+                            isPreview: true,
+                            keepPaletteOpen: true,
+                            ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                        });
+                    } else {
+                        commands.push({
+                            id: 'trail-clear',
+                            label: `TRAIL CLEAR ${resolution.entity.label}`,
+                            subLabel: `${currentTrail.points.length} POINTS · CONFIRMATION REQUIRED · TARGET ONLY`,
+                            icon: Trash2,
+                            action: () => {
+                                const issuedAt = Date.now();
+                                requestMissionAction({
+                                    id: `command:view:trail-clear:${targetId}:${issuedAt}`,
+                                    label: `TRAIL CLEAR ${resolution.entity.label}`,
+                                    category: 'VIEW',
+                                    targetId,
+                                    issuedAt,
+                                    implementation: 'SIMULATED_EFFECT',
+                                    requiresAuthorization: true,
+                                });
+                            },
+                            keywords: ['trail', 'clear', 'confirm', 'history', resolution.entity.label.toLowerCase()],
+                            historyValue: q,
+                            isPreview: true,
+                            ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                        });
+                    }
+                }
             }
         }
     }
