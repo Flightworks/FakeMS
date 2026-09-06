@@ -37,6 +37,7 @@ test('keeps PREDICT executable on the shared drag-and-drop path', async ({ page 
   await page.keyboard.press('Control+k');
 
   const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(page.locator('.leaflet-container')).toBeVisible();
   await input.fill('PREDICT HOSTILE 1 +2MIN');
   const command = page.getByRole('option', { name: /^PREDICT HOSTILE 1 \+2MIN ·/i });
   await expect(command).toBeVisible();
