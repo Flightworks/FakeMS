@@ -40,6 +40,14 @@ import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/rela
 import type { TrackDisplayDetails } from '../domain/trackDetails';
 import type { ScenarioTimerState } from '../domain/simulationTimers';
 import type { TacticalQuantity } from '../domain/tacticalUnits';
+import {
+  addFavorite,
+  createFavoriteState,
+  loadFavoriteState,
+  removeFavorite,
+  type FavoriteRequest,
+  type FavoriteState,
+} from '../domain/favorites';
 
 type CommandPaletteCloseOptions = {
   preserveFuturePosition?: boolean;
@@ -146,6 +154,15 @@ const readStoredHistory = (): HistoryEntry[] => {
   }
 };
 
+const readStoredFavorites = (): FavoriteState => {
+  if (typeof window === 'undefined') return createFavoriteState();
+  try {
+    return loadFavoriteState(window.localStorage.getItem('cmd_favorites'));
+  } catch {
+    return createFavoriteState();
+  }
+};
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -214,6 +231,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // History State: sessionStorage is scoped to the current browser tab.
   const [history, setHistory] = useState<HistoryEntry[]>(readStoredHistory);
+  const [favoriteState, setFavoriteState] = useState<FavoriteState>(readStoredFavorites);
   const [historyIndex, setHistoryIndex] = useState(-1); // -1 means typing new command
   const [mathProvider, setMathProvider] = useState<MathCommandProvider | null>(null);
   const isMathProviderPending = needsMathProvider(query.trim()) && !mathProvider;
@@ -260,6 +278,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     });
   };
 
+  const addFavoriteToStorage = React.useCallback((request: FavoriteRequest) => {
+    setFavoriteState(previous => {
+      const result = addFavorite(previous, request);
+      if (result.status === 'AVAILABLE') {
+        try {
+          window.localStorage.setItem('cmd_favorites', JSON.stringify(result.state));
+        } catch {
+          // Storage failures leave the in-memory favorite available for this session.
+        }
+      }
+      return result.state;
+    });
+  }, []);
+
+  const removeFavoriteFromStorage = React.useCallback((favoriteId: number) => {
+    setFavoriteState(previous => {
+      const next = removeFavorite(previous, favoriteId);
+      try {
+        window.localStorage.setItem('cmd_favorites', JSON.stringify(next));
+      } catch {
+        // Storage failures leave the in-memory state available for this session.
+      }
+      return next;
+    });
+  }, []);
+
   const commands = useMemo(() => {
     const context: CommandContext = {
       entities,
@@ -276,6 +320,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       timerState,
       createTimer,
       cancelTimer,
+      favoriteState,
+      addFavorite: addFavoriteToStorage,
+      removeFavorite: removeFavoriteFromStorage,
       bullseye,
       proposeSetBullseye,
       proposeClearBullseye,
@@ -315,6 +362,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     timerState,
     createTimer,
     cancelTimer,
+    favoriteState,
+    addFavoriteToStorage,
+    removeFavoriteFromStorage,
     bullseye,
     proposeSetBullseye,
     proposeClearBullseye,

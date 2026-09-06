@@ -526,4 +526,29 @@ describe('typed tactical command parser', () => {
       expect.objectContaining({ code: 'INCOMPATIBLE_UNIT' }),
     ]);
   });
+
+  it('parses safe favorite commands without executing them', () => {
+    const command = parseCommand('PIN ETA BRAVO');
+    expect(command.type).toBe('SEARCH');
+    expect(command.parameters).toMatchObject({
+      command: 'PIN',
+      favoriteKind: 'COMMAND',
+      favoriteCommand: 'ETA BRAVO',
+    });
+    expect(command.errors).toEqual([]);
+
+    const template = parseCommand('PIN TEMPLATE G01 BRG/RNGNM');
+    expect(template.parameters).toMatchObject({
+      command: 'PIN TEMPLATE',
+      favoriteKind: 'TEMPLATE',
+      favoriteCommand: 'G01 BRG/RNGNM',
+    });
+    expect(template.errors).toEqual([]);
+
+    expect(parseCommand('FAVORITES').parameters).toMatchObject({ command: 'FAVORITES' });
+    expect(parseCommand('UNPIN 1').parameters).toMatchObject({ command: 'UNPIN', favoriteId: 1 });
+    expect(parseCommand('UNPIN 0').errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_NUMBER' }),
+    ]);
+  });
 });

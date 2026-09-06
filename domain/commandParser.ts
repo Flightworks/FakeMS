@@ -51,6 +51,10 @@ const COMMAND_TOKENS = new Set([
   'TIMER',
   'TIMERS',
   'CONVERT',
+  'PIN',
+  'TEMPLATE',
+  'FAVORITES',
+  'UNPIN',
   'TIME',
   'DIST',
   'GS',
@@ -1167,6 +1171,34 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseFavoriteCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const first = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = { command: first };
+  const errors: CommandParseError[] = [];
+
+  if (first === 'FAVORITES') {
+    if (tokens.length > 1) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'FAVORITES does not accept arguments.' });
+  } else if (first === 'UNPIN') {
+    const id = parseFiniteNumber(tokens[1]);
+    parameters.favoriteId = id;
+    if (id === null || !Number.isInteger(id) || id <= 0) {
+      errors.push({ code: 'INVALID_NUMBER', message: 'Favorite id must be a positive integer.' });
+    }
+    if (tokens.length > 2) errors.push({ code: 'UNEXPECTED_ARGUMENT', message: 'UNPIN accepts one favorite id.' });
+  } else {
+    const isTemplate = tokens[1]?.normalized === 'TEMPLATE';
+    const command = isTemplate ? 'PIN TEMPLATE' : 'PIN';
+    const valueTokens = tokens.slice(isTemplate ? 2 : 1);
+    const favoriteCommand = valueTokens.map(token => token.normalized).join(' ').replace(/\bBRG RNGNM\b/g, 'BRG/RNGNM');
+    parameters.command = command;
+    parameters.favoriteKind = isTemplate ? 'TEMPLATE' : 'COMMAND';
+    parameters.favoriteCommand = favoriteCommand;
+    if (!favoriteCommand) errors.push({ code: 'INCOMPLETE_COMMAND', message: `${command} requires a command or template.` });
+  }
+
+  return createResult('SEARCH', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseUnitConversion = (tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, string | number | null> = { command: 'CONVERT' };
   const errors: CommandParseError[] = [];
@@ -1291,6 +1323,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'PROJ' || command === 'PROJECTION') return 'PROJECTION';
   if (command === 'INT') return 'INTERSECTION';
   if (command === 'COORD' || command === 'COORDINATE' || command === 'COPY') return 'COORDINATE';
+  if (command === 'PIN' || command === 'FAVORITES' || command === 'UNPIN') return 'SEARCH';
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
@@ -1357,6 +1390,9 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'SEARCH') {
     if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
     if (tokens[0]?.normalized === 'PREDICT') return parsePredict(tokens);
+    if (tokens[0]?.normalized === 'PIN'
+      || tokens[0]?.normalized === 'FAVORITES'
+      || tokens[0]?.normalized === 'UNPIN') return parseFavoriteCommand(tokens);
     if (tokens[0]?.normalized === 'TIMER'
       || tokens[0]?.normalized === 'TIMERS'
       || (tokens[0]?.normalized === 'CANCEL' && tokens[1]?.normalized === 'TIMER')) return parseTimerCommand(tokens);

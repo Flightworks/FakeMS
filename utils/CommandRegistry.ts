@@ -56,6 +56,7 @@ import {
     type TrackDisplayDetails,
 } from '../domain/trackDetails';
 import type { ScenarioTimerState } from '../domain/simulationTimers';
+import type { FavoriteRequest, FavoriteState } from '../domain/favorites';
 import {
     intersectBearings,
     BearingIntersectionError,
@@ -124,6 +125,9 @@ export interface CommandContext {
     timerState?: ScenarioTimerState;
     createTimer?: (durationMs: number, label: string, checkReference?: string) => void;
     cancelTimer?: (timerId: number) => void;
+    favoriteState?: FavoriteState;
+    addFavorite?: (request: FavoriteRequest) => void;
+    removeFavorite?: (favoriteId: number) => void;
     localTimeZone?: string;
     activeRoute?: ActiveSimulatedRoute;
 }
@@ -587,6 +591,9 @@ export const getCommands = (
         timerState,
         createTimer,
         cancelTimer,
+        favoriteState,
+        addFavorite,
+        removeFavorite,
         localTimeZone,
         activeRoute,
     } = context;
@@ -1278,6 +1285,92 @@ export const getCommands = (
                     createEntityTrackDetails(resolution.entity, scenarioTimeMs),
                     q,
                 ));
+            }
+        }
+    }
+
+    const favoriteCommand = parsedMeasurement.parameters.command;
+    if (parsedMeasurement.type === 'SEARCH'
+        && (favoriteCommand === 'PIN' || favoriteCommand === 'PIN TEMPLATE' || favoriteCommand === 'FAVORITES' || favoriteCommand === 'UNPIN')
+        && parsedMeasurement.errors.length === 0) {
+        if (favoriteCommand === 'PIN' || favoriteCommand === 'PIN TEMPLATE') {
+            const favoriteValue = parsedMeasurement.parameters.favoriteCommand;
+            const favoriteKind = parsedMeasurement.parameters.favoriteKind === 'TEMPLATE' ? 'TEMPLATE' : 'COMMAND';
+            if (typeof favoriteValue === 'string') {
+                commands.push({
+                    id: 'favorite-pin',
+                    label: `PIN ${favoriteValue}`,
+                    subLabel: `${favoriteKind} · LOCAL FAVORITE · FILL ONLY`,
+                    icon: Copy,
+                    keywords: ['pin', 'favorite', favoriteKind.toLowerCase(), favoriteValue],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    action: () => addFavorite?.({
+                        kind: favoriteKind,
+                        label: favoriteValue,
+                        command: favoriteValue,
+                    }),
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
+        } else if (favoriteCommand === 'FAVORITES') {
+            const items = favoriteState?.items ?? [];
+            if (items.length === 0) {
+                commands.push({
+                    id: 'favorites-empty',
+                    label: 'FAVORITES: EMPTY',
+                    subLabel: 'LOCAL STORAGE · NO SAVED COMMANDS',
+                    icon: History,
+                    keywords: ['favorites', 'empty'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                items.forEach(item => commands.push({
+                    id: `favorite-${item.id}`,
+                    label: `#${item.id} ${item.label}`,
+                    subLabel: `${item.kind} · FILL ONLY · ${item.command}`,
+                    icon: History,
+                    keywords: ['favorites', item.kind.toLowerCase(), item.label, item.command],
+                    autocompleteValue: item.command,
+                    historyValue: item.command,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                }));
+            }
+        } else {
+            const favoriteId = parsedMeasurement.parameters.favoriteId;
+            const item = typeof favoriteId === 'number'
+                ? favoriteState?.items.find(candidate => candidate.id === favoriteId)
+                : undefined;
+            if (item) {
+                commands.push({
+                    id: `favorite-unpin-${item.id}`,
+                    label: `UNPIN #${item.id} ${item.label}`,
+                    subLabel: 'LOCAL FAVORITE · DELETE ONLY',
+                    icon: Copy,
+                    keywords: ['unpin', 'favorite', item.label, item.command],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    action: () => removeFavorite?.(item.id),
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            } else {
+                commands.push({
+                    id: `favorite-unpin-${String(favoriteId ?? 'unknown')}-unavailable`,
+                    label: `UNPIN ${favoriteId ?? '?'}: UNAVAILABLE`,
+                    subLabel: 'REASON: FAVORITE NOT FOUND',
+                    icon: Copy,
+                    keywords: ['unpin', 'favorite', 'unavailable'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
             }
         }
     }

@@ -989,5 +989,36 @@ describe('CommandRegistry', () => {
       expect(incompatible?.subLabel).toContain('INCOMPATIBLE UNITS');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers local favorites as fill-only entries without mission effects', () => {
+      const addFavorite = vi.fn();
+      const removeFavorite = vi.fn();
+      const favoriteState = {
+        version: 1 as const,
+        nextId: 2,
+        items: [{ id: 1, kind: 'COMMAND' as const, label: 'ETA BRAVO', command: 'ETA BRAVO' }],
+      };
+      const context = {
+        ...mockContext,
+        favoriteState,
+        addFavorite,
+        removeFavorite,
+      };
+
+      const pin = getCommands('PIN ETA BRAVO', context).find(command => command.id === 'favorite-pin');
+      expect(pin?.subLabel).toContain('LOCAL FAVORITE');
+      pin?.action?.();
+      expect(addFavorite).toHaveBeenCalledWith({ kind: 'COMMAND', label: 'ETA BRAVO', command: 'ETA BRAVO' });
+
+      const favorite = getCommands('FAVORITES', context).find(command => command.id === 'favorite-1');
+      expect(favorite?.label).toContain('ETA BRAVO');
+      expect(favorite?.autocompleteValue).toBe('ETA BRAVO');
+      expect(favorite?.keepPaletteOpen).toBe(true);
+
+      const unpin = getCommands('UNPIN 1', context).find(command => command.id === 'favorite-unpin-1');
+      unpin?.action?.();
+      expect(removeFavorite).toHaveBeenCalledWith(1);
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });
