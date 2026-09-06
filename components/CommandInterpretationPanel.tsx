@@ -107,6 +107,10 @@ const getDetails = (parsed: ParsedCommand, projection?: ProjectionPreview): stri
     }
   } else if (parsed.type === 'ROUTE' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
+  } else if (parsed.type === 'SEARCH' && parameters.command === 'NEAREST') {
+    details.push('COMMAND: NEAREST');
+    if (typeof parameters.category === 'string') details.push(`CATEGORY: ${parameters.category}`);
+    if (typeof parameters.limit === 'number') details.push(`LIMIT: ${parameters.limit}`);
   } else if (parsed.type === 'SEARCH' && typeof parameters.query === 'string') {
     details.push(`QUERY: ${parameters.query}`);
   } else if (parsed.type === 'SYSTEM' && typeof parameters.system === 'string') {

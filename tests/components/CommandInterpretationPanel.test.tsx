@@ -81,4 +81,22 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
     expect(panel).toHaveTextContent('STATUS: SIMULATED');
   });
+
+  it('explains a nearest search without inventing a target position', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('NEAREST 3 TRACKS')}
+        effect="LOCAL DISPLAY ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('TYPE: SEARCH');
+    expect(panel).toHaveTextContent('COMMAND: NEAREST');
+    expect(panel).toHaveTextContent('CATEGORY: TRACK');
+    expect(panel).toHaveTextContent('LIMIT: 3');
+    expect(panel).toHaveTextContent('REFERENCE: OWNSHIP');
+    expect(panel).toHaveTextContent('TARGET: N/A');
+    expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
+  });
 });

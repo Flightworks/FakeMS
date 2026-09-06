@@ -88,3 +88,17 @@ test('solves time, distance, and ground speed without a map preview', async ({ p
     name: /^GS: 120\.0 KT.*DIST: 40\.0 NM.*TIME: 20 min 0 s/i,
   })).toBeVisible();
 });
+
+test('lists nearest waypoints in range order without a map preview', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('NEAREST 2 WAYPOINTS');
+
+  const results = page.getByRole('listbox', { name: 'Command results' }).getByRole('option');
+  await expect(results.nth(0)).toHaveAccessibleName(/G01.*RNG:.*BRG:.*FRESHNESS: UNKNOWN.*QUALITY: UNKNOWN/i);
+  await expect(results.nth(1)).toHaveAccessibleName(/BRAVO.*RNG:.*BRG:.*FRESHNESS: UNKNOWN.*QUALITY: UNKNOWN/i);
+  await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
+});

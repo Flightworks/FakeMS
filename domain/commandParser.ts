@@ -32,6 +32,7 @@ const COMMAND_TOKENS = new Set([
   'LAYER',
   'LAYERS',
   'SEARCH',
+  'NEAREST',
   'NOTE',
   'CALC',
   'TIME',
@@ -603,6 +604,67 @@ const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand 
   return createResult('MEASUREMENT', tokens, parameters);
 };
 
+const NEAREST_CATEGORIES: Record<string, 'WAYPOINT' | 'TRACK' | 'AIRPORT'> = {
+  WAYPOINT: 'WAYPOINT',
+  WAYPOINTS: 'WAYPOINT',
+  TRACK: 'TRACK',
+  TRACKS: 'TRACK',
+  AIRPORT: 'AIRPORT',
+  AIRPORTS: 'AIRPORT',
+};
+
+const parseNearest = (tokens: CommandToken[]): ParsedCommand => {
+  const body = tokens.slice(1).map(token => token.normalized);
+  const errors: CommandParseError[] = [];
+  let limit = 1;
+  let remaining = [...body];
+
+  const first = remaining[0];
+  const firstLooksNumeric = first === NON_FINITE_MARKER || /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(first ?? '');
+  if (firstLooksNumeric) {
+    const parsedLimit = parseNormalizedNumber(first);
+    if (parsedLimit === null) {
+      errors.push(nonFiniteError());
+    } else if (!Number.isInteger(parsedLimit) || parsedLimit <= 0) {
+      errors.push({
+        code: 'INVALID_NUMBER',
+        message: 'Nearest result count must be a positive integer.',
+        hint: 'Use NEAREST <COUNT> <WAYPOINT|TRACK|AIRPORT>.',
+      });
+    } else {
+      limit = parsedLimit;
+    }
+    remaining = remaining.slice(1);
+  }
+
+  const categoryToken = remaining.at(-1);
+  const category = categoryToken ? NEAREST_CATEGORIES[categoryToken] : undefined;
+  if (!category) {
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: `Unknown nearest category: ${categoryToken ?? '<MISSING>'}.`,
+      hint: 'Use WAYPOINT, TRACK, or AIRPORT.',
+    });
+  }
+
+  const referenceParts = categoryToken ? remaining.slice(0, -1) : [];
+  const reference = referenceParts.length > 0 ? referenceParts.join(' ') : 'OWNSHIP';
+  const parameters: Record<string, string | number | null> = {
+    command: 'NEAREST',
+    category: category ?? categoryToken ?? null,
+    limit,
+    reference,
+  };
+
+  return createResult(
+    'SEARCH',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+  );
+};
+
 const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
   const commandToken = tokens[0]?.normalized ?? '';
   const subcommand = tokens[1]?.normalized;
@@ -667,7 +729,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS'].includes(command)) {
     return 'SYSTEM';
   }
-  if (command === 'SEARCH') return 'SEARCH';
+  if (command === 'SEARCH' || command === 'NEAREST') return 'SEARCH';
   if (command === 'NOTE') return 'NOTE';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
   if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
@@ -707,6 +769,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SEARCH') {
+    if (tokens[0]?.normalized === 'NEAREST') return parseNearest(tokens);
     return createResult('SEARCH', tokens, {
       query: tokens.slice(1).map(token => token.normalized).join(' '),
     });

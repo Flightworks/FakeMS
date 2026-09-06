@@ -581,5 +581,86 @@ describe('CommandRegistry', () => {
       status?.action?.();
       expect(focusMapAt).not.toHaveBeenCalled();
     });
+
+    it('lists nearest entities with read-only focus actions and explicit metadata', () => {
+      const focusMapAt = vi.fn();
+      const proposeDirectTo = vi.fn();
+      const proposeRoute = vi.fn();
+      const context = {
+        ...mockContext,
+        focusMapAt,
+        proposeDirectTo,
+        proposeRoute,
+        entities: [
+          mockOwnship,
+          {
+            id: 'wp-far',
+            label: 'FAR',
+            type: EntityType.WAYPOINT,
+            position: { lat: 0.2, lon: 0 },
+          },
+          {
+            id: 'wp-near',
+            label: 'NEAR',
+            type: EntityType.WAYPOINT,
+            position: { lat: 0.1, lon: 0 },
+            metadata: { quality: 'GOOD', source: 'SCENARIO', uncertaintyMeters: 10 },
+          },
+          {
+            id: 'airport',
+            label: 'AIRPORT',
+            type: EntityType.AIRPORT,
+            position: { lat: 0.01, lon: 0 },
+          },
+        ],
+        measurementPositionFreshness: entity => entity.id === 'wp-near' ? 'CURRENT' : 'UNKNOWN',
+      };
+
+      const commands = getCommands('NEAREST 2 WAYPOINTS', context);
+      const nearest = commands.filter(command => command.id.startsWith('nearest-result-'));
+
+      expect(nearest.map(command => command.label)).toEqual(['NEAR', 'FAR']);
+      expect(nearest[0]?.subLabel).toContain('RNG:');
+      expect(nearest[0]?.subLabel).toContain('BRG:');
+      expect(nearest[0]?.subLabel).toContain('FRESHNESS: CURRENT');
+      expect(nearest[0]?.subLabel).toContain('QUALITY: GOOD');
+      nearest[0]?.action?.();
+      expect(focusMapAt).toHaveBeenCalledWith({ lat: 0.1, lon: 0 });
+      expect(proposeDirectTo).not.toHaveBeenCalled();
+      expect(proposeRoute).not.toHaveBeenCalled();
+    });
+
+    it('blocks nearest searches when the reference is ambiguous', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { ...mockEntities[1], id: 'bravo-1', label: 'BRAVO', position: { lat: 1, lon: 1 } },
+          { ...mockEntities[1], id: 'bravo-2', label: 'BRAVO', position: { lat: 2, lon: 2 } },
+          { id: 'wp-1', label: 'WP1', type: EntityType.WAYPOINT, position: { lat: 0.1, lon: 0 } },
+        ],
+      };
+
+      const commands = getCommands('NEAREST BRAVO WAYPOINT', context);
+
+      expect(commands.some(command => command.label.includes('AMBIGUOUS_REFERENCE'))).toBe(true);
+      expect(commands.filter(command => command.id.startsWith('nearest-result-'))).toHaveLength(0);
+    });
+
+    it('reports an invalid resolved reference position without throwing', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { id: 'broken', label: 'BROKEN', type: EntityType.WAYPOINT, position: { lat: Number.NaN, lon: 0 } },
+          { id: 'wp-1', label: 'WP1', type: EntityType.WAYPOINT, position: { lat: 0.1, lon: 0 } },
+        ],
+      };
+
+      const commands = getCommands('NEAREST BROKEN WAYPOINT', context);
+
+      expect(commands.some(command => command.label.includes('INVALID_REFERENCE_POSITION'))).toBe(true);
+      expect(commands.filter(command => command.id.startsWith('nearest-result-'))).toHaveLength(0);
+    });
   });
 });

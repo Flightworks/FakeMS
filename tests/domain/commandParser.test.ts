@@ -215,4 +215,45 @@ describe('typed tactical command parser', () => {
       expect.objectContaining({ code: 'UNEXPECTED_ARGUMENT' }),
     ]);
   });
+
+  it('parses nearest queries with a category, optional limit, and optional reference', () => {
+    const waypoint = parseCommand('NEAREST WAYPOINT');
+    expect(waypoint.type).toBe('SEARCH');
+    expect(waypoint.parameters).toMatchObject({
+      command: 'NEAREST',
+      category: 'WAYPOINT',
+      limit: 1,
+      reference: 'OWNSHIP',
+    });
+    expect(waypoint.errors).toEqual([]);
+
+    const tracks = parseCommand('nearest 3 tracks');
+    expect(tracks.parameters).toMatchObject({
+      command: 'NEAREST',
+      category: 'TRACK',
+      limit: 3,
+      reference: 'OWNSHIP',
+    });
+    expect(tracks.errors).toEqual([]);
+
+    const fromReference = parseCommand('NEAREST BRAVO WAYPOINT');
+    expect(fromReference.parameters).toMatchObject({
+      command: 'NEAREST',
+      category: 'WAYPOINT',
+      limit: 1,
+      reference: 'BRAVO',
+    });
+    expect(fromReference.errors).toEqual([]);
+  });
+
+  it('rejects an unknown nearest category and invalid result limits', () => {
+    for (const input of ['NEAREST PARK', 'NEAREST 0 TRACKS', 'NEAREST 1.5 TRACKS']) {
+      const parsed = parseCommand(input);
+      expect(parsed.type, input).toBe('SEARCH');
+      expect(parsed.errors, input).toEqual([
+        expect.objectContaining({ code: expect.any(String) }),
+      ]);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });

@@ -29,6 +29,11 @@ import {
     type ActiveSimulatedRoute,
     type RouteSummaryCommand,
 } from '../domain/routeSummary';
+import {
+    findNearestEntities,
+    type NearestCandidate,
+    type NearestCategory,
+} from '../domain/spatialQueries';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { MathCommandProvider } from './mathEvaluator';
 import type { MissionActionCategory, MissionActionRequest } from '../domain/missionActions';
@@ -248,6 +253,16 @@ const saveRanking = (): CommandRankingMetadata => ({
     completeness: 0,
     match: 'FUZZY',
 });
+
+const formatNearestCandidate = (candidate: NearestCandidate): string => {
+    const bearing = candidate.bearingTrueDegrees === null
+        ? 'UNAVAILABLE'
+        : `${candidate.bearingTrueDegrees.toFixed(1)}°T`;
+    const uncertainty = candidate.uncertaintyMeters === null
+        ? ''
+        : ` · UNCERTAINTY: ${candidate.uncertaintyMeters.toFixed(0)} M`;
+    return `RNG: ${candidate.rangeNauticalMiles.toFixed(1)} NM · BRG: ${bearing} · FRESHNESS: ${candidate.freshness} · QUALITY: ${candidate.quality} · SRC: ${candidate.source}${uncertainty}`;
+};
 
 export const getCommands = (
     query: string,
@@ -733,6 +748,96 @@ export const getCommands = (
         }
     }
 
+    // 4b. Nearest spatial search. Results are local read-only map focuses;
+    // they never create navigation, route, or mission actions.
+    const nearestCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    const nearestCategory = parsedMeasurement.parameters.category;
+    const nearestLimit = parsedMeasurement.parameters.limit;
+    const nearestReference = parsedMeasurement.parameters.reference;
+    if (parsedMeasurement.type === 'SEARCH'
+        && nearestCommand === 'NEAREST'
+        && parsedMeasurement.errors.length === 0
+        && (nearestCategory === 'WAYPOINT' || nearestCategory === 'TRACK' || nearestCategory === 'AIRPORT')
+        && typeof nearestLimit === 'number'
+        && typeof nearestReference === 'string') {
+        const resolution = resolveEntityReference(nearestReference, entities, ownship);
+        if (!resolution.executable || !resolution.entity) {
+            commands.push({
+                id: `nearest-reference-status-${resolution.status.toLowerCase()}`,
+                label: `NEAREST ${resolution.status}: ${resolution.reference}`,
+                subLabel: 'Nearest search blocked · choose an unambiguous reference',
+                icon: Crosshair,
+                keywords: ['nearest', 'reference', resolution.status.toLowerCase()],
+                isPreview: true,
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
+        } else {
+            let result: ReturnType<typeof findNearestEntities> | undefined;
+            try {
+                result = findNearestEntities({
+                    reference: resolution.entity,
+                    entities,
+                    category: nearestCategory as NearestCategory,
+                    limit: nearestLimit,
+                    freshnessOf: context.measurementPositionFreshness,
+                });
+            } catch {
+                commands.push({
+                    id: 'nearest-reference-invalid-position',
+                    label: `NEAREST INVALID_REFERENCE_POSITION: ${resolution.reference}`,
+                    subLabel: 'Nearest search unavailable · reference position is invalid',
+                    icon: Crosshair,
+                    keywords: ['nearest', 'reference', 'invalid', 'position'],
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
+                });
+            }
+            if (result?.status === 'EMPTY') {
+                commands.push({
+                    id: `nearest-empty-${nearestCategory.toLowerCase()}`,
+                    label: `NEAREST ${nearestCategory}: NONE`,
+                    subLabel: `No ${nearestCategory.toLowerCase()} objects loaded in the scenario`,
+                    icon: Crosshair,
+                    keywords: ['nearest', nearestCategory.toLowerCase(), 'none'],
+                    isPreview: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
+                });
+            } else if (result) {
+                result.candidates.forEach(candidate => {
+                    commands.push({
+                        id: `nearest-result-${nearestCategory.toLowerCase()}-${candidate.id}`,
+                        label: candidate.label,
+                        subLabel: formatNearestCandidate(candidate),
+                        icon: Crosshair,
+                        action: () => focusMapAt({ ...candidate.position }),
+                        keywords: ['nearest', nearestCategory.toLowerCase(), candidate.label, candidate.type, candidate.id],
+                        historyValue: q,
+                        isPreview: true,
+                        ranking: {
+                            category: 'STRUCTURED_EXACT',
+                            completeness: 3,
+                            match: 'EXACT',
+                        },
+                    });
+                });
+            }
+        }
+    }
+
     // 5. Tactical BRG/RNG measurements. These results are pure, local
     // calculations and never create navigation, route, or designation state.
     const measurementCommand = typeof parsedMeasurement.parameters.command === 'string'
@@ -1129,5 +1234,17 @@ export const getCommands = (
         // If empty, append system commands after history
         commands.push(...systemCommands);
     }
-    return q.length > 0 ? rankCommandOptions(q, commands) : commands;
+    const rankedCommands = q.length > 0 ? rankCommandOptions(q, commands) : commands;
+    const nearestResults = parsedMeasurement.type === 'SEARCH'
+        && parsedMeasurement.parameters.command === 'NEAREST'
+        ? commands.filter(command => command.id.startsWith('nearest-result-'))
+        : [];
+    if (nearestResults.length > 0) {
+        const nearestIds = new Set(nearestResults.map(command => command.id));
+        return [
+            ...nearestResults,
+            ...rankedCommands.filter(command => !nearestIds.has(command.id)),
+        ];
+    }
+    return rankedCommands;
 };
