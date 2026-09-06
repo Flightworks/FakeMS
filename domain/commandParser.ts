@@ -61,6 +61,7 @@ const COMMAND_TOKENS = new Set([
   'GRAD',
   'VSREQ',
   'TOD',
+  'DECLUTTER',
   'TIME',
   'DIST',
   'GS',
@@ -1177,6 +1178,20 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parseDeclutterCommand = (tokens: CommandToken[]): ParsedCommand => {
+  const preset = tokens[1]?.normalized ?? '';
+  const parameters: Record<string, CommandParameter> = {
+    system: 'DECLUTTER',
+    command: 'DECLUTTER',
+    preset: preset || null,
+  };
+  const errors: CommandParseError[] = [];
+  if (!['MINIMAL', 'NORMAL', 'FULL'].includes(preset) || tokens.length > 2) {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use DECLUTTER MINIMAL, NORMAL, or FULL.' });
+  }
+  return createResult('SYSTEM', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseLayerCommand = (tokens: CommandToken[]): ParsedCommand => {
   const command = tokens[0]?.normalized ?? '';
   const parameters: Record<string, string | number | boolean | null> = {
@@ -1510,7 +1525,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'ETA' || command === 'ETE' || command === 'BRG' || command === 'RNG' || command === 'BRG/RNG') {
     return 'MEASUREMENT';
   }
-  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS'].includes(command)) {
+  if (COMMAND_TOKENS.has(command) && ['RADAR', 'ADSB', 'AIS', 'EOTS', 'SIM', 'SYSTEM', 'LAYER', 'LAYERS', 'DECLUTTER'].includes(command)) {
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'PREDICT' || command === 'NEAREST'
@@ -1553,6 +1568,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   }
 
   if (type === 'SYSTEM') {
+    if (tokens[0]?.normalized === 'DECLUTTER') return parseDeclutterCommand(tokens);
     if (tokens[0]?.normalized === 'LAYER' || tokens[0]?.normalized === 'LAYERS') return parseLayerCommand(tokens);
     if (tokens[0]?.normalized === 'SIM') return parseSimulationCommand(tokens);
     return createResult('SYSTEM', tokens, { system: tokens[1]?.normalized ?? tokens[0].normalized });

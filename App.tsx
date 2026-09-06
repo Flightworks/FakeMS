@@ -48,6 +48,10 @@ import {
   createLayerState,
   type TacticalLayerState,
 } from './domain/layers';
+import {
+  createDeclutterState,
+  type DeclutterState,
+} from './domain/declutter';
 
 const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
@@ -105,6 +109,7 @@ const App: React.FC = () => {
   const [groundAnchor, setGroundAnchor] = useState<{ lat: number, lon: number } | null>(null);
   const [simulationProposal, setSimulationProposal] = useState<'RESET' | 'REPLAY' | null>(null);
   const [layerState, setLayerState] = useState<TacticalLayerState>(() => createLayerState());
+  const [declutterState, setDeclutterState] = useState<DeclutterState>(() => createDeclutterState());
 
   const { entities, setEntities, simulationControls } = useSimulation(INITIAL_ENTITIES, ownship, setOwnship, ownshipNavMode);
   const requestSimulationReset = React.useCallback(() => setSimulationProposal('RESET'), []);
@@ -887,6 +892,8 @@ const App: React.FC = () => {
         ownshipNavMode,
         layers: layerState,
         setLayers: setLayerState,
+        declutter: declutterState,
+        setDeclutter: setDeclutterState,
         toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
       };
 
@@ -947,6 +954,7 @@ const App: React.FC = () => {
             futurePositionPreview={futurePositionPreview}
             layers={layerState}
             activeRoute={activeRouteForPalette}
+            declutter={declutterState}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
@@ -1029,6 +1037,8 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
             layers={layerState}
             setLayers={setLayerState}
+            declutter={declutterState}
+            setDeclutter={setDeclutterState}
           />
         </React.Suspense>
       )}

@@ -60,6 +60,11 @@ import {
 import type { ScenarioTimerState } from '../domain/simulationTimers';
 import type { FavoriteRequest, FavoriteState } from '../domain/favorites';
 import {
+    setDeclutterPreset,
+    type DeclutterPreset,
+    type DeclutterState,
+} from '../domain/declutter';
+import {
     createLayerState,
     setLayerVisibility,
     type TacticalLayerId,
@@ -143,6 +148,8 @@ export interface CommandContext {
     removeFavorite?: (favoriteId: number) => void;
     layers?: TacticalLayerState;
     setLayers?: (state: TacticalLayerState) => void;
+    declutter?: DeclutterState;
+    setDeclutter?: (state: DeclutterState) => void;
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
     simulationTimeMs?: number;
@@ -620,6 +627,8 @@ export const getCommands = (
         removeFavorite,
         layers,
         setLayers,
+        declutter,
+        setDeclutter,
         simulationStatus,
         simulationIsRunning,
         simulationTimeMs,
@@ -1068,6 +1077,39 @@ export const getCommands = (
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
             }
+        }
+    }
+
+    const declutterCommand = parsedMeasurement.parameters.system;
+    if (parsedMeasurement.type === 'SYSTEM' && declutterCommand === 'DECLUTTER') {
+        const currentDeclutter = declutter ?? { preset: 'FULL' as const, hiddenCategories: [] };
+        if (parsedMeasurement.errors.length > 0) {
+            commands.push({
+                id: 'declutter-unavailable',
+                label: 'DECLUTTER UNAVAILABLE',
+                subLabel: `LOW/HIGH REJECTED · ${parsedMeasurement.errors[0]?.message ?? 'INVALID PRESET'} · DISPLAY UNCHANGED`,
+                icon: Eye,
+                keywords: ['declutter', 'unavailable', 'minimal', 'normal', 'full'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (typeof parsedMeasurement.parameters.preset === 'string'
+            && ['MINIMAL', 'NORMAL', 'FULL'].includes(parsedMeasurement.parameters.preset)) {
+            const requestedPreset = parsedMeasurement.parameters.preset as DeclutterPreset;
+            const hidden = setDeclutterPreset(requestedPreset).hiddenCategories;
+            commands.push({
+                id: `declutter-${requestedPreset.toLowerCase()}`,
+                label: `DECLUTTER ${requestedPreset}`,
+                subLabel: `ACTIVE: ${currentDeclutter.preset} → ${requestedPreset} · HIDDEN: ${hidden.length > 0 ? hidden.join(', ') : 'NONE'} · DISPLAY ONLY`,
+                icon: Eye,
+                action: () => setDeclutter?.(setDeclutterPreset(requestedPreset)),
+                keywords: ['declutter', requestedPreset.toLowerCase(), ...hidden.map(category => category.toLowerCase())],
+                historyValue: q,
+                isPreview: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
         }
     }
 

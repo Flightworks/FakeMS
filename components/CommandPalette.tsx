@@ -36,6 +36,7 @@ import type { MissionObjective } from '../domain/intent';
 import type { GroundSpeedInput } from '../domain/etaEte';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { TacticalLayerState } from '../domain/layers';
+import type { DeclutterState } from '../domain/declutter';
 import type { FuturePositionPreview, FuturePositionResult } from '../domain/futurePosition';
 import type { RelativeMotionPreview, RelativeMotionResult } from '../domain/relativeMotion';
 import type { TrackDisplayDetails } from '../domain/trackDetails';
@@ -101,6 +102,8 @@ interface CommandPaletteProps {
   activeRoute?: ActiveSimulatedRoute;
   layers?: TacticalLayerState;
   setLayers?: (state: TacticalLayerState) => void;
+  declutter?: DeclutterState;
+  setDeclutter?: (state: DeclutterState) => void;
 }
 
 interface VisualViewportRect {
@@ -222,6 +225,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   activeRoute,
   layers,
   setLayers,
+  declutter,
+  setDeclutter,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -376,6 +381,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       activeRoute,
       layers,
       setLayers,
+      declutter,
+      setDeclutter,
       toggleNavMode: () => setOwnshipNavMode(ownshipNavMode === NavMode.REAL ? NavMode.SIM : NavMode.REAL)
     };
     return getCommands(query, context, mathProvider ?? undefined);
@@ -429,6 +436,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     activeRoute,
     layers,
     setLayers,
+    declutter,
+    setDeclutter,
     mathProvider,
   ]);
 

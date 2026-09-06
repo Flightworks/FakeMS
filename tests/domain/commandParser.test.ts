@@ -27,6 +27,19 @@ describe('typed tactical command parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it('parses declutter presets without changing scenario data', () => {
+    for (const preset of ['MINIMAL', 'NORMAL', 'FULL']) {
+      expect(parseCommand(`DECLUTTER ${preset}`)).toMatchObject({
+        type: 'SYSTEM',
+        parameters: { system: 'DECLUTTER', command: 'DECLUTTER', preset },
+        errors: [],
+      });
+    }
+    expect(parseCommand('DECLUTTER LOW').errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_SYNTAX' }),
+    ]);
+  });
+
   it('parses local layer visibility controls', () => {
     expect(parseCommand('LAYERS')).toMatchObject({
       type: 'SYSTEM',

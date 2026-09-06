@@ -11,6 +11,11 @@ import type { FuturePositionPreview } from '../domain/futurePosition';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { TacticalLayerState } from '../domain/layers';
 import { createLayerState } from '../domain/layers';
+import {
+  createDeclutterState,
+  isDeclutterCategoryHidden,
+  type DeclutterState,
+} from '../domain/declutter';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { getDestinationPoint } from '../utils/geo';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
@@ -66,6 +71,7 @@ interface MapDisplayProps {
   futurePositionPreview?: FuturePositionPreview | null;
   layers?: TacticalLayerState;
   activeRoute?: ActiveSimulatedRoute;
+  declutter?: DeclutterState;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
@@ -320,6 +326,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   futurePositionPreview,
   layers = createLayerState(),
   activeRoute,
+  declutter = createDeclutterState(),
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
@@ -688,12 +695,18 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const createEntityIcon = (entity: Entity, rotation: number, isSelected: boolean) => {
+    const labelCategory = entity.type === EntityType.WAYPOINT
+      ? 'WAYPOINT_LABELS'
+      : entity.type === EntityType.AIRPORT
+        ? 'AIRPORT_LABELS'
+        : 'TRACK_LABELS';
+    const showEntityLabel = !isDeclutterCategoryHidden(declutter, labelCategory);
     let IconComponent;
     switch (entity.type) {
       case EntityType.OWNSHIP: IconComponent = <HelicopterSymbol />; break;
-      case EntityType.ENEMY: IconComponent = <EnemySymbol selected={isSelected} />; break;
+      case EntityType.ENEMY: IconComponent = <EnemySymbol selected={isSelected} showText={showEntityLabel} />; break;
       case EntityType.AIRPORT: IconComponent = <AirportSymbol selected={isSelected} />; break;
-      default: IconComponent = <WaypointSymbol selected={isSelected} />;
+      default: IconComponent = <WaypointSymbol selected={isSelected} showText={showEntityLabel} />; break;
     }
 
     const heading = entity.heading || 0;
@@ -717,9 +730,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         }}>
           <div style={{ width: '100%', height: '100%' }}>{IconComponent}</div>
         </div>
-        <div 
+        <div
           className="absolute -bottom-4 text-[10px] text-white font-mono bg-slate-900/60 px-1 rounded whitespace-nowrap"
-          style={{ transform: `rotate(${-rotation}deg)`, display: 'inline-block' }}
+          style={{ transform: `rotate(${-rotation}deg)`, display: showEntityLabel ? 'inline-block' : 'none' }}
         >
           {entity.label}
         </div>
@@ -812,6 +825,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     ? futurePositionPreview.result.line.map(position => [position.lat, position.lon] as [number, number])
     : [];
   const vectorLinePositions: LatLngExpression[][] = layers.VECTORS.visible
+    && !isDeclutterCategoryHidden(declutter, 'VECTORS')
     ? [ownship, ...entities]
       .filter(entity => Number.isFinite(entity.heading) && Number.isFinite(entity.speed) && (entity.speed ?? 0) > 0)
       .map(entity => {

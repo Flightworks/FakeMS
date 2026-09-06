@@ -26,13 +26,13 @@ export const HelicopterSymbol = ({ color = "text-cyan-400" }: { color?: string }
   </svg>
 );
 
-export const EnemySymbol = ({ selected }: { selected: boolean }) => (
+export const EnemySymbol = ({ selected, showText = true }: { selected: boolean; showText?: boolean }) => (
   <svg viewBox="0 0 100 100" className={`w-full h-full transition-colors duration-200 ${selected ? 'text-amber-400' : 'text-red-500'} fill-none stroke-current drop-shadow-lg overflow-visible`}>
     {/* Hostile Frame: Diamond */}
     <path d="M 50 5 L 90 50 L 50 95 L 10 50 Z" strokeWidth="6" fill="currentColor" fillOpacity="0.1" />
     
     {/* Icon: Hostile Text or Symbol */}
-    <text x="50" y="60" textAnchor="middle" fontSize="20" stroke="none" fill="currentColor" fontWeight="bold" style={{ userSelect: 'none' }}>ENY</text>
+    {showText && <text x="50" y="60" textAnchor="middle" fontSize="20" stroke="none" fill="currentColor" fontWeight="bold" style={{ userSelect: 'none' }}>ENY</text>}
 
     {selected && (
       <path d="M 50 -5 L 105 50 L 50 105 L -5 50 Z" stroke="white" strokeWidth="2" strokeDasharray="4,4" className="animate-pulse" />
@@ -40,14 +40,14 @@ export const EnemySymbol = ({ selected }: { selected: boolean }) => (
   </svg>
 );
 
-export const WaypointSymbol = ({ selected }: { selected: boolean }) => (
+export const WaypointSymbol = ({ selected, showText = true }: { selected: boolean; showText?: boolean }) => (
   <svg viewBox="0 0 100 100" className={`w-full h-full overflow-visible transition-colors duration-200 ${selected ? 'text-white' : 'text-amber-400'} fill-none stroke-current`}>
     {/* Control Measure: Point/Circle */}
     <circle cx="50" cy="50" r="15" strokeWidth="6" />
     <circle cx="50" cy="50" r="4" fill="currentColor" stroke="none" />
     
     {/* Label */}
-    <text x="50" y="90" textAnchor="middle" fontSize="24" stroke="none" fill="currentColor" fontWeight="bold" style={{ userSelect: 'none' }}>WP</text>
+    {showText && <text x="50" y="90" textAnchor="middle" fontSize="24" stroke="none" fill="currentColor" fontWeight="bold" style={{ userSelect: 'none' }}>WP</text>}
 
     {selected && <circle cx="50" cy="50" r="25" stroke="white" strokeWidth="2" strokeDasharray="4,4" className="animate-pulse" />}
   </svg>

@@ -4,6 +4,7 @@ import { createMathCommandProvider } from '../../utils/mathEvaluator';
 import { Entity, EntityType, NavMode } from '../../types';
 import type { SimulatedDesignation } from '../../domain/designations';
 import { createLayerState } from '../../domain/layers';
+import { createDeclutterState } from '../../domain/declutter';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1129,6 +1130,22 @@ describe('CommandRegistry', () => {
       const unavailable = getCommands('LAYER GRID ON', context)
         .find(command => command.id === 'layer-unavailable');
       expect(unavailable?.label).toContain('LAYER UNAVAILABLE');
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
+
+    it('exposes and changes the explicit declutter preset locally', () => {
+      const setDeclutter = vi.fn();
+      const context = { ...mockContext, declutter: createDeclutterState('FULL'), setDeclutter };
+      const minimal = getCommands('DECLUTTER MINIMAL', context).find(command => command.id === 'declutter-minimal');
+      expect(minimal?.label).toBe('DECLUTTER MINIMAL');
+      expect(minimal?.subLabel).toContain('ACTIVE: FULL');
+      expect(minimal?.subLabel).toContain('TRACK_LABELS');
+      minimal?.action?.();
+      expect(setDeclutter).toHaveBeenCalledWith(expect.objectContaining({ preset: 'MINIMAL' }));
+
+      const invalid = getCommands('DECLUTTER LOW', context).find(command => command.id === 'declutter-unavailable');
+      expect(invalid?.label).toBe('DECLUTTER UNAVAILABLE');
+      expect(invalid?.subLabel).toContain('LOW/HIGH');
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
   });
