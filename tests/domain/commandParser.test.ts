@@ -552,6 +552,33 @@ describe('typed tactical command parser', () => {
     ]);
   });
 
+  it('parses vertical calculations with explicit signs and units', () => {
+    expect(parseCommand('GRAD VS-700FPM GS110KT')).toMatchObject({
+      type: 'CALCULATION',
+      parameters: { command: 'GRAD', verticalSpeedFpm: -700, groundSpeedKnots: 110 },
+      errors: [],
+    });
+
+    expect(parseCommand('VSREQ LOSE3000FT IN12NM @ 120KT')).toMatchObject({
+      type: 'CALCULATION',
+      parameters: { command: 'VSREQ', altitudeChangeFeet: -3000, distanceNauticalMiles: 12, groundSpeedKnots: 120 },
+      errors: [],
+    });
+
+    expect(parseCommand('TOD BRAVO FROM4500FT TO1500FT VS-700FPM @ 120KT')).toMatchObject({
+      type: 'CALCULATION',
+      parameters: {
+        command: 'TOD',
+        reference: 'BRAVO',
+        fromAltitudeFeet: 4500,
+        toAltitudeFeet: 1500,
+        verticalSpeedFpm: -700,
+        groundSpeedKnots: 120,
+      },
+      errors: [],
+    });
+  });
+
   it('parses local within queries with optional reference and type', () => {
     expect(parseCommand('WITHIN 10NM')).toMatchObject({
       type: 'SEARCH',

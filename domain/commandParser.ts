@@ -56,6 +56,9 @@ const COMMAND_TOKENS = new Set([
   'FAVORITES',
   'UNPIN',
   'WITHIN',
+  'GRAD',
+  'VSREQ',
+  'TOD',
   'TIME',
   'DIST',
   'GS',
@@ -1172,6 +1175,75 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
   );
 };
 
+const parsePrefixedUnit = (token: CommandToken | undefined, prefix: string, unit: string): number | null => {
+  if (!token) return null;
+  const match = token.normalized.match(new RegExp(`^${prefix}([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))${unit}$`));
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+};
+
+const parseVerticalCalculation = (tokens: CommandToken[]): ParsedCommand => {
+  const command = tokens[0]?.normalized ?? '';
+  const parameters: Record<string, string | number | null> = { command };
+  const errors: CommandParseError[] = [];
+  const invalid = (message: string): void => {
+    errors.push({ code: 'INVALID_SYNTAX', message });
+  };
+  const required = (value: number | null, name: string): value is number => {
+    if (value === null) invalid(`${command} requires ${name}.`);
+    return value !== null;
+  };
+
+  if (command === 'GRAD') {
+    const verticalSpeed = parsePrefixedUnit(tokens[1], 'VS', 'FPM');
+    const groundSpeed = parsePrefixedUnit(tokens[2], 'GS', 'KT');
+    if (required(verticalSpeed, 'VS±NFPM') && required(groundSpeed, 'GSNKT')) {
+      parameters.verticalSpeedFpm = verticalSpeed;
+      parameters.groundSpeedKnots = groundSpeed;
+    }
+  } else if (command === 'VSREQ') {
+    const altitudeToken = tokens.find(token => /^(?:LOSE|GAIN)/.test(token.normalized));
+    const distanceToken = tokens.find(token => token.normalized.startsWith('IN'));
+    const speedToken = [...tokens].reverse().find(token => /KT$/.test(token.normalized));
+    const altitudeMagnitude = parsePrefixedUnit(altitudeToken, 'LOSE', 'FT')
+      ?? parsePrefixedUnit(altitudeToken, 'GAIN', 'FT');
+    const altitudeChange = altitudeToken?.normalized.startsWith('LOSE') && altitudeMagnitude !== null
+      ? -altitudeMagnitude
+      : altitudeMagnitude;
+    const distance = parsePrefixedUnit(distanceToken, 'IN', 'NM');
+    const speed = speedToken ? Number(speedToken.normalized.replace(/KT$/, '')) : null;
+    if (altitudeChange === null || altitudeChange === undefined) invalid('VSREQ requires LOSE or GAIN with FT.');
+    if (distance === null) invalid('VSREQ requires IN<N>NM.');
+    if (speed === null || !Number.isFinite(speed)) invalid('VSREQ requires ground speed in KT.');
+    parameters.altitudeChangeFeet = altitudeChange ?? null;
+    parameters.distanceNauticalMiles = distance;
+    parameters.groundSpeedKnots = speed;
+  } else if (command === 'TOD') {
+    const fromIndex = tokens.findIndex((token, index) => index > 0 && token.normalized.startsWith('FROM'));
+    const toIndex = tokens.findIndex((token, index) => index > 0 && token.normalized.startsWith('TO'));
+    const verticalToken = tokens.find(token => token.normalized.startsWith('VS'));
+    const speedToken = [...tokens].reverse().find(token => /KT$/.test(token.normalized));
+    const reference = fromIndex > 1 ? tokens.slice(1, fromIndex).map(token => token.normalized).join(' ') : '';
+    const fromAltitude = parsePrefixedUnit(tokens[fromIndex], 'FROM', 'FT');
+    const toAltitude = parsePrefixedUnit(tokens[toIndex], 'TO', 'FT');
+    const verticalSpeed = parsePrefixedUnit(verticalToken, 'VS', 'FPM');
+    const groundSpeed = speedToken ? Number(speedToken.normalized.replace(/KT$/, '')) : null;
+    if (!reference) invalid('TOD requires a reference point.');
+    if (fromAltitude === null) invalid('TOD requires FROM<N>FT.');
+    if (toAltitude === null) invalid('TOD requires TO<N>FT.');
+    if (verticalSpeed === null) invalid('TOD requires VS±NFPM.');
+    if (groundSpeed === null || !Number.isFinite(groundSpeed)) invalid('TOD requires ground speed in KT.');
+    parameters.reference = reference || null;
+    parameters.fromAltitudeFeet = fromAltitude;
+    parameters.toAltitudeFeet = toAltitude;
+    parameters.verticalSpeedFpm = verticalSpeed;
+    parameters.groundSpeedKnots = groundSpeed;
+  }
+
+  return createResult('CALCULATION', tokens, parameters, errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [], errors);
+};
+
 const parseWithinCommand = (tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, string | number | null> = {
     command: 'WITHIN',
@@ -1395,6 +1467,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
   if (command === 'NOTE') return 'NOTE';
   if (command === 'CONVERT' || tokens[1]?.normalized === '>') return 'CALCULATION';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
+  if (command === 'GRAD' || command === 'VSREQ' || command === 'TOD') return 'CALCULATION';
   if (command === 'RECIP' || command === 'DELTA' || command === 'REL'
     || command === 'CLOSURE' || command === 'CPA') return 'CALCULATION';
   if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
@@ -1466,6 +1539,11 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'CALCULATION') {
     if (tokens[0].normalized === 'CONVERT' || tokens[1]?.normalized === '>') {
       return parseUnitConversion(tokens);
+    }
+    if (tokens[0].normalized === 'GRAD'
+      || tokens[0].normalized === 'VSREQ'
+      || tokens[0].normalized === 'TOD') {
+      return parseVerticalCalculation(tokens);
     }
     if (tokens[0].normalized === 'CLOSURE' || tokens[0].normalized === 'CPA') {
       return parseRelativeMotionCalculation(tokens);

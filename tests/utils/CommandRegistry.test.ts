@@ -1034,5 +1034,20 @@ describe('CommandRegistry', () => {
       expect(result?.action).toBeUndefined();
       expect(context.requestMissionAction).not.toHaveBeenCalled();
     });
+
+    it('offers vertical calculations as local theoretical results only', () => {
+      const gradient = getCommands('GRAD VS-700FPM GS110KT', mockContext)
+        .find(command => command.id === 'vertical-grad');
+      expect(gradient?.label).toContain('-381.8 FT/NM');
+      expect(gradient?.subLabel).toContain('THEORETICAL');
+      expect(gradient?.action).toBeUndefined();
+
+      const required = getCommands('VSREQ LOSE3000FT IN12NM @ 120KT', mockContext)
+        .find(command => command.id === 'vertical-vsreq');
+      expect(required?.label).toContain('-500.0 FPM');
+      expect(required?.subLabel).toContain('6.00 MIN');
+      expect(required?.action).toBeUndefined();
+      expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
+    });
   });
 });

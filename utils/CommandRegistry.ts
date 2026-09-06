@@ -60,6 +60,11 @@ import {
 import type { ScenarioTimerState } from '../domain/simulationTimers';
 import type { FavoriteRequest, FavoriteState } from '../domain/favorites';
 import {
+    calculateGradient,
+    calculateTopOfDescent,
+    calculateVerticalSpeedRequired,
+} from '../domain/verticalCalculations';
+import {
     intersectBearings,
     BearingIntersectionError,
     type BearingIntersectionResult,
@@ -1438,6 +1443,96 @@ export const getCommands = (
                     ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                 });
             }
+        }
+    }
+
+    const verticalCommand = parsedMeasurement.parameters.command;
+    if (parsedMeasurement.type === 'CALCULATION'
+        && (verticalCommand === 'GRAD' || verticalCommand === 'VSREQ' || verticalCommand === 'TOD')) {
+        const addVerticalUnavailable = (reason: string) => commands.push({
+            id: `vertical-${String(verticalCommand).toLowerCase()}-unavailable`,
+            label: `${String(verticalCommand)}: UNAVAILABLE`,
+            subLabel: `${reason} · THEORETICAL CALCULATION NOT EXECUTED`,
+            icon: Calculator,
+            keywords: ['vertical', String(verticalCommand).toLowerCase(), 'unavailable'],
+            historyValue: q,
+            isPreview: true,
+            keepPaletteOpen: true,
+            ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+        });
+        if (parsedMeasurement.errors.length > 0) {
+            addVerticalUnavailable(parsedMeasurement.errors[0]?.message ?? 'INVALID INPUT');
+        } else if (verticalCommand === 'GRAD'
+            && typeof parsedMeasurement.parameters.verticalSpeedFpm === 'number'
+            && typeof parsedMeasurement.parameters.groundSpeedKnots === 'number') {
+            const result = calculateGradient({
+                verticalSpeedFpm: parsedMeasurement.parameters.verticalSpeedFpm,
+                groundSpeedKnots: parsedMeasurement.parameters.groundSpeedKnots,
+            });
+            if (result.status === 'UNAVAILABLE') addVerticalUnavailable(result.reason);
+            else commands.push({
+                id: 'vertical-grad',
+                label: `GRAD ${result.feetPerNauticalMile.toFixed(1)} FT/NM`,
+                subLabel: `${result.percent.toFixed(2)}% · ANGLE ${result.angleDegrees.toFixed(2)}° · THEORETICAL · FORMULA: ${result.formula}`,
+                icon: Calculator,
+                keywords: ['grad', 'vertical', 'slope', 'theoretical'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (verticalCommand === 'VSREQ'
+            && typeof parsedMeasurement.parameters.altitudeChangeFeet === 'number'
+            && typeof parsedMeasurement.parameters.distanceNauticalMiles === 'number'
+            && typeof parsedMeasurement.parameters.groundSpeedKnots === 'number') {
+            const result = calculateVerticalSpeedRequired({
+                altitudeChangeFeet: parsedMeasurement.parameters.altitudeChangeFeet,
+                distanceNauticalMiles: parsedMeasurement.parameters.distanceNauticalMiles,
+                groundSpeedKnots: parsedMeasurement.parameters.groundSpeedKnots,
+            });
+            if (result.status === 'UNAVAILABLE') addVerticalUnavailable(result.reason);
+            else commands.push({
+                id: 'vertical-vsreq',
+                label: `VSREQ ${result.verticalSpeedFpm.toFixed(1)} FPM`,
+                subLabel: `TIME: ${result.timeMinutes.toFixed(2)} MIN · THEORETICAL · FORMULA: ${result.formula}`,
+                icon: Calculator,
+                keywords: ['vsreq', 'vertical', 'speed', 'theoretical'],
+                historyValue: q,
+                isPreview: true,
+                keepPaletteOpen: true,
+                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+            });
+        } else if (verticalCommand === 'TOD'
+            && typeof parsedMeasurement.parameters.reference === 'string'
+            && typeof parsedMeasurement.parameters.fromAltitudeFeet === 'number'
+            && typeof parsedMeasurement.parameters.toAltitudeFeet === 'number'
+            && typeof parsedMeasurement.parameters.verticalSpeedFpm === 'number'
+            && typeof parsedMeasurement.parameters.groundSpeedKnots === 'number') {
+            const reference = resolveEntityReference(parsedMeasurement.parameters.reference, entities, ownship);
+            if (!reference.executable || !reference.entity) {
+                addVerticalUnavailable(`REFERENCE ${reference.status}`);
+            } else {
+                const result = calculateTopOfDescent({
+                    fromAltitudeFeet: parsedMeasurement.parameters.fromAltitudeFeet,
+                    toAltitudeFeet: parsedMeasurement.parameters.toAltitudeFeet,
+                    verticalSpeedFpm: parsedMeasurement.parameters.verticalSpeedFpm,
+                    groundSpeedKnots: parsedMeasurement.parameters.groundSpeedKnots,
+                });
+                if (result.status === 'UNAVAILABLE') addVerticalUnavailable(result.reason);
+                else commands.push({
+                    id: 'vertical-tod',
+                    label: `TOD ${reference.entity.label} ${result.distanceNauticalMiles.toFixed(2)} NM BEFORE`,
+                    subLabel: `TIME: ${result.timeMinutes.toFixed(2)} MIN · THEORETICAL · FORMULA: ${result.formula}`,
+                    icon: Calculator,
+                    keywords: ['tod', 'vertical', 'descent', reference.entity.label, 'theoretical'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
+                });
+            }
+        } else {
+            addVerticalUnavailable('MISSING OR INVALID INPUT');
         }
     }
 
