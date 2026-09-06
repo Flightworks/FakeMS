@@ -7,6 +7,7 @@ export type CommandIntentType =
   | 'CALCULATION'
   | 'ROUTE'
   | 'SEARCH'
+  | 'BULLSEYE'
   | 'NOTE';
 
 export type CommandTokenKind = 'COMMAND' | 'ARGUMENT';

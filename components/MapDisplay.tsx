@@ -6,6 +6,7 @@ import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode 
 import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
+import type { BullseyeProjectionPreview, BullseyeReference } from '../domain/bullseye';
 import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
@@ -55,11 +56,14 @@ interface MapDisplayProps {
   onMissionAction?: (request: MissionActionRequest) => void;
   projectionPreview?: ProjectionPreview | null;
   intersectionPreview?: BearingIntersectionResult | null;
+  bullseye?: BullseyeReference | null;
+  bullseyeProjectionPreview?: BullseyeProjectionPreview | null;
   confirmedDesignations?: SimulatedDesignation[];
   showDesignationList?: boolean;
   onConfirmDesignation?: () => void;
   onClearProjectionPreview?: () => void;
   onClearIntersectionPreview?: () => void;
+  onClearBullseyeProjectionPreview?: () => void;
 }
 
 
@@ -298,11 +302,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onMissionAction,
   projectionPreview,
   intersectionPreview,
+  bullseye,
+  bullseyeProjectionPreview,
   confirmedDesignations = [],
   showDesignationList = false,
   onConfirmDesignation,
   onClearProjectionPreview,
   onClearIntersectionPreview,
+  onClearBullseyeProjectionPreview,
 }) => {
   const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
@@ -899,6 +906,59 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
             />
           ))}
 
+        {bullseye && (
+          <Pane
+            name="simulatedBullseyePane"
+            className="simulated-bullseye-pane"
+            style={{ pointerEvents: 'none' }}
+          >
+            <CircleMarker
+              center={[bullseye.position.lat, bullseye.position.lon]}
+              radius={10}
+              interactive={false}
+              pane="simulatedBullseyePane"
+              pathOptions={{
+                color: '#22d3ee',
+                fillColor: '#0e7490',
+                fillOpacity: 0.75,
+                weight: 3,
+              }}
+            />
+          </Pane>
+        )}
+
+        {bullseyeProjectionPreview && (
+          <Pane
+            name="bullseyeProjectionPreviewPane"
+            className="bullseye-projection-preview-pane"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <Polyline
+              positions={bullseyeProjectionPreview.line.map(position => [position.lat, position.lon] as [number, number])}
+              interactive={false}
+              pane="bullseyeProjectionPreviewPane"
+              pathOptions={{
+                color: '#38bdf8',
+                dashArray: '7 5',
+                weight: 3,
+                opacity: 0.9,
+              }}
+            />
+            <CircleMarker
+              center={[bullseyeProjectionPreview.targetPosition.lat, bullseyeProjectionPreview.targetPosition.lon]}
+              radius={8}
+              interactive={false}
+              pane="bullseyeProjectionPreviewPane"
+              pathOptions={{
+                color: '#facc15',
+                fillColor: '#facc15',
+                fillOpacity: 0.9,
+                weight: 2,
+              }}
+            />
+          </Pane>
+        )}
+
         {confirmedDesignations.length > 0 && (
           <Pane
             name="simulatedDesignationPane"
@@ -1009,6 +1069,60 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
                 {designation.label} {designation.position.lat.toFixed(5)}, {designation.position.lon.toFixed(5)}
               </div>
             ))}
+        </section>
+      )}
+
+      {bullseye && (
+        <section
+          className="absolute bottom-4 right-4 z-[90] rounded-lg border border-cyan-400/70 bg-slate-950/90 p-3 font-mono text-xs text-slate-100 shadow-xl pointer-events-none"
+          role="status"
+          aria-label="Simulated Bullseye"
+          aria-live="polite"
+          data-testid="simulated-bullseye"
+        >
+          <div className="mb-1 border-b border-slate-800 pb-1 text-cyan-300">BULLSEYE · SIMULATED</div>
+          <div>{bullseye.label}</div>
+          <div className="text-slate-400">SOURCE {bullseye.source} · STATE {bullseye.state}</div>
+          <div className="text-slate-400">POSITION {bullseye.position.lat.toFixed(5)}, {bullseye.position.lon.toFixed(5)}</div>
+        </section>
+      )}
+
+      {bullseyeProjectionPreview && (
+        <section
+          className="bullseye-projection-preview-overlay absolute top-4 right-4 z-[110] w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-sky-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          role="region"
+          aria-label="Bullseye projection preview"
+          aria-live="polite"
+        >
+          <div className="mb-2 flex items-center justify-between border-b border-slate-800 pb-2 text-sky-300">
+            <span>BULLSEYE PROJECTION PREVIEW</span>
+            <span className="text-[10px] text-slate-400">{bullseyeProjectionPreview.referenceLabel}</span>
+          </div>
+          <div className="space-y-1">
+            <div data-testid="bullseye-preview-point">
+              TARGET {bullseyeProjectionPreview.targetPosition.lat.toFixed(5)}, {bullseyeProjectionPreview.targetPosition.lon.toFixed(5)}
+            </div>
+            <div data-testid="bullseye-preview-line">
+              LINE BULLSEYE {bullseyeProjectionPreview.referencePosition.lat.toFixed(5)}, {bullseyeProjectionPreview.referencePosition.lon.toFixed(5)} → TARGET
+            </div>
+            <div className="text-emerald-300">
+              {bullseyeProjectionPreview.bearingDegrees.toFixed(1)}°T / {bullseyeProjectionPreview.rangeNauticalMiles.toFixed(1)} {bullseyeProjectionPreview.unit}
+            </div>
+            <div className="text-slate-400">METHOD {bullseyeProjectionPreview.method}</div>
+          </div>
+          {onClearBullseyeProjectionPreview && (
+            <button
+              type="button"
+              className="mt-3 min-h-[32px] w-full rounded border border-amber-400/70 px-2 py-1 text-amber-300 hover:bg-amber-400/10"
+              aria-label="Cancel Bullseye projection preview"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClearBullseyeProjectionPreview();
+              }}
+            >
+              CANCEL BULLSEYE PREVIEW
+            </button>
+          )}
         </section>
       )}
 

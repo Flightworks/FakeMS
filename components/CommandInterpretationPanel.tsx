@@ -1,5 +1,9 @@
 import type { ParsedCommand } from '../domain/commandLanguage';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
+import type {
+  BullseyeMeasurement,
+  BullseyeProjectionPreview,
+} from '../domain/bullseye';
 import type { ProjectionPreview } from '../domain/designations';
 import {
   convertTacticalQuantity,
@@ -11,6 +15,8 @@ export interface CommandInterpretationPanelProps {
   parsed: ParsedCommand;
   projection?: ProjectionPreview;
   intersection?: BearingIntersectionResult;
+  bullseyeMeasurement?: BullseyeMeasurement;
+  bullseyeProjection?: BullseyeProjectionPreview;
   effect?: string;
   source?: string;
 }
@@ -61,6 +67,10 @@ const getReference = (parsed: ParsedCommand): string => {
     return `${parameters.firstReference} ↔ ${parameters.secondReference}`;
   }
   if (typeof parameters.reference === 'string') return parameters.reference;
+  if (parsed.type === 'BULLSEYE' && typeof parameters.targetReference === 'string') {
+    return `BULLSEYE → ${parameters.targetReference}`;
+  }
+  if (parsed.type === 'BULLSEYE' && typeof parameters.bearing === 'number') return 'BULLSEYE';
   if (typeof parameters.fromReference === 'string' && typeof parameters.toReference === 'string') {
     return `${parameters.fromReference} → ${parameters.toReference}`;
   }
@@ -74,12 +84,16 @@ const getTarget = (
   parsed: ParsedCommand,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
+  bullseyeProjection?: BullseyeProjectionPreview,
 ): string => {
   if (projection) {
     return `${formatCoordinate(projection.targetPosition.lat)}, ${formatCoordinate(projection.targetPosition.lon)}`;
   }
   if (intersection) {
     return `${formatCoordinate(intersection.position.lat)}, ${formatCoordinate(intersection.position.lon)}`;
+  }
+  if (bullseyeProjection) {
+    return `${formatCoordinate(bullseyeProjection.targetPosition.lat)}, ${formatCoordinate(bullseyeProjection.targetPosition.lon)}`;
   }
 
   if (parsed.type === 'COORDINATE'
@@ -95,6 +109,8 @@ const getDetails = (
   parsed: ParsedCommand,
   projection?: ProjectionPreview,
   intersection?: BearingIntersectionResult,
+  bullseyeMeasurement?: BullseyeMeasurement,
+  bullseyeProjection?: BullseyeProjectionPreview,
 ): string[] => {
   const details: string[] = [];
   const parameters = parsed.parameters;
@@ -113,6 +129,29 @@ const getDetails = (
     details.push(`CROSSING ANGLE: ${intersection.crossingAngleDegrees.toFixed(2)}°`);
     details.push(`QUALITY: ${intersection.quality}`);
     details.push(`METHOD: ${intersection.method}`);
+  } else if (parsed.type === 'BULLSEYE') {
+    const command = typeof parameters.command === 'string' ? parameters.command : undefined;
+    if (command) details.push(`COMMAND: ${command}`);
+    if (bullseyeMeasurement) {
+      const bearing = bullseyeMeasurement.bearingTrueDegrees === null
+        ? 'UNAVAILABLE'
+        : `${bullseyeMeasurement.bearingTrueDegrees.toFixed(1)}° TRUE`;
+      const range = bullseyeMeasurement.rangeNauticalMiles === null
+        ? 'UNAVAILABLE'
+        : `${bullseyeMeasurement.rangeNauticalMiles.toFixed(1)} NM`;
+      details.push(`BRG: ${bearing}`);
+      details.push(`RNG: ${range}`);
+      details.push(`QUALIFICATION: ${bullseyeMeasurement.qualification}`);
+      if (bullseyeMeasurement.reason) details.push(`REASON: ${bullseyeMeasurement.reason}`);
+    } else if (bullseyeProjection) {
+      details.push(`BEARING: ${formatBearing(bullseyeProjection.bearingDegrees)}° TRUE`);
+      details.push(`RANGE: ${bullseyeProjection.rangeNauticalMiles.toFixed(1)} ${bullseyeProjection.unit}`);
+      details.push(`METHOD: ${bullseyeProjection.method}`);
+    } else if (command === 'SET BULL') {
+      details.push('ACTION: EXPLICIT CONFIRMATION REQUIRED');
+    } else if (command === 'CLEAR BULL') {
+      details.push('ACTION: EXPLICIT CONFIRMATION REQUIRED');
+    }
   } else if (parsed.type === 'MEASUREMENT' && typeof parameters.command === 'string') {
     details.push(`COMMAND: ${parameters.command}`);
   } else if (parsed.type === 'COORDINATE') {
@@ -155,6 +194,8 @@ export const CommandInterpretationPanel = ({
   parsed,
   projection,
   intersection,
+  bullseyeMeasurement,
+  bullseyeProjection,
   effect = 'SIMULATED CALCULATION',
   source = 'LOCAL SCENARIO',
 }: CommandInterpretationPanelProps) => {
@@ -164,8 +205,8 @@ export const CommandInterpretationPanel = ({
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
-    ...getDetails(parsed, projection, intersection),
-    `TARGET: ${getTarget(parsed, projection, intersection)}`,
+    ...getDetails(parsed, projection, intersection, bullseyeMeasurement, bullseyeProjection),
+    `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection)}`,
     `ASSUMPTIONS: ${assumptions}`,
     `SOURCE: ${source}`,
     `EFFECT: ${effect}`,

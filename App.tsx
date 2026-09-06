@@ -26,7 +26,9 @@ import { createMissionActionState, dispatchMissionAction } from './application/m
 import type { MissionActionRequest } from './domain/missionActions';
 import type { ProjectionPreview } from './domain/designations';
 import type { BearingIntersectionResult } from './domain/bearingIntersection';
+import type { BullseyeProjectionPreview, BullseyeReference } from './domain/bullseye';
 import type { ActiveSimulatedRoute } from './domain/routeSummary';
+import { createBullseyeState, bullseyeReducer } from './application/bullseyeReducer';
 import { createDesignationState, designationReducer } from './application/designationReducer';
 import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
@@ -57,6 +59,10 @@ const INITIAL_ENTITIES: Entity[] = [
   // Adding Waypoint routine to ENEMY 2 to test automatic navigation
   { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }] },
 ];
+
+type BullseyeProposal =
+  | { type: 'SET'; bullseye: BullseyeReference }
+  | { type: 'CLEAR'; previous: BullseyeReference };
 
 const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
@@ -131,6 +137,9 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [designationState, setDesignationState] = useState(() => createDesignationState());
+  const [bullseyeState, setBullseyeState] = useState(() => createBullseyeState());
+  const [bullseyeProposal, setBullseyeProposal] = useState<BullseyeProposal | null>(null);
+  const [bullseyeProjectionPreview, setBullseyeProjectionPreview] = useState<BullseyeProjectionPreview | null>(null);
   const [intersectionPreview, setIntersectionPreview] = useState<BearingIntersectionResult | null>(null);
   const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
@@ -176,6 +185,8 @@ const App: React.FC = () => {
 
   const closeCommandPalette = React.useCallback(() => {
     setCommandPaletteOpen(false);
+    setBullseyeProposal(null);
+    setBullseyeProjectionPreview(null);
     setIntersectionPreview(null);
     setDesignationState(prev => prev.phase === 'PREVIEWED'
       ? designationReducer(prev, { type: 'CANCEL_DESIGNATION' })
@@ -202,6 +213,58 @@ const App: React.FC = () => {
 
   const clearIntersectionPreview = React.useCallback(() => {
     setIntersectionPreview(null);
+  }, []);
+
+  const previewBullseyeProjection = React.useCallback((preview: BullseyeProjectionPreview) => {
+    setBullseyeProjectionPreview({
+      ...preview,
+      referencePosition: { ...preview.referencePosition },
+      targetPosition: { ...preview.targetPosition },
+      line: [
+        { ...preview.line[0] },
+        { ...preview.line[1] },
+      ],
+    });
+  }, []);
+
+  const clearBullseyeProjectionPreview = React.useCallback(() => {
+    setBullseyeProjectionPreview(null);
+  }, []);
+
+  const proposeSetBullseye = React.useCallback((nextBullseye: BullseyeReference) => {
+    setBullseyeProposal({
+      type: 'SET',
+      bullseye: {
+        ...nextBullseye,
+        position: { ...nextBullseye.position },
+      },
+    });
+  }, []);
+
+  const proposeClearBullseye = React.useCallback(() => {
+    if (!bullseyeState.bullseye) return;
+    setBullseyeProposal({
+      type: 'CLEAR',
+      previous: {
+        ...bullseyeState.bullseye,
+        position: { ...bullseyeState.bullseye.position },
+      },
+    });
+  }, [bullseyeState.bullseye]);
+
+  const confirmBullseyeProposal = React.useCallback(() => {
+    const proposal = bullseyeProposal;
+    if (!proposal) return;
+    setBullseyeState(previous => proposal.type === 'SET'
+      ? bullseyeReducer(previous, { type: 'SET_BULLSEYE_CONFIRMED', bullseye: proposal.bullseye })
+      : bullseyeReducer(previous, { type: 'CLEAR_BULLSEYE_CONFIRMED' }));
+    setBullseyeProposal(null);
+    setBullseyeProjectionPreview(null);
+    setCommandPaletteOpen(false);
+  }, [bullseyeProposal]);
+
+  const cancelBullseyeProposal = React.useCallback(() => {
+    setBullseyeProposal(null);
   }, []);
 
   const confirmDesignation = React.useCallback(() => {
@@ -722,6 +785,10 @@ const App: React.FC = () => {
         focusMapAt: handleFocusMapAt,
         previewProjection,
         previewIntersection,
+        previewBullseyeProjection,
+        bullseye: bullseyeState.bullseye,
+        proposeSetBullseye,
+        proposeClearBullseye,
         proposeDirectTo: handleProposeDirectTo,
         proposeRoute: handleProposeRoute,
         requestMissionAction: issueMissionAction,
@@ -788,11 +855,14 @@ const App: React.FC = () => {
             onMissionAction={issueMissionAction}
             projectionPreview={projectionPreview}
             intersectionPreview={intersectionPreview}
+            bullseye={bullseyeState.bullseye}
+            bullseyeProjectionPreview={bullseyeProjectionPreview}
             confirmedDesignations={designationState.confirmedDesignations}
             showDesignationList={designationListRequested}
             onConfirmDesignation={confirmDesignation}
             onClearProjectionPreview={cancelDesignation}
             onClearIntersectionPreview={clearIntersectionPreview}
+            onClearBullseyeProjectionPreview={clearBullseyeProjectionPreview}
               />
             </React.Suspense>
           ) : (
@@ -828,6 +898,10 @@ const App: React.FC = () => {
             focusMapAt={handleFocusMapAt}
             previewProjection={previewProjection}
             previewIntersection={previewIntersection}
+            previewBullseyeProjection={previewBullseyeProjection}
+            bullseye={bullseyeState.bullseye}
+            proposeSetBullseye={proposeSetBullseye}
+            proposeClearBullseye={proposeClearBullseye}
             designations={designationState.confirmedDesignations}
             listDesignations={listDesignations}
             renameDesignation={renameDesignation}
@@ -851,6 +925,47 @@ const App: React.FC = () => {
             activeRoute={activeRouteForPalette}
           />
         </React.Suspense>
+      )}
+
+      {bullseyeProposal && (
+        <div
+          className="fixed inset-0 z-[125] flex items-center justify-center bg-slate-950/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={bullseyeProposal.type === 'SET' ? 'Set simulated Bullseye' : 'Clear simulated Bullseye'}
+        >
+          <div className="w-[min(26rem,calc(100vw-2rem))] rounded-xl border border-cyan-400/70 bg-slate-950 p-5 font-mono text-sm text-slate-100 shadow-2xl">
+            <div className="mb-2 text-cyan-300">
+              {bullseyeProposal.type === 'SET' ? 'SET SIMULATED BULLSEYE?' : 'CLEAR SIMULATED BULLSEYE?'}
+            </div>
+            <p className="mb-4 text-xs text-slate-400">
+              {bullseyeProposal.type === 'SET'
+                ? bullseyeState.bullseye
+                  ? `This replaces ${bullseyeState.bullseye.label} with ${bullseyeProposal.bullseye.label}.`
+                  : `This sets ${bullseyeProposal.bullseye.label} as the local scenario Bullseye.`
+                : `This clears ${bullseyeProposal.previous.label}. No entity, track, route, or designated point is changed.`}
+              {' '}The change is simulated and requires explicit confirmation.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-cyan-400/70 px-3 py-2 text-cyan-300 hover:bg-cyan-400/10"
+                aria-label={bullseyeProposal.type === 'SET' ? 'Confirm set Bullseye' : 'Confirm clear Bullseye'}
+                onClick={confirmBullseyeProposal}
+              >
+                {bullseyeProposal.type === 'SET' ? 'CONFIRM SET BULL' : 'CONFIRM CLEAR BULL'}
+              </button>
+              <button
+                type="button"
+                className="min-h-[36px] flex-1 rounded border border-slate-600 px-3 py-2 text-slate-300 hover:bg-slate-800"
+                aria-label={bullseyeProposal.type === 'SET' ? 'Cancel set Bullseye' : 'Cancel clear Bullseye'}
+                onClick={cancelBullseyeProposal}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {designationState.clearProposal && (

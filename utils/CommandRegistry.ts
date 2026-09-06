@@ -40,6 +40,14 @@ import {
     type BearingIntersectionResult,
 } from '../domain/bearingIntersection';
 import {
+    calculateFromBullseye,
+    createBullseye,
+    createBullseyeProjectionPreview,
+    type BullseyeEntity,
+    type BullseyeProjectionPreview,
+    type BullseyeReference,
+} from '../domain/bullseye';
+import {
     formatCoordinate,
     type CoordinateFormat,
 } from '../domain/coordinateFormats';
@@ -63,6 +71,10 @@ export interface CommandContext {
     focusMapAt: (position: Position) => void;
     previewProjection?: (preview: ProjectionPreview) => void;
     previewIntersection?: (preview: BearingIntersectionResult) => void;
+    previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
+    bullseye?: BullseyeReference | null;
+    proposeSetBullseye?: (bullseye: BullseyeReference) => void;
+    proposeClearBullseye?: () => void;
     proposeDirectTo: (target: Pick<Entity, 'id' | 'label' | 'position'>) => void;
     proposeRoute: (target: Pick<Entity, 'id' | 'label' | 'position'>, objective?: MissionObjective) => void;
     requestMissionAction: (request: MissionActionRequest) => void;
@@ -311,6 +323,10 @@ export const getCommands = (
         toggleSystem,
         focusMapAt,
         previewIntersection,
+        previewBullseyeProjection,
+        bullseye,
+        proposeSetBullseye,
+        proposeClearBullseye,
         proposeDirectTo,
         proposeRoute,
         requestMissionAction,
@@ -1095,6 +1111,184 @@ export const getCommands = (
                             intent: 'INTERSECTION',
                         },
                     });
+                }
+            }
+        }
+    }
+
+    // 5b. Simulated Bullseye. SET/CLEAR are proposal callbacks; measurements
+    // and projections remain local read-only results.
+    const bullseyeCommand = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : undefined;
+    if (parsedMeasurement.type === 'BULLSEYE' && parsedMeasurement.errors.length === 0) {
+        const pushBullseyeStatus = (id: string, label: string, subLabel: string) => {
+            commands.push({
+                id,
+                label,
+                subLabel,
+                icon: Crosshair,
+                isPreview: true,
+                keepPaletteOpen: true,
+                keywords: ['bull', 'bullseye', 'blocked'],
+                ranking: {
+                    category: 'STRUCTURED_EXACT',
+                    completeness: 3,
+                    match: 'EXACT',
+                },
+            });
+        };
+
+        if (bullseyeCommand === 'SET BULL') {
+            const reference = parsedMeasurement.parameters.reference;
+            if (typeof reference === 'string') {
+                const resolution = resolveEntityReference(reference, entities, ownship);
+                if (!resolution.executable || !resolution.entity) {
+                    pushBullseyeStatus(
+                        `set-bullseye-reference-status-${resolution.status.toLowerCase()}`,
+                        `SET BULL ${resolution.status}: ${resolution.reference}`,
+                        'SET BULL blocked · choose an unambiguous scenario entity',
+                    );
+                } else {
+                    const bullseyeEntity: BullseyeEntity = {
+                        id: resolution.entity.id,
+                        label: resolution.entity.label,
+                        position: { ...resolution.entity.position },
+                    };
+                    const nextBullseye = createBullseye(bullseyeEntity);
+                    commands.push({
+                        id: 'set-bullseye',
+                        label: `SET BULL ${nextBullseye.label}`,
+                        subLabel: bullseye
+                            ? `Replace ${bullseye.label} · explicit confirmation required`
+                            : 'Set scenario Bullseye · explicit confirmation required',
+                        icon: Crosshair,
+                        action: () => proposeSetBullseye?.(nextBullseye),
+                        keywords: ['set', 'bull', 'bullseye', nextBullseye.label],
+                        historyValue: q,
+                        isPreview: true,
+                        keepPaletteOpen: true,
+                        ranking: {
+                            category: 'STRUCTURED_EXACT',
+                            completeness: 3,
+                            match: 'EXACT',
+                        },
+                    });
+                }
+            }
+        } else if (bullseyeCommand === 'CLEAR BULL') {
+            if (!bullseye) {
+                pushBullseyeStatus(
+                    'clear-bullseye-no-bullseye',
+                    'CLEAR BULL: NO BULLSEYE',
+                    'No simulated Bullseye is set',
+                );
+            } else {
+                commands.push({
+                    id: 'clear-bullseye',
+                    label: 'CLEAR BULL',
+                    subLabel: `Clear ${bullseye.label} · explicit confirmation required`,
+                    icon: Crosshair,
+                    action: () => proposeClearBullseye?.(),
+                    keywords: ['clear', 'bull', 'bullseye'],
+                    historyValue: q,
+                    isPreview: true,
+                    keepPaletteOpen: true,
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                    },
+                });
+            }
+        } else if (bullseyeCommand === 'BULL') {
+            const targetReference = parsedMeasurement.parameters.targetReference;
+            if (typeof targetReference === 'string') {
+                if (!bullseye) {
+                    pushBullseyeStatus(
+                        'bull-measure-no-bullseye',
+                        `BULL ${targetReference}: NO BULLSEYE`,
+                        'Measurement blocked · set an explicit simulated Bullseye first',
+                    );
+                } else {
+                    const resolution = resolveEntityReference(targetReference, entities, ownship);
+                    if (!resolution.executable || !resolution.entity) {
+                        pushBullseyeStatus(
+                            `bull-measure-reference-status-${resolution.status.toLowerCase()}`,
+                            `BULL ${resolution.status}: ${resolution.reference}`,
+                            'BULL measurement blocked · choose an unambiguous target',
+                        );
+                    } else {
+                        const measurement = calculateFromBullseye(bullseye, {
+                            id: resolution.entity.id,
+                            label: resolution.entity.label,
+                            position: { ...resolution.entity.position },
+                        });
+                        const bearing = measurement.bearingTrueDegrees === null
+                            ? 'UNAVAILABLE'
+                            : `${measurement.bearingTrueDegrees.toFixed(1)}°T`;
+                        const range = measurement.rangeNauticalMiles === null
+                            ? 'UNAVAILABLE'
+                            : `${measurement.rangeNauticalMiles.toFixed(1)} NM`;
+                        commands.push({
+                            id: `bull-measure-${resolution.entity.id}`,
+                            label: `BULL ${resolution.entity.label}`,
+                            subLabel: `BRG: ${bearing} · RNG: ${range} · SRC: BULLSEYE · QUALIFICATION: ${measurement.qualification}`,
+                            icon: Crosshair,
+                            keywords: ['bull', 'bullseye', 'brg', 'rng', resolution.entity.label],
+                            historyValue: q,
+                            isPreview: true,
+                            keepPaletteOpen: true,
+                            ranking: {
+                                category: 'STRUCTURED_EXACT',
+                                completeness: 3,
+                                match: 'EXACT',
+                            },
+                        });
+                    }
+                }
+            } else {
+                const bearing = parsedMeasurement.parameters.bearing;
+                const range = parsedMeasurement.parameters.range;
+                const unit = parsedMeasurement.parameters.unit;
+                if (!bullseye) {
+                    pushBullseyeStatus(
+                        'bull-projection-no-bullseye',
+                        'BULL PROJECTION: NO BULLSEYE',
+                        'Projection blocked · set an explicit simulated Bullseye first',
+                    );
+                } else if (typeof bearing === 'number' && typeof range === 'number' && typeof unit === 'string') {
+                    try {
+                        const quantity = createTacticalQuantity(range, unit, { allowImplicitNauticalMile: true });
+                        const rangeNauticalMiles = convertTacticalQuantity(quantity, 'NM').value;
+                        const preview = createBullseyeProjectionPreview(
+                            bullseye,
+                            bearing,
+                            rangeNauticalMiles,
+                        );
+                        commands.push({
+                            id: 'bull-projection',
+                            label: `BULL BRG ${formatIntersectionBearing(bearing)}°T / RNG ${rangeNauticalMiles.toFixed(1)} NM`,
+                            subLabel: `LOCAL PREVIEW · ${preview.method} · ${bullseye.label} · explicit confirmation not required`,
+                            icon: Crosshair,
+                            action: () => previewBullseyeProjection?.(preview),
+                            keywords: ['bull', 'bullseye', 'projection', 'preview'],
+                            historyValue: q,
+                            isPreview: true,
+                            keepPaletteOpen: true,
+                            ranking: {
+                                category: 'STRUCTURED_EXACT',
+                                completeness: 3,
+                                match: 'EXACT',
+                            },
+                        });
+                    } catch {
+                        pushBullseyeStatus(
+                            'bull-projection-unavailable',
+                            'BULL PROJECTION: UNAVAILABLE',
+                            'Projection is unavailable for the supplied Bullseye geometry',
+                        );
+                    }
                 }
             }
         }

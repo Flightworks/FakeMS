@@ -8,6 +8,13 @@ import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
 import { intersectBearings, type BearingIntersectionResult } from '../domain/bearingIntersection';
 import { createProjectionPreview, type ProjectionPreview, type SimulatedDesignation } from '../domain/designations';
+import {
+  calculateFromBullseye,
+  createBullseyeProjectionPreview,
+  type BullseyeMeasurement,
+  type BullseyeProjectionPreview,
+  type BullseyeReference,
+} from '../domain/bullseye';
 import { resolveEntityReference } from '../domain/entityResolution';
 import { convertTacticalQuantity, createTacticalQuantity } from '../domain/tacticalUnits';
 import { CommandInterpretationPanel } from './CommandInterpretationPanel';
@@ -27,6 +34,10 @@ interface CommandPaletteProps {
   focusMapAt: (position: { lat: number, lon: number }) => void;
   previewProjection?: (preview: ProjectionPreview) => void;
   previewIntersection?: (preview: BearingIntersectionResult) => void;
+  previewBullseyeProjection?: (preview: BullseyeProjectionPreview) => void;
+  bullseye?: BullseyeReference | null;
+  proposeSetBullseye?: (bullseye: BullseyeReference) => void;
+  proposeClearBullseye?: () => void;
   designations?: SimulatedDesignation[];
   listDesignations?: () => void;
   renameDesignation?: (designationId: string, label: string) => void;
@@ -119,6 +130,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   focusMapAt,
   previewProjection,
   previewIntersection,
+  previewBullseyeProjection,
+  bullseye,
+  proposeSetBullseye,
+  proposeClearBullseye,
   designations = [],
   listDesignations,
   renameDesignation,
@@ -228,6 +243,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       focusMapAt,
       previewProjection,
       previewIntersection,
+      previewBullseyeProjection,
+      bullseye,
+      proposeSetBullseye,
+      proposeClearBullseye,
       designations,
       listDesignations,
       renameDesignation,
@@ -258,6 +277,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     focusMapAt,
     previewProjection,
     previewIntersection,
+    previewBullseyeProjection,
+    bullseye,
+    proposeSetBullseye,
+    proposeClearBullseye,
     designations,
     listDesignations,
     renameDesignation,
@@ -348,6 +371,34 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [parsedCommand, entities, ownship]);
 
+  const interpretationBullseyeMeasurement = useMemo<BullseyeMeasurement | undefined>(() => {
+    if (parsedCommand.type !== 'BULLSEYE' || parsedCommand.errors.length > 0) return undefined;
+    const targetReference = parsedCommand.parameters.targetReference;
+    if (typeof targetReference !== 'string') return undefined;
+    const resolution = resolveEntityReference(targetReference, entities, ownship);
+    if (!resolution.executable || !resolution.entity) return undefined;
+    return calculateFromBullseye(bullseye ?? null, {
+      id: resolution.entity.id,
+      label: resolution.entity.label,
+      position: { ...resolution.entity.position },
+    });
+  }, [parsedCommand, entities, ownship, bullseye]);
+
+  const interpretationBullseyeProjection = useMemo<BullseyeProjectionPreview | undefined>(() => {
+    if (parsedCommand.type !== 'BULLSEYE' || parsedCommand.errors.length > 0 || !bullseye) return undefined;
+    const bearing = parsedCommand.parameters.bearing;
+    const range = parsedCommand.parameters.range;
+    const unit = parsedCommand.parameters.unit;
+    if (typeof bearing !== 'number' || typeof range !== 'number' || typeof unit !== 'string') return undefined;
+    try {
+      const quantity = createTacticalQuantity(range, unit, { allowImplicitNauticalMile: true });
+      const rangeNauticalMiles = convertTacticalQuantity(quantity, 'NM').value;
+      return createBullseyeProjectionPreview(bullseye, bearing, rangeNauticalMiles);
+    } catch {
+      return undefined;
+    }
+  }, [parsedCommand, bullseye]);
+
   const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
   const shouldShowInterpretation = query.trim().length > 0
     && parsedCommand.type !== 'NOTE'
@@ -356,6 +407,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     ? interpretationProjection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
     : parsedCommand.type === 'INTERSECTION'
       ? interpretationIntersection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
+      : parsedCommand.type === 'BULLSEYE'
+        ? parsedCommand.parameters.command === 'SET BULL' || parsedCommand.parameters.command === 'CLEAR BULL'
+          ? 'LOCAL SIMULATION · EXPLICIT CONFIRMATION'
+          : typeof parsedCommand.parameters.bearing === 'number'
+            ? interpretationBullseyeProjection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
+            : 'CALCULATION ONLY'
       : parsedCommand.type === 'MEASUREMENT' || parsedCommand.type === 'CALCULATION'
       ? 'CALCULATION ONLY'
       : parsedCommand.type === 'COORDINATE'
@@ -593,7 +650,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             parsed={parsedCommand}
             projection={interpretationProjection}
             intersection={interpretationIntersection}
+            bullseyeMeasurement={interpretationBullseyeMeasurement}
+            bullseyeProjection={interpretationBullseyeProjection}
             effect={interpretationEffect}
+            source={interpretationBullseyeMeasurement || interpretationBullseyeProjection ? 'SIMULATED BULLSEYE' : 'LOCAL SCENARIO'}
           />
         )}
 

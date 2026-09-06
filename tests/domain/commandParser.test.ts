@@ -326,4 +326,37 @@ describe('typed tactical command parser', () => {
       expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
     }
   });
+
+  it('parses explicit Bullseye set, measurement, projection, and clear commands', () => {
+    const set = parseCommand('SET BULL BRAVO');
+    expect(set.type).toBe('BULLSEYE');
+    expect(set.parameters).toMatchObject({ command: 'SET BULL', reference: 'BRAVO' });
+    expect(set.errors).toEqual([]);
+
+    const measurement = parseCommand('BULL HOSTILE 1');
+    expect(measurement.type).toBe('BULLSEYE');
+    expect(measurement.parameters).toMatchObject({ command: 'BULL', targetReference: 'HOSTILE 1' });
+    expect(measurement.errors).toEqual([]);
+
+    const projection = parseCommand('BULL 270/15');
+    expect(projection.type).toBe('BULLSEYE');
+    expect(projection.parameters).toMatchObject({ command: 'BULL', bearing: 270, range: 15, unit: 'NM' });
+    expect(projection.assumptions).toContain('ASSUMED NM');
+    expect(projection.errors).toEqual([]);
+
+    const clear = parseCommand('CLEAR BULL');
+    expect(clear.type).toBe('BULLSEYE');
+    expect(clear.parameters).toMatchObject({ command: 'CLEAR BULL' });
+    expect(clear.errors).toEqual([]);
+  });
+
+  it('rejects incomplete Bullseye mutations and projections without execution', () => {
+    for (const input of ['SET BULL', 'CLEAR BULL NOW', 'BULL 360/15', 'BULL 270']) {
+      const parsed = parseCommand(input);
+
+      expect(parsed.type, input).toBe('BULLSEYE');
+      expect(parsed.errors.length, input).toBeGreaterThan(0);
+      expect(parsed.warnings, input).toContain('EXECUTION_NOT_ATTEMPTED');
+    }
+  });
 });

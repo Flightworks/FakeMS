@@ -44,6 +44,9 @@ const COMMAND_TOKENS = new Set([
   'ROUTE',
   'LEG',
   'NEXT',
+  'SET',
+  'BULL',
+  'CLEAR',
 ]);
 
 const stripDiacritics = (value: string): string =>
@@ -805,6 +808,128 @@ const parseIntersection = (input: string, tokens: CommandToken[]): ParsedCommand
   );
 };
 
+const parseBullseye = (input: string, tokens: CommandToken[]): ParsedCommand => {
+  const normalizedInput = normalizeText(input);
+  const parameters: Record<string, string | number | null> = {};
+  const errors: CommandParseError[] = [];
+  const assumptions: string[] = [];
+
+  if (/^SET\s+BULL(?:\s|$)/.test(normalizedInput)) {
+    parameters.command = 'SET BULL';
+    const reference = normalizedInput.replace(/^SET\s+BULL(?:\s+|$)/, '').trim();
+    if (!reference) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'SET BULL requires an exact entity reference.',
+        hint: 'Use SET BULL BRAVO.',
+      });
+    } else {
+      parameters.reference = reference;
+    }
+  } else if (/^CLEAR\s+BULL(?:\s|$)/.test(normalizedInput)) {
+    parameters.command = 'CLEAR BULL';
+    const extra = normalizedInput.replace(/^CLEAR\s+BULL(?:\s+|$)/, '').trim();
+    if (extra) {
+      errors.push({
+        code: 'UNEXPECTED_ARGUMENT',
+        message: `Unexpected CLEAR BULL argument: ${extra}.`,
+        hint: 'Use CLEAR BULL.',
+      });
+    }
+  } else {
+    parameters.command = 'BULL';
+    const body = normalizedInput.replace(/^BULL(?:\s+|$)/, '').trim();
+    if (!body) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'BULL requires a target reference or bearing/range projection.',
+        hint: 'Use BULL HOSTILE 1 or BULL 270/15.',
+      });
+    } else if (body.includes('/')) {
+      const slashParts = body.split('/');
+      if (slashParts.length !== 2 || !slashParts[0].trim() || !slashParts[1].trim()) {
+        errors.push({
+          code: 'INVALID_SYNTAX',
+          message: 'BULL projection requires BEARING/RANGE.',
+          hint: 'Use BULL 270/15.',
+        });
+      } else {
+        const bearingToken = normalizeProjectionPart(slashParts[0].trim());
+        const rangeParts = splitNumericAndUnit(slashParts[1].trim());
+        const bearing = parseNormalizedNumber(bearingToken);
+        const range = parseNormalizedNumber(rangeParts.numberToken);
+        parameters.bearing = bearing;
+        parameters.range = range;
+        if (rangeParts.unitToken) parameters.unit = rangeParts.unitToken;
+
+        if (bearingToken === NON_FINITE_MARKER || rangeParts.numberToken === NON_FINITE_MARKER) {
+          errors.push(nonFiniteError());
+        } else if (bearing === null) {
+          errors.push({ code: 'INVALID_NUMBER', message: 'BULL bearing must be numeric.' });
+        } else if (bearing < 0 || bearing >= 360) {
+          errors.push({
+            code: 'INVALID_BEARING',
+            message: 'BULL bearing must be between 000 and 359.999 degrees.',
+            hint: 'Normalize the true bearing to the range [000, 360).',
+          });
+        }
+
+        if (range === null) {
+          errors.push({ code: 'INVALID_NUMBER', message: 'BULL range must be numeric.' });
+        } else if (range <= 0) {
+          errors.push({ code: 'INVALID_RANGE', message: 'BULL projection range must be positive.' });
+        } else {
+          try {
+            const quantity = createTacticalQuantity(
+              range,
+              rangeParts.unitToken,
+              { allowImplicitNauticalMile: true },
+            );
+            if (quantity.dimension !== 'DISTANCE') {
+              errors.push({
+                code: 'INCOMPATIBLE_UNIT',
+                message: 'BULL projection range requires a distance unit.',
+              });
+            } else {
+              parameters.unit = quantity.unit;
+              if (quantity.assumed) assumptions.push('ASSUMED NM');
+            }
+          } catch (error) {
+            errors.push({
+              code: error instanceof TacticalUnitError && error.code === 'UNKNOWN_UNIT'
+                ? 'UNKNOWN_UNIT'
+                : 'INVALID_RANGE',
+              message: error instanceof TacticalUnitError && error.code === 'UNKNOWN_UNIT'
+                ? 'Unknown BULL projection range unit.'
+                : 'BULL projection range is invalid.',
+              ...(error instanceof TacticalUnitError && error.code === 'UNKNOWN_UNIT'
+                ? { hint: 'Supported projection units: NM, KM or M.' }
+                : {}),
+            });
+          }
+        }
+      }
+    } else if (isProjectionNumber(body.split(/\s+/)[0])) {
+      errors.push({
+        code: 'INCOMPLETE_COMMAND',
+        message: 'BULL projection requires a slash between bearing and range.',
+        hint: 'Use BULL 270/15.',
+      });
+    } else {
+      parameters.targetReference = body;
+    }
+  }
+
+  return createResult(
+    'BULLSEYE',
+    tokens,
+    parameters,
+    errors.length > 0 ? ['EXECUTION_NOT_ATTEMPTED'] : [],
+    errors,
+    assumptions,
+  );
+};
+
 const parseRoute = (tokens: CommandToken[]): ParsedCommand => {
   const commandToken = tokens[0]?.normalized ?? '';
   const subcommand = tokens[1]?.normalized;
@@ -871,6 +996,9 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     return 'SYSTEM';
   }
   if (command === 'SEARCH' || command === 'NEAREST') return 'SEARCH';
+  if (command === 'BULL'
+    || (command === 'SET' && tokens[1]?.normalized === 'BULL')
+    || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
   if (command === 'NOTE') return 'NOTE';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
   if (command === 'ROUTE' || command === 'LEG' || command === 'NEXT') return 'ROUTE';
@@ -889,6 +1017,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   const type = inferIntent(tokens, normalizedInput);
   if (type === 'PROJECTION') return parseProjection(input, tokens);
   if (type === 'INTERSECTION') return parseIntersection(input, tokens);
+  if (type === 'BULLSEYE') return parseBullseye(input, tokens);
   if (type === 'COORDINATE') {
     if (tokens[0]?.normalized === 'COPY'
       || tokens[0]?.normalized === 'COORD'
