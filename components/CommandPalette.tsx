@@ -6,6 +6,10 @@ import type { MathCommandProvider } from '../utils/mathEvaluator';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import type { MissionActionRequest } from '../domain/missionActions';
 import { parseCommand } from '../domain/commandParser';
+import { createProjectionPreview, type ProjectionPreview, type SimulatedDesignation } from '../domain/designations';
+import { resolveEntityReference } from '../domain/entityResolution';
+import { convertTacticalQuantity, createTacticalQuantity } from '../domain/tacticalUnits';
+import { CommandInterpretationPanel } from './CommandInterpretationPanel';
 import { getTacticalCompletions, type TacticalCompletion } from '../domain/commandCompletion';
 import {
   appendCommandHistory,
@@ -13,7 +17,6 @@ import {
   MAX_COMMAND_HISTORY_ENTRIES,
 } from '../domain/commandHistory';
 import type { MissionObjective } from '../domain/intent';
-import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -247,10 +250,51 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     mathProvider,
   ]);
 
-  const projectionErrors = useMemo(() => {
-    const parsed = parseCommand(query);
-    return parsed.type === 'PROJECTION' ? parsed.errors : [];
-  }, [query]);
+  const parsedCommand = useMemo(() => parseCommand(query), [query]);
+
+  const interpretationProjection = useMemo<ProjectionPreview | undefined>(() => {
+    if (parsedCommand.type !== 'PROJECTION' || parsedCommand.errors.length > 0) return undefined;
+
+    const reference = typeof parsedCommand.parameters.reference === 'string'
+      ? parsedCommand.parameters.reference
+      : 'OWNSHIP';
+    const bearing = parsedCommand.parameters.bearing;
+    const range = parsedCommand.parameters.range;
+    const unit = parsedCommand.parameters.unit;
+    if (typeof bearing !== 'number' || typeof range !== 'number' || typeof unit !== 'string') {
+      return undefined;
+    }
+
+    const resolution = resolveEntityReference(reference, entities, ownship);
+    if (!resolution.executable || !resolution.entity) return undefined;
+
+    try {
+      const quantity = createTacticalQuantity(range, unit, { allowImplicitNauticalMile: true });
+      const rangeNauticalMiles = convertTacticalQuantity(quantity, 'NM').value;
+      return createProjectionPreview(
+        resolution.entity.label,
+        { ...resolution.entity.position },
+        bearing,
+        rangeNauticalMiles,
+      );
+    } catch {
+      return undefined;
+    }
+  }, [parsedCommand, entities, ownship]);
+
+  const projectionErrors = parsedCommand.type === 'PROJECTION' ? parsedCommand.errors : [];
+  const shouldShowInterpretation = query.trim().length > 0
+    && parsedCommand.type !== 'NOTE'
+    && parsedCommand.errors.length === 0;
+  const interpretationEffect = parsedCommand.type === 'PROJECTION'
+    ? interpretationProjection ? 'MAP PREVIEW ONLY' : 'MAP PREVIEW ONLY · BLOCKED'
+    : parsedCommand.type === 'MEASUREMENT' || parsedCommand.type === 'CALCULATION'
+      ? 'CALCULATION ONLY'
+      : parsedCommand.type === 'COORDINATE'
+        ? 'MAP DISPLAY ONLY'
+        : parsedCommand.type === 'SYSTEM'
+          ? 'LOCAL SIMULATION CONTROL'
+          : 'LOCAL DISPLAY ONLY';
 
   const completions = useMemo(
     () => getTacticalCompletions(query, entities, ownship),
@@ -468,6 +512,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </button>
             ))}
           </div>
+        )}
+
+        {shouldShowInterpretation && (
+          <CommandInterpretationPanel
+            parsed={parsedCommand}
+            projection={interpretationProjection}
+            effect={interpretationEffect}
+          />
         )}
 
         <ul ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-2 overflow-x-hidden" role="listbox" aria-label="Command results">
