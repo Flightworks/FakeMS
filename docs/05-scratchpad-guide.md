@@ -1,154 +1,170 @@
-# 🧠 The Scratchpad (Smart Command Bar)
+# Palette de commandes
 
-The **Scratchpad** is your primary "Heads-Down" interface. It is a unified command line, mission calculator, navigation computer, system controller, and document reader all rolled into a single, lightning-fast input field.
+La palette permet de calculer, consulter et contrôler la simulation locale sans quitter la carte.
 
----
+> **FakeMS est un prototype.** La palette ne pilote aucun système opérationnel.
 
-## 🚀 Quick Access
+## À retenir
 
-| Method | Action |
-| :--- | :--- |
-| **Keyboard** | Press `Ctrl + K`, `Space`, or `\` |
-| **Touch** | Tap the **⌘** icon in the left sidebar |
-| **Dismiss** | Press `ESC` or click anywhere outside the bar |
+- Un **calcul** affiche un résultat sans modifier le scénario.
+- Une **prévisualisation** montre un résultat sur la carte sans créer d’action réelle.
+- Une commande **locale** modifie seulement l’affichage ou l’état de FakeMS.
+- Une commande **simulée** agit uniquement sur le scénario local.
+- Un effacement ou une remise à zéro demande une **confirmation**.
 
----
+Une référence ambiguë ou une donnée indisponible bloque l’action. La palette ne choisit pas une cible au hasard.
 
-## 🔢 Calculator & Conversions
+## Ouvrir la palette
 
-The Scratchpad includes a robust math engine that operates in **degrees** by default and understands complex trigonometry and unit conversions.
+Utilisez `Ctrl+K`, `Espace`, `\` ou le bouton `⌘` dans la barre latérale.
 
-> **💡 Pro Tip:** Click any calculation result in the list to instantly copy the raw value to your clipboard.
+Fermez-la avec `Échap` ou en cliquant en dehors de la palette.
 
-### Math Examples
-*No parentheses are required for basic trigonometry!*
-*   `10 * (2 + 3) / 5` ➔ **10**
-*   `cos45` ➔ **0.70710678** 
-*   `sin30` ➔ **0.5**
-*   `sqrt(144)` ➔ **12**
-*   `abs(-50)` ➔ **50**
-*   `log(100)` ➔ **2**
+## Premier essai
 
-### Unit Conversions
-Convert metrics on the fly using natural language:
-*   `100 knots to km/h` ➔ **185.2 km/h**
-*   `5000 ft to meters` ➔ **1524 m**
-*   `20 degC to degF` ➔ **68 °F**
+```text
+BRAVO 090/5 NM
+ETA BRAVO
+5NM > KM
+SIM STATUS
+ROUTE STATUS
+TRAIL STATUS
+```
 
----
+Lisez l’interprétation affichée avant de valider une commande.
 
-## 📍 Coordinates & Navigation
+## Calculer et se repérer
 
-Jump to any exact location on the map. The system supports two major formats and provides raw data extraction options.
+Projeter un point à partir d’une cible, d’un relèvement et d’une distance :
 
-| Format | Example | Result |
-| :--- | :--- | :--- |
-| **DDMM (Military)** | `N45E006` <br> `N4530E00630` <br> `S2330W04515` | 45°N, 6°E <br> 45°30'N, 6°30'E <br> 23°30'S, 45°15'W |
-| **Decimal Degrees** | `45.5, 6.5` <br> `-23.5, -45.25` | 45.5°N, 6.5°E <br> 23.5°S, 45.25°W |
+```text
+BRAVO 090/5 NM
+FROM BRAVO 180/5NM
+```
 
-When a coordinate is recognized, you get three instant actions:
-1. **🚀 FLY TO** — Instantly centers the map on the coordinates.
-2. **📋 COPY POS** — Copies the normalized decimal degrees (e.g., `45.50000, 6.50000`).
-3. **📝 COPY TEXT** — Copies precisely what you typed.
+Calculer une arrivée, un rapprochement ou une recherche locale :
 
-*(Typing incomplete coordinates like `N45` or `N4530E` will show helpful format hints!)*
+```text
+ETA BRAVO
+CPA BRAVO
+CLOSURE BRAVO
+NEAREST 3 TRACKS
+```
 
----
+Convertir des unités compatibles :
 
-## 🎯 Tactical Tools
+```text
+5NM > KM
+120KT > KMH
+5000FT > M
+15MIN > SEC
+```
 
-Execute complex navigation and projection tasks against live map entities. 
+Une unité inconnue ou incompatible produit une erreur. La palette ne fournit pas de conversion approximative.
 
-*(Note: Entity names are fuzzy-matched, so typing `hostle` or `h1` will usually match `HOSTILE 1`!)*
+Formats de coordonnées courants :
 
-### Direct-To (DCT)
-Instantly lock the map onto a tracked entity or waypoint.
-*   `DCT HOSTILE 1`
-*   `DCT BRAVO`
-*   `DCT BASE`
+```text
+N45E006
+N4530E00630
+45.5, 6.5
+-23.5, -45.25
+```
 
-### Entity Projection (Bearing & Range)
-Calculate an exact physical position relative to any entity.
-*   `HOSTILE 1 180/5` ➔ Point 5 NM directly South of HOSTILE 1.
-*   `G01 090/10` ➔ Point 10 NM directly East of G01.
-*   `180/5` ➔ Point 5 NM South of your **Ownship**.
+Un résultat de coordonnées peut proposer le centrage de la carte, la copie de la position normalisée ou la copie du texte saisi. Il ne crée pas de navigation réelle.
 
-The tactical parser accepts equivalent bearing/range forms:
-*   `BRAVO 180/5`
-*   `BRAVO 180/5 NM`
-*   `BRAVO 180 5NM`
-*   `FROM BRAVO 180/5NM`
-*   `BRAVO BRG 180 RNG 5 NM`
+## Consulter le scénario
 
-These forms normalize to `FROM BRAVO BRG 180°T RNG 5.0 NM`. A range without a unit is treated as NM only in the compact tactical form containing `/`; the parser records this as `ASSUMED NM`. Bearings must be from `000` through `359.999`, ranges must be positive, and the range unit must be a distance unit. Invalid input is returned as a structured error and is not executed. Entity-name resolution remains the responsibility of the mission context that consumes the parsed command.
+```text
+SIM STATUS
+TRACK INFO BRAVO
+TRACK AGE BRAVO
+ROUTE STATUS
+TRAIL STATUS
+```
 
-### Estimated Time of Arrival (ETA)
-Estimate your arrival time based on the distance to the target and your current speed.
-*   `ETA ALPHA`
-*   `ETA HOSTILE 2`
+Ces commandes affichent l’état de la simulation, les détails et l’âge d’une piste, la route simulée ou l’historique local des positions.
 
-*(The result will display your Estimated Time En Route (ETE) in minutes, along with the slant range in kilometers.)*
+## Contrôler l’affichage
 
----
+Couches locales :
 
-## 🕹️ System Controls
+```text
+LAYERS
+LAYER TRACKS ON
+LAYER VECTORS OFF
+LAYER ROUTE ON
+```
 
-Toggle your vehicle's sensors and map orientations instantly without hunting for buttons.
+Densité des informations :
 
-| System | Command | Fuzzy Keywords to try |
-| :--- | :--- | :--- |
-| **Radar** | `RADAR` | `rdr`, `radar`, `sensor` |
-| **ADS-B** | `ADSB` | `adsb`, `transponder`, `ident` |
-| **AIS** | `AIS` | `ais`, `ship`, `marine` |
-| **Visual/Camera** | `EOTS` | `eots`, `camera`, `visual` |
-| **Map Mode** | `North Up` | `north`, `nup` |
-| **Map Mode** | `Heading Up` | `heading`, `hup` |
+```text
+DECLUTTER MINIMAL
+DECLUTTER NORMAL
+DECLUTTER FULL
+```
 
----
+Légende, grille et zones :
 
-## 📄 Document Viewer
+```text
+LEGEND
+LEGEND SYMBOL HOSTILE
+GRID LATLON ON
+GRID LATLON STEP 1MIN
+ZONE LIST
+ZONE CHECK BRAVO TRAINING-A
+```
 
-Access critical mission documents directly over the tactical map.
+La grille latitude/longitude est locale. `GRID MGRS` n’est pas disponible.
 
-*   `optask` ➔ Opens **optask.md**
-*   `readme` ➔ Opens **README.md**
-*   `changelog` ➔ Opens **CHANGELOG.md**
+## Contrôler la simulation
 
-**Viewer Features:**
-*   Toggle between **Rendered Text** and **Raw Codeview** using the top-right button.
-*   Hit `ESC` or click the `✕` to immediately dismiss the document and return to the map.
+```text
+SIM PAUSE
+SIM RESUME
+SIM TIME
+SIM SPEED 2
+SIM RESET
+SIM REPLAY
+```
 
----
+`SIM RESET` efface l’état local. `SIM REPLAY` réinitialise puis reconstruit le scénario de manière déterministe. Ces deux commandes demandent une confirmation.
 
-## 📝 Quick Notes
+## Route et trajectoire
 
-Any text entered that does not match a specific command is caught by the **SAVE** function. 
-*   **Try typing:** `Bridge damaged in sector B` 
-*   **Result:** `SAVE: "Bridge damaged in sector B"`
+La **route** est le trajet prévu dans la simulation. La **trajectoire** est l’historique local des positions observées.
 
-Executing this will log the text into your local Scratchpad history.
+Route simulée :
 
----
+```text
+ROUTE STATUS
+ROUTE SHOW
+ROUTE HIDE
+ROUTE CLEAR
+```
 
-## ⚡ Advanced Interactivity
+`ROUTE SHOW` et `ROUTE HIDE` changent uniquement la visibilité. `ROUTE CLEAR` demande une confirmation.
 
-*   **Autocompletion:** Typing an entity name (e.g., `HOSTILE`) suggests an autocomplete track. Selecting it adds `HOSTILE 1 ` to the input, allowing you to quickly append projection coordinates (`090/5`).
-*   **Swipe to Execute:** On touch devices (or using a mouse), swipe any result row to the **right** to immediately execute its primary action without tapping.
-*   **Drag-to-Map:** You can drag any result (like a coordinate or an entity) out of the Scratchpad and **drop it directly onto the tactical map**.
-*   **Persistent History:** Your command history is saved securely on your local device. 
-    *   Use the **Up/Down arrow keys** to cycle through past commands. 
-    *   Hover over any history item and click the **Copy icon** to extract it without running it again.
+Historique local :
 
----
-[Back to Interface Guide](./03-interface-guide.md) | [Back to Home](../README.md)
----
+```text
+TRAIL OWNSHIP ON
+TRAIL OWNSHIP OFF
+TRAIL BRAVO ON
+TRAIL BRAVO OFF
+TRAIL STATUS
+TRAIL CLEAR BRAVO
+```
 
-## 🛠️ Under the Hood (Libraries & Tools)
+L’historique est masqué par défaut. Il reste en mémoire dans l’onglet courant et n’est pas transmis à un système extérieur. `TRAIL CLEAR` efface uniquement la cible indiquée et demande une confirmation.
 
-The Scratchpad's extensive capabilities are powered by several robust open-source libraries:
+## Interagir avec un résultat
 
-*   **[mathjs](https://mathjs.org/)**: Drives the powerful math engine, handling complex trigonometry and natural language unit conversions.
-*   **[fuse.js](https://fusejs.io/)**: Provides the lightning-fast, lightweight fuzzy-search matching for entity names and commands.
-*   **[framer-motion](https://motion.dev/)**: Manages the fluid animations and touch/swipe gestures (like swipe-to-execute) within the Scratchpad UI.
-*   **[react-markdown](https://github.com/remarkjs/react-markdown) & [remark-gfm](https://github.com/remarkjs/remark-gfm)**: Enables the parsing and rendering of Markdown files (like `optask.md`) directly within the Scratchpad's Document Viewer.
-*   **[lucide-react](https://lucide.dev/)**: Supplies the clean, consistent iconography used throughout the command list and interface.
+- `↑` et `↓` parcourent l’historique de saisie de l’onglet courant.
+- Un clic copie un résultat lorsque cette action est disponible.
+- Un résultat compatible peut être glissé vers la carte pour afficher une prévisualisation.
+- Un glissement vers la droite lance l’action principale proposée.
+- Une erreur indique la forme attendue.
+- Une cible ambiguë doit être précisée avant toute action.
+
+[Retour au guide de l’interface](./03-interface-guide.md) · [Retour à l’accueil](../README.md)

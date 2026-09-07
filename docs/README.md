@@ -1,13 +1,11 @@
-# Fake MS Documentation Index
+# Index de la documentation Fake MS
 
-Welcome to the documentation for the Fake MS project. Please choose a topic below to get started:
+Choisissez un guide :
 
-1.  [**Introduction**](./01-introduction.md) - Overview of what Fake MS is and its core philosophy.
-2.  [**Getting Started**](./02-getting-started.md) - How to set up and run the application on your local machine.
-3.  [**Interface Guide**](./03-interface-guide.md) - A detailed walkthrough of the Map, Pie Menu, and Info Panels.
-4.  [**Smart Command Bar**](./05-scratchpad-guide.md) - Deep dive into math, coordinates, and tactical commands.
-5.  [**Configuration**](./04-configuration.md) - How to customize and fine-tune the interface.
+1. [**Introduction**](./01-introduction.md) — objectif et périmètre du prototype.
+2. [**Démarrage**](./02-getting-started.md) — installer et lancer FakeMS.
+3. [**Guide de l’interface**](./03-interface-guide.md) — carte, menu radial et panneaux.
+4. [**Palette de commandes**](./05-scratchpad-guide.md) — commandes clés, calculs, simulation et affichage.
+5. [**Configuration**](./04-configuration.md) — régler l’interface et les interactions.
 
-
----
-*For technical specifications and developer notes, see [AGENTS.md](../AGENTS.md) in the project root.*
+Pour les détails techniques et les règles de développement, consultez [AGENTS.md](../AGENTS.md).

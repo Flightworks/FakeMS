@@ -39,12 +39,13 @@ Optimized for high-stress environments where tiny buttons fail:
 - **Flick-to-Select**: Fast, muscle-memory driven workflows with tactile/haptic feedback.
 - **Ghost Buster**: Prevents accidental triggers on touch devices via advanced pointer filtering.
 
-### ⌨️ Smart Command Bar (Scratchpad)
-A powerful HUD tool combining natural language commands with a navigation computer:
-- **Math Engine**: Native support for degrees in trig and complex expressions (e.g., `cos45`).
-- **Coordinate Projection**: Project points using bearing/range shorthand (e.g., `HOSTILE1 180/5`).
-- **Interactive Workspace**: Support for "Swipe Right to Execute" and "Drag-to-Map" workflows.
-- **Fuzzy Search**: Instantly find entities or system commands (RADAR, EOTS, DCT).
+### ⌨️ Command Palette
+A local command interface for calculations, scenario status, and simulated map controls:
+- **Calculations**: Bearing/range projections, ETA, CPA, closure, nearest queries, and unit conversions.
+- **Coordinates**: Read, normalize, copy, and preview latitude/longitude values locally.
+- **Simulation**: Inspect and control the local scenario with explicit confirmation for reset and replay.
+- **Map context**: Control layers, declutter, legend, latitude/longitude grid, named zones, routes, and local track trails.
+- **Safe interaction**: Ambiguous or unavailable references stop before execution; results support copy, swipe, and drag-to-map workflows.
 
 ---
 
@@ -68,7 +69,7 @@ Dive deeper into the design philosophy and technical setup:
 
 - [📁 **Vision & Philosophy**](./docs/01-introduction.md) — The "Why" behind the project.
 - [📁 **Interface Guide**](./docs/03-interface-guide.md) — Map mechanics, Pie Menus, and Telemetry.
-- [📁 **Command Bar Guide**](./docs/05-scratchpad-guide.md) — Mastery of coordinates, math, and tactical tools.
+- [📁 **Palette de commandes — guide rapide**](./docs/05-scratchpad-guide.md) — calculs, commandes tactiques, simulation et affichage.
 - [📁 **Local Configuration**](./docs/04-configuration.md) — Tuning the visual and tactile engine.
 - [📁 **Mission Domain**](./docs/architecture/mission-domain.md) — Simulation layers, tracks, proposals and authority.
 - [📁 **Simulation Boundary**](./docs/architecture/simulation-boundary.md) — SIM/GPS semantics and PWA limits.

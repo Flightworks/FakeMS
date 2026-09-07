@@ -51,18 +51,16 @@ The sidebar on the left allows you to quickly:
 *   Access HUD settings.
 *   Calibrate touch gestures.
 
-## 6. Smart Command Bar (Command Palette)
+## 6. Palette de commandes
 
-The Smart Command Bar is a powerful tool for quickly executing commands and performing calculations.
+La palette regroupe les calculs, les consultations du scénario et les contrôles locaux de la carte et de la simulation.
 
-*   **How to Open**: Use the keyboard shortcut (`Ctrl+K`, `Space`, or `\`) or click the command icon.
-*   **Gestures & Interaction**:
-    *   **Swipe Right**: Swipe an item to the right to trigger its primary action (Direct-To) instantly.
-    *   **Drag-to-Map**: Results can be dragged directly onto the map to drop coordinates or entities.
-    *   **Arrow Keys**: Use Up/Down to navigate results or previous command history.
-    *   **Copy Result**: Calculation results can be clicked to copy them to the clipboard.
+- **Ouvrir** : `Ctrl+K`, `Espace`, `\` ou le bouton `⌘`.
+- **Lire avant de valider** : la palette distingue les calculs, les prévisualisations, les actions locales et les confirmations requises.
+- **Interagir** : utilisez les flèches `↑` et `↓`, le glissement vers la droite et le glisser-déposer vers la carte.
+- **Sécurité** : une cible ambiguë ou une donnée indisponible bloque l’action. FakeMS ne pilote aucun système opérationnel.
 
-👉 **View the [Detailed Command & Scratchpad Guide](./05-scratchpad-guide.md) for more examples.**
+👉 Consultez le [guide rapide de la palette de commandes](./05-scratchpad-guide.md) pour les commandes et exemples.
 
 ---
 [Back to Getting Started](./02-getting-started.md) | [Next: Configuration](./04-configuration.md)
