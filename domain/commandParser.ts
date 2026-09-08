@@ -91,7 +91,7 @@ const safeTokenValue = (value: string): string =>
   isNonFiniteLexeme(value) ? NON_FINITE_MARKER : value;
 
 const tokenize = (input: string): CommandToken[] => {
-  const rawTokens = input.trim().match(/[^\s,/]+/g) ?? [];
+  const rawTokens = input.trim().match(/>|[^\s,/>]+/g) ?? [];
 
   return rawTokens.map((raw, index): CommandToken => ({
     kind: index === 0 ? 'COMMAND' : 'ARGUMENT',

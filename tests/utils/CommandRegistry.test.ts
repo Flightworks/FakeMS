@@ -987,7 +987,15 @@ describe('CommandRegistry', () => {
     });
 
     it('offers explicit unit conversions as local calculations', () => {
-      for (const input of ['5NM > KM', '5 NM > KM', '5 NAUTICAL MILES > KM', 'CONVERT 5 MN > KM']) {
+      for (const input of [
+        '5NM > KM',
+        '5NM>KM',
+        '5 NM > KM',
+        '5 NM>KM',
+        '5 NAUTICAL MILES > KM',
+        'CONVERT 5 MN > KM',
+        'CONVERT 5NM>KM',
+      ]) {
         const conversion = getCommands(input, mockContext)
           .find(command => command.id === 'unit-conversion');
         expect(conversion?.label, input).toContain('5 NM');

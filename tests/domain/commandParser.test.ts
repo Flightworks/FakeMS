@@ -661,7 +661,19 @@ describe('typed tactical command parser', () => {
   });
 
   it('parses explicit unit conversions without implicit dimensions', () => {
-    for (const input of ['5NM > KM', '5 NM > KM', '5 NAUTICAL MILES > KM', 'CONVERT 5 MN > KM', '120KT > KMH', '5000FT > M', '15MIN > SEC']) {
+    for (const input of [
+      '5NM > KM',
+      '5NM>KM',
+      '5 NM > KM',
+      '5 NM>KM',
+      '5NM >KM',
+      '5 NAUTICAL MILES > KM',
+      'CONVERT 5 MN > KM',
+      'CONVERT 5NM>KM',
+      '120KT > KMH',
+      '5000FT > M',
+      '15MIN > SEC',
+    ]) {
       const parsed = parseCommand(input);
       expect(parsed.type, input).toBe('CALCULATION');
       expect(parsed.parameters, input).toMatchObject({ command: 'CONVERT' });
