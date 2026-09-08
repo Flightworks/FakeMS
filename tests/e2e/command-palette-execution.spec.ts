@@ -4,6 +4,7 @@ test.use({ serviceWorkers: 'block' });
 
 test('executes the exact dragged command through the shared registry path', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press('Control+k');
 
   const input = page.getByRole('textbox', { name: 'Command input' });

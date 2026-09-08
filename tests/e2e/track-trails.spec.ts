@@ -17,7 +17,7 @@ test('renders sampled simulated trails and clears only after confirmation', asyn
 
   await page.getByRole('button').filter({ hasText: /^NAV/ }).first().click();
   const simulationToolbox = page.getByRole('region', { name: 'Simulation toolbox' });
-  await simulationToolbox.getByText('SIM', { exact: true }).click();
+  await simulationToolbox.getByRole('button', { name: 'SIM', exact: true }).click();
   await page.waitForTimeout(2_500);
   await page.keyboard.press('Control+k');
   await input.fill('TRAIL OWNSHIP ON');

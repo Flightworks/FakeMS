@@ -35,7 +35,7 @@ test.describe('angular tactical calculations', () => {
     const input = page.getByRole('textbox', { name: 'Command input' });
     await input.fill('RECIP 273');
     const interpretation = page.getByTestId('command-interpretation');
-    await expect(interpretation).toContainText('STATUS: SIMULATED');
+    await expect(interpretation).not.toContainText('STATUS: SIMULATED');
     await expect(interpretation).toContainText('EFFECT: CALCULATION ONLY');
     await expect(interpretation).not.toContainText(/mission action|direct to|route/i);
   });
