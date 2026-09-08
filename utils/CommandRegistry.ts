@@ -1,6 +1,6 @@
 import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
 import { bearingBetween } from './geo';
-import { Zap, Radio, Anchor, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers, Info } from 'lucide-react';
+import { Zap, Radio, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers, Info } from 'lucide-react';
 import Fuse from 'fuse.js';
 import {
     calculateEtaEte,
@@ -634,7 +634,6 @@ export const getCommands = (
         proposeSetBullseye,
         proposeClearBullseye,
         proposeDirectTo,
-        proposeRoute,
         requestMissionAction,
         history,
         openDocument,
@@ -2955,8 +2954,6 @@ export const getCommands = (
 
     addSystem('radar', 'RADAR', Zap, ['radar', 'rdr', 'sensor']);
     addSystem('adsb', 'ADSB', Radio, ['adsb', 'transponder', 'ident']);
-    addSystem('ais', 'AIS', Anchor, ['ais', 'ship', 'marine']);
-    addSystem('eots', 'EOTS', Eye, ['eots', 'camera', 'visual']);
 
     systemCommands.push({
         id: 'mode-nup',
@@ -3039,40 +3036,7 @@ export const getCommands = (
                     historyValue: `DCT ${e.label}`,
                     ranking: createStructuredRanking(q, `DCT ${e.label}`),
                     // No autocompleteValue -> Click executes immediately
-                },
-                {
-                    id: `plan-${e.id}`,
-                    label: `PLAN ${e.label}`,
-                    subLabel: 'Two deterministic route proposals · THREAT',
-                    icon: Calculator,
-                    action: () => proposeRoute({
-                        id: e.id,
-                        label: e.label,
-                        position: { ...e.position },
-                    }, 'THREAT_PRIORITY'),
-                    keywords: ['plan', 'route', 'proposal', e.label],
-                    type: 'command',
-                    historyValue: `PLAN ${e.label}`,
-                    ranking: createStructuredRanking(q, `PLAN ${e.label}`),
-                },
-                ...( ['THREAT_PRIORITY', 'COVERAGE', 'ENDURANCE'] as MissionObjective[]).map(objective => ({
-                    id: `plan-${objective.toLowerCase()}-${e.id}`,
-                    label: `PLAN ${objective === 'THREAT_PRIORITY' ? 'THREAT' : objective} ${e.label}`,
-                    subLabel: 'Two deterministic route proposals',
-                    icon: Calculator,
-                    action: () => proposeRoute({
-                        id: e.id,
-                        label: e.label,
-                        position: { ...e.position },
-                    }, objective),
-                    keywords: ['plan', 'route', 'proposal', objective.toLowerCase(), e.label],
-                    type: 'command' as const,
-                    historyValue: `PLAN ${objective} ${e.label}`,
-                    ranking: createStructuredRanking(
-                        q,
-                        `PLAN ${objective === 'THREAT_PRIORITY' ? 'THREAT' : objective} ${e.label}`,
-                    ),
-                }))
+                }
             ])
         ];
 

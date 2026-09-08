@@ -189,11 +189,17 @@ describe('CommandRegistry', () => {
       }));
     });
 
-    it('creates a deterministic planning command with an explicit objective', () => {
-      const plan = getCommands('plan coverage target', mockContext).find(c => c.id === 'plan-coverage-target1');
-      expect(plan).toBeDefined();
-      plan?.action?.();
-      expect(mockContext.proposeRoute).toHaveBeenCalledWith(expect.objectContaining({ id: 'target1' }), 'COVERAGE');
+    it('keeps route planning and sensor controls out of the command palette', () => {
+      const empty = getCommands('', mockContext);
+      const entityResults = getCommands('TARGET1', mockContext);
+      const explicitPlan = getCommands('PLAN TARGET1', mockContext);
+      const explicitSensors = getCommands('AIS EOTS', mockContext);
+
+      expect(empty.some(command => ['sys-ais', 'sys-eots'].includes(command.id))).toBe(false);
+      expect(entityResults.some(command => command.id.startsWith('plan-'))).toBe(false);
+      expect(explicitPlan.some(command => command.id.startsWith('plan-'))).toBe(false);
+      expect(explicitSensors.some(command => ['sys-ais', 'sys-eots'].includes(command.id))).toBe(false);
+      expect(mockContext.proposeRoute).not.toHaveBeenCalled();
     });
 
     it('should create save text fallback for unmatched queries', () => {

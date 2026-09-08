@@ -1,6 +1,6 @@
 # Plan d’assainissement de l’interface FakeMS
 
-> **Statut :** tranches IHM, menu radial et palette exécutées le 8 septembre 2026. La qualification globale reste à terminer. Deux décisions de périmètre restent ouvertes : la présentation de `PLAN` et de son modèle carburant, ainsi que l’exposition utilisateur de `AIS/EOTS`.
+> **Statut :** tranches IHM, menu radial et palette exécutées le 8 septembre 2026. La qualification globale finale reste à terminer.
 >
 > **Périmètre :** vue principale, palette de commandes, contrôles de simulation, menus contextuels et panneaux de résultat.
 >
@@ -20,15 +20,16 @@ Commits réalisés sur la branche de développement :
 - `f780fa2` — réduction des textes des PW, QAK et panneaux ;
 - `cf1ab2e` — réduction de la palette et suppression de ses suggestions hors intention ;
 - `566bb88` — tests E2E de protection de l’architecture PW/QAK/radiale.
+- retrait de `PLAN`, `AIS` et `EOTS` de la palette — les modules de domaine restent conservés.
 
-Les guides et l’inventaire textuel restent à committer après la qualification globale.
+Les guides, l’inventaire textuel et le plan sont commités sous `d80b445`.
 
-### Blocages de périmètre
+### Décision appliquée
 
-- `PLAN` est une fonction existante avec des tests, un solveur et un effet de route simulé. Ses contraintes carburant utilisent des valeurs codées en dur. Retirer ces valeurs ou supprimer la fonction changerait son comportement métier.
-- `AIS` et `EOTS` ont des implémentations de domaine et des tests de collecte de capteurs. Leur effet n’est pas actuellement visible dans la carte comme celui de `RADAR` et `ADSB`, mais leur suppression modifierait le modèle de simulation.
+- `PLAN`, `AIS` et `EOTS` ne sont plus proposés ni exécutables depuis la palette.
+- Le solveur de route, les contraintes carburant, les capteurs AIS/EOTS et leurs tests de domaine sont conservés hors palette.
 
-Ces deux sujets ne doivent pas être résolus par une suppression silencieuse. La qualification finale peut continuer sur les tranches non bloquées ; la suite du plan s’arrête avant toute modification de ces modèles tant qu’une décision n’est pas donnée.
+Cette décision retire la présentation IHM sans supprimer les capacités de domaine existantes.
 
 ## Limites de validation
 
@@ -131,7 +132,7 @@ Les réglages qui produisent un effet démontré restent accessibles depuis leur
 - `SideMenu.tsx` s’il est confirmé comme composant mort, sans toucher au composant QAK réellement monté ;
 - les propositions automatiques de systèmes sans rapport avec la saisie ; ne retirer une commande explicite qu’après vérification de ses effets ;
 - la proposition automatique `SAVE` après une commande reconnue ; ne pas supprimer les notes ni inventer une syntaxe `NOTE` dans le lot de nettoyage textuel ;
-- les marges et justifications carburant arbitraires de `PLAN THREAT/COVERAGE/ENDURANCE` ; préserver un effet de route utile s’il existe, et soumettre séparément le retrait de toute la fonction ;
+- les suggestions de `PLAN`, `AIS` et `EOTS` de la palette ; conserver leurs modules de domaine et leurs tests ;
 - les textes décoratifs, conseils permanents, pulsations et libellés génériques d’action.
 
 ## État cible
