@@ -1274,8 +1274,54 @@ describe('CommandRegistry', () => {
       expect(clear?.subLabel).toContain('CONFIRMATION REQUIRED');
       clear?.action?.();
       expect(requestMissionAction).toHaveBeenCalledWith(expect.objectContaining({
-        label: 'TRAIL CLEAR TARGET1', implementation: 'SIMULATED_EFFECT', requiresAuthorization: true,
+        label: 'TRAIL CLEAR TARGET1', implementation: 'SIMULATED_EFFECT', requiresAuthorization: true
       }));
+    });
+
+    it('limits the empty palette to recent entries instead of a generic catalog', () => {
+      const history = Array.from({ length: 5 }, (_, index) => ({
+        id: String(index),
+        timestamp: Date.now() - index,
+        original: `command ${index}`,
+        canonical: `COMMAND ${index}`,
+      }));
+
+      const commands = getCommands('', { ...mockContext, history });
+
+      expect(commands).toHaveLength(3);
+      expect(commands.every(command => command.isHistory)).toBe(true);
+      expect(commands.some(command => command.id.startsWith('sys-'))).toBe(false);
+    });
+
+    it('keeps CPA results in their own command domain', () => {
+      const bravo = {
+        ...mockEntities[1],
+        label: 'BRAVO',
+        metadata: {
+          groundTrackDegrees: 270,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const simulatedOwnship = {
+        ...mockOwnship,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const commands = getCommands('CPA BRAVO', {
+        ...mockContext,
+        ownship: simulatedOwnship,
+        entities: [simulatedOwnship, bravo],
+      });
+
+      expect(commands.length).toBeLessThanOrEqual(3);
+      expect(commands.some(command => command.id === 'relative-cpa-ownship-target1')).toBe(true);
+      expect(commands.some(command => command.id === 'save-text-note')).toBe(false);
+      expect(commands.some(command => command.id.startsWith('dct-'))).toBe(false);
+      expect(commands.some(command => command.id.startsWith('plan-'))).toBe(false);
     });
   });
 });

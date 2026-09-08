@@ -720,6 +720,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   };
 
   const executeCommand = (cmd: CommandOption) => {
+    if (cmd.disabled) return;
     if (cmd.isHistory) {
       setQuery(cmd.autocompleteValue || cmd.label);
       inputRef.current?.focus();
@@ -784,6 +785,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Drag Handlers
   const handleDragStart = (e: React.DragEvent, cmd: CommandOption) => {
+    if (cmd.disabled) return;
     const commandQuery = cmd.historyValue || query;
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'command',
@@ -795,7 +797,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Swipe Gesture Handler
   const handleSwipe = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo, cmd: CommandOption) => {
-    if (isMathProviderPending) return;
+    if (cmd.disabled || isMathProviderPending) return;
     if (info.offset.x > 100) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(50); // Haptic feedback for the same command path.
@@ -972,9 +974,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     dragConstraints={{ left: 0, right: 0 }}
                     dragElastic={{ right: 0.5, left: 0.1 }} // Allow drag right
                     onDragEnd={(e, info) => handleSwipe(e, info, cmd)}
-                    draggable="true"
+                    draggable={!cmd.disabled}
                     role="option"
                     aria-selected={isSelected}
+                    aria-disabled={cmd.disabled ? 'true' : undefined}
                     aria-label={cmd.subLabel ? `${cmd.label} · ${cmd.subLabel}` : cmd.label}
                     onDragStart={(e: any) => handleDragStart(e, cmd)}
                     className={`
@@ -988,11 +991,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{ touchAction: 'pan-y' }} // Allow vertical scroll, horizontal swipe handled by Framer
                   >
-                    {/* Swift Right Action Background */}
-                    <div className="absolute inset-y-0 left-0 w-full bg-emerald-600/20 -z-10 flex items-center pl-4 opacity-0 motion-safe:group-active:opacity-100">
-                      <MoveRight size={24} className="text-emerald-400" />
-                      <span className="ml-2 font-bold text-emerald-400">DIRECT TO</span>
-                    </div>
+                    {/* Keep the swipe cue specific to executable DCT results. */}
+                    {cmd.id.startsWith('dct-') && (
+                      <div className="absolute inset-y-0 left-0 w-full bg-emerald-600/20 -z-10 flex items-center pl-4 opacity-0 motion-safe:group-active:opacity-100">
+                        <MoveRight size={24} className="text-emerald-400" />
+                        <span className="ml-2 font-bold text-emerald-400">DIRECT TO</span>
+                      </div>
+                    )}
 
                     <div className={`p-2 rounded-md ${isSelected ? 'bg-emerald-900/40 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
                       <Icon size={18} />
@@ -1036,12 +1041,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </ul>
 
-        {!isViewportConstrained && (
-          <div className="shrink-0 px-4 py-2 bg-slate-950 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between">
-            <span>PRO TIP: Swipe Right to Execute • Drag to Map</span>
-            <span>TACTICAL COMMAND PALETTE</span>
-          </div>
-        )}
       </div>
     </div>
   );

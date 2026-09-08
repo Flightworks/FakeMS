@@ -353,15 +353,15 @@ export const CommandInterpretationPanel = ({
   if (parsed.errors.length > 0 && !allowConversionError) return null;
 
   const assumptions = parsed.assumptions.length > 0 ? parsed.assumptions.join(', ') : 'NONE';
+  const target = getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview);
   const lines = [
     `TYPE: ${parsed.type}`,
     `REFERENCE: ${getReference(parsed)}`,
     ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, trackDetails, staleTrackDetails, unitConversionResult, unitConversionError, projection, intersection, bullseyeMeasurement, bullseyeProjection),
-    `TARGET: ${getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview)}`,
-    `ASSUMPTIONS: ${assumptions}`,
+    ...(target === 'N/A' ? [] : [`TARGET: ${target}`]),
+    ...(assumptions === 'NONE' ? [] : [`ASSUMPTIONS: ${assumptions}`]),
     `SOURCE: ${source}`,
     `EFFECT: ${effect}`,
-    'STATUS: SIMULATED',
   ];
 
   return (

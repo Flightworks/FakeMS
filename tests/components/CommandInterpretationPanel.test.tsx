@@ -49,7 +49,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('ASSUMPTIONS: ASSUMED NM');
     expect(panel).toHaveTextContent('SOURCE: LOCAL SCENARIO');
     expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
-    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('explains a non-projection structured result without inventing a target position', () => {
@@ -63,11 +63,11 @@ describe('CommandInterpretationPanel', () => {
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
     expect(panel).toHaveTextContent('TYPE: MEASUREMENT');
     expect(panel).toHaveTextContent('REFERENCE: OWNSHIP → BRAVO');
-    expect(panel).toHaveTextContent('TARGET: N/A');
-    expect(panel).toHaveTextContent('ASSUMPTIONS: NONE');
+    expect(panel).not.toHaveTextContent('TARGET: N/A');
+    expect(panel).not.toHaveTextContent('ASSUMPTIONS: NONE');
     expect(panel).toHaveTextContent('SOURCE: LOCAL SCENARIO');
     expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
-    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('explains normalized time-distance-speed quantities before execution', () => {
@@ -83,7 +83,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('COMMAND: TIME');
     expect(panel).toHaveTextContent('DISTANCE: 45.0 NM');
     expect(panel).toHaveTextContent('SPEED: 120.0 KT');
-    expect(panel).toHaveTextContent('TARGET: N/A');
+    expect(panel).not.toHaveTextContent('TARGET: N/A');
   });
 
   it('explains a route summary command as a read-only local display', () => {
@@ -98,7 +98,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('TYPE: ROUTE');
     expect(panel).toHaveTextContent('COMMAND: STATUS');
     expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
-    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('explains a nearest search without inventing a target position', () => {
@@ -115,7 +115,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('CATEGORY: TRACK');
     expect(panel).toHaveTextContent('LIMIT: 3');
     expect(panel).toHaveTextContent('REFERENCE: OWNSHIP');
-    expect(panel).toHaveTextContent('TARGET: N/A');
+    expect(panel).not.toHaveTextContent('TARGET: N/A');
     expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
   });
 
@@ -132,7 +132,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('REFERENCE: BRAVO');
     expect(panel).toHaveTextContent('COMMAND: COORD');
     expect(panel).toHaveTextContent('FORMAT: DDM');
-    expect(panel).toHaveTextContent('TARGET: N/A');
+    expect(panel).not.toHaveTextContent('TARGET: N/A');
   });
 
   it('explains a bearing intersection without implying navigation or confirmation', () => {
@@ -154,7 +154,7 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('QUALITY: GOOD');
     expect(panel).toHaveTextContent('METHOD: SPHERICAL GREAT CIRCLE');
     expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
-    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('explains reciprocal, delta, and relative angular calculations', () => {
@@ -290,6 +290,43 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('STATUS: FUTURE_CPA');
     expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT VELOCITY');
     expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
+  });
+
+  it('omits generic empty fields from a nominal CPA interpretation', () => {
+    const relativeMotionPreview: RelativeMotionPreview = {
+      type: 'RELATIVE_MOTION_PREVIEW',
+      command: 'CPA',
+      referenceId: 'ownship',
+      referenceLabel: 'OWNSHIP',
+      targetId: 'bravo',
+      targetLabel: 'BRAVO',
+      result: {
+        status: 'AVAILABLE',
+        referencePosition: { lat: 0, lon: 0 },
+        targetPosition: { lat: 0, lon: 0.1 },
+        assumption: 'CONSTANT VELOCITY',
+        closureRateKnots: 120,
+        relativeSpeedKnots: 120,
+        cpaDistanceNauticalMiles: 0,
+        tcpaMinutes: 3,
+        cpaStatus: 'FUTURE_CPA',
+      },
+    };
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('CPA BRAVO')}
+        relativeMotionPreview={relativeMotionPreview}
+        effect="CALCULATION ONLY"
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('CPA: 0.0 NM');
+    expect(panel).toHaveTextContent('TCPA: 3.0 MIN');
+    expect(panel).not.toHaveTextContent('TARGET: N/A');
+    expect(panel).not.toHaveTextContent('ASSUMPTIONS: NONE');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('shows qualified track details and stale track ordering without fabricating fields', () => {

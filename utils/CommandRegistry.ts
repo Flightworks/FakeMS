@@ -196,6 +196,7 @@ export interface CommandOption {
     icon: any;
     action?: () => void;
     keywords: string[];
+    disabled?: boolean;
     isPreview?: boolean;
     isHistory?: boolean;
     autocompleteValue?: string;
@@ -696,24 +697,34 @@ export const getCommands = (
     };
 
     // --- 0. HISTORY INJECTION (When query is empty) ---
+    // Keep the initial palette focused on recent input rather than exposing
+    // every generic command before the user has started typing.
     if (q === '') {
-        // Show recent history first
-        if (history && history.length > 0) {
-            history.slice(0, 5).forEach((entry, idx) => {
-                const date = new Date(entry.timestamp);
-                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                commands.push({
-                    id: `hist-${idx}`,
-                    label: entry.original,
-                    subLabel: timeStr,
-                    icon: History,
-                    // Selecting a history entry only repopulates the input.
-                    keywords: ['history'],
-                    isHistory: true,
-                    autocompleteValue: entry.canonical
-                });
-            });
-        }
+        const recentHistory = (history ?? []).slice(0, 3).map((entry, idx): CommandOption => {
+            const date = new Date(entry.timestamp);
+            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return {
+                id: `hist-${idx}`,
+                label: entry.original,
+                subLabel: timeStr,
+                icon: History,
+                // Selecting a history entry only repopulates the input.
+                keywords: ['history'],
+                isHistory: true,
+                autocompleteValue: entry.canonical,
+            };
+        });
+        if (recentHistory.length > 0) return recentHistory;
+
+        return [{
+            id: 'empty-invitation',
+            label: 'TYPE A COMMAND',
+            subLabel: 'Use the input to search',
+            icon: FileText,
+            keywords: [],
+            disabled: true,
+            keepPaletteOpen: true,
+        }];
     }
 
     // 1. Calculator & Unit Conversion
@@ -1723,6 +1734,18 @@ export const getCommands = (
                 ));
             }
         }
+    }
+
+    // A recognized CPA query is a calculation-domain result. Keep unrelated
+    // fuzzy actions and the note fallback out of this command's result set.
+    if (parsedMeasurement.type === 'CALCULATION'
+        && parsedMeasurement.parameters.command === 'CPA'
+        && parsedMeasurement.errors.length === 0) {
+        const cpaCommands = commands.filter(command => (
+            command.id.startsWith('relative-cpa-')
+            || command.relativeMotionPreview?.command === 'CPA'
+        ));
+        return cpaCommands.slice(0, 3);
     }
 
     const trackInfoCommand = parsedMeasurement.parameters.command;

@@ -300,4 +300,13 @@ describe('CommandPalette Component', () => {
     expect(screen.queryByRole('region', { name: 'Projection preview' })).not.toBeInTheDocument();
     expect(mockProps.onClose).not.toHaveBeenCalled();
   });
+
+  it('keeps the empty palette useful without generic action chrome', () => {
+    render(<CommandPalette {...mockProps} />);
+
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.queryByText('DIRECT TO')).not.toBeInTheDocument();
+    expect(screen.queryByText(/PRO TIP:/)).not.toBeInTheDocument();
+    expect(screen.queryByText('TACTICAL COMMAND PALETTE')).not.toBeInTheDocument();
+  });
 });
