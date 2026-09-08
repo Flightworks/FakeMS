@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, Rectan
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
-import type { MissionActionCategory, MissionActionImplementation, MissionActionRequest } from '../domain/missionActions';
+import type { MissionActionRequest } from '../domain/missionActions';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
 import type { BullseyeProjectionPreview, BullseyeReference } from '../domain/bullseye';
@@ -29,12 +29,7 @@ import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { getDestinationPoint } from '../utils/geo';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
-import {
-  MapPin, Crosshair, Navigation, Info, Trash2, CircleDashed,
-  Zap, Shield, FileText, Scan, Eye, Slash, Target, Settings, Router,
-  Lock, Anchor, Flag, Video, Wifi, Globe, Thermometer, Activity,
-  ArrowLeftRight, CornerUpRight, Flame, TrendingUp, ChevronUp
-} from 'lucide-react';
+import { Crosshair, ArrowLeftRight, TrendingUp, ChevronUp } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix Leaflet's default icon path issues
@@ -330,7 +325,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   setMapMode,
   groundAnchor,
   onGhostEvent,
-  onMissionAction,
   projectionPreview,
   intersectionPreview,
   bullseye,
@@ -575,138 +569,19 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
     return (Date.now() - menuOpenTimeRef.current < 350);
   };
 
-  const requestMissionAction = (
-    category: MissionActionCategory,
-    actionId: string,
-    label: string,
-    implementation: MissionActionImplementation = 'NOT_IMPLEMENTED',
-  ) => {
-    const issuedAt = Date.now();
-    const targetId = pieMenu?.entityId;
-    onMissionAction?.({
-      id: `menu:${category.toLowerCase()}:${actionId}:${targetId ?? 'map'}:${issuedAt}`,
-      label,
-      category,
-      ...(targetId ? { targetId } : {}),
-      issuedAt,
-      implementation,
-      requiresAuthorization: true,
-    });
-  };
-
-  const unavailableOption = (
-    category: MissionActionCategory,
-    actionId: string,
-    label: string,
-    icon: React.ElementType,
-    color?: 'danger' | 'primary' | 'default',
-  ): PieMenuOption => ({
-    label,
-    icon,
-    ...(color ? { color } : {}),
-    action: () => requestMissionAction(category, actionId, label),
-  });
-
   const getPieOptions = (): PieMenuOption[] => {
     if (!pieMenu) return [];
-    if (pieMenu.type === 'ENTITY') {
-      return [
-        {
-          label: 'NAV',
-          icon: Navigation,
-          color: 'primary',
-          subOptions: [
-            unavailableOption('NAV', 'direct', 'DIRECT', Crosshair, 'primary'),
-            unavailableOption('NAV', 'hold', 'HOLD', CircleDashed),
-            unavailableOption('NAV', 'fpl', 'FPL', FileText),
-            unavailableOption('NAV', 'offset', 'OFFSET', ArrowLeftRight),
-          ],
-        },
-        {
-          label: 'ENGAGE',
-          icon: Target,
-          color: 'danger',
-          subOptions: [
-            unavailableOption('ENGAGE', 'auth', 'AUTH', Flame, 'danger'),
-            unavailableOption('ENGAGE', 'abort', 'ABORT', Shield),
-            unavailableOption('ENGAGE', 'spi', 'SPI', Crosshair),
-          ],
-        },
-        {
-          label: 'COMMS',
-          icon: Router,
-          subOptions: [
-            unavailableOption('COMMS', 'text', 'TEXT', FileText),
-            unavailableOption('COMMS', 'handoff', 'HANDOFF', CornerUpRight),
-            unavailableOption('COMMS', 'squawk', 'SQUAWK', Lock),
-            unavailableOption('COMMS', 'dlink', 'DLINK', Wifi),
-          ],
-        },
-        {
-          label: 'SENSORS',
-          icon: Scan,
-          subOptions: [
-            unavailableOption('SENSORS', 'flir', 'FLIR', Video),
-            unavailableOption('SENSORS', 'stt', 'STT', Target, 'danger'),
-            unavailableOption('SENSORS', 'lsr', 'LSR', Zap),
-          ],
-        },
-        {
-          label: 'ADMIN',
-          icon: Trash2,
-          color: 'danger',
-          subOptions: [
-            unavailableOption('ADMIN', 'delete', 'DELETE', Trash2, 'danger'),
-            unavailableOption('ADMIN', 'properties', 'PROP', Settings),
-          ],
-        },
-      ];
-    }
 
-    return [
-      {
-        label: 'DROP',
-        icon: MapPin,
-        subOptions: [
-          unavailableOption('DROP', 'waypoint', 'WPT', MapPin),
-          unavailableOption('DROP', 'target', 'TGT', Target, 'danger'),
-          unavailableOption('DROP', 'lz', 'LZ', Flag),
-          unavailableOption('DROP', 'farp', 'FARP', Anchor),
-        ],
-      },
-      {
-        label: 'TRACKS',
-        icon: TrendingUp,
-        subOptions: [
-          {
-            label: 'VECTOR',
-            icon: ArrowLeftRight,
-            action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })),
-            color: gestureSettings.showSpeedVectors ? 'primary' : 'default',
-          },
-          unavailableOption('VIEW', 'labels', 'LABELS', FileText),
-          unavailableOption('ADMIN', 'clear-tracks', 'CLR ALL', Trash2, 'danger'),
-        ],
-      },
-      {
-        label: 'TOOLS',
-        icon: Settings,
-        subOptions: [
-          unavailableOption('TOOLS', 'ruler', 'RULER', Slash),
-          unavailableOption('TOOLS', 'mark', 'MARK', Crosshair),
-          unavailableOption('TOOLS', 'elevation', 'ELEV', Activity),
-        ],
-      },
-      {
-        label: 'VIEW',
-        icon: Eye,
-        subOptions: [
-          unavailableOption('VIEW', 'declutter', 'CLR', Eye),
-          unavailableOption('VIEW', 'nvg', 'NVG', Globe),
-          unavailableOption('VIEW', 'thermal', 'THERM', Thermometer),
-        ],
-      },
-    ];
+    return [{
+      label: 'TRACKS',
+      icon: TrendingUp,
+      subOptions: [{
+        label: 'VECTOR',
+        icon: ArrowLeftRight,
+        action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })),
+        color: gestureSettings.showSpeedVectors ? 'primary' : 'default',
+      }],
+    }];
   };
 
   const createEntityIcon = (entity: Entity, rotation: number, isSelected: boolean) => {
