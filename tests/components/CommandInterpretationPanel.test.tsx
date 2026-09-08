@@ -41,15 +41,28 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: PROJECTION');
-    expect(panel).toHaveTextContent('REFERENCE: BRAVO');
     expect(panel).toHaveTextContent('BEARING: 180° TRUE');
     expect(panel).toHaveTextContent('RANGE: 5.0 NM / 9 260 m');
     expect(panel).toHaveTextContent('TARGET: 34.83364, -120.00000');
     expect(panel).toHaveTextContent('ASSUMPTIONS: ASSUMED NM');
-    expect(panel).toHaveTextContent('SOURCE: LOCAL SCENARIO');
-    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
     expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
+  });
+
+  it('keeps the interpretation panel limited to actionable result lines', () => {
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('RECIP 273')}
+        angularCalculation={calculateReciprocal(273, 'HEADING')}
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('RESULT: 093°');
+    expect(panel).not.toHaveTextContent('INTERPRETATION');
+    expect(panel).not.toHaveTextContent('TYPE:');
+    expect(panel).not.toHaveTextContent('REFERENCE:');
+    expect(panel).not.toHaveTextContent('SOURCE:');
+    expect(panel).not.toHaveTextContent('EFFECT:');
   });
 
   it('explains a non-projection structured result without inventing a target position', () => {
@@ -61,12 +74,8 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: MEASUREMENT');
-    expect(panel).toHaveTextContent('REFERENCE: OWNSHIP → BRAVO');
     expect(panel).not.toHaveTextContent('TARGET: N/A');
     expect(panel).not.toHaveTextContent('ASSUMPTIONS: NONE');
-    expect(panel).toHaveTextContent('SOURCE: LOCAL SCENARIO');
-    expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
     expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
@@ -79,7 +88,6 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: CALCULATION');
     expect(panel).toHaveTextContent('COMMAND: TIME');
     expect(panel).toHaveTextContent('DISTANCE: 45.0 NM');
     expect(panel).toHaveTextContent('SPEED: 120.0 KT');
@@ -95,9 +103,7 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: ROUTE');
     expect(panel).toHaveTextContent('COMMAND: STATUS');
-    expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
     expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
@@ -110,13 +116,10 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: SEARCH');
     expect(panel).toHaveTextContent('COMMAND: NEAREST');
     expect(panel).toHaveTextContent('CATEGORY: TRACK');
     expect(panel).toHaveTextContent('LIMIT: 3');
-    expect(panel).toHaveTextContent('REFERENCE: OWNSHIP');
     expect(panel).not.toHaveTextContent('TARGET: N/A');
-    expect(panel).toHaveTextContent('EFFECT: LOCAL DISPLAY ONLY');
   });
 
   it('explains a coordinate conversion format before any copy action', () => {
@@ -128,8 +131,6 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: COORDINATE');
-    expect(panel).toHaveTextContent('REFERENCE: BRAVO');
     expect(panel).toHaveTextContent('COMMAND: COORD');
     expect(panel).toHaveTextContent('FORMAT: DDM');
     expect(panel).not.toHaveTextContent('TARGET: N/A');
@@ -145,15 +146,12 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: INTERSECTION');
-    expect(panel).toHaveTextContent('REFERENCE: BRAVO ↔ G01');
     expect(panel).toHaveTextContent('BRAVO BRG: 090° TRUE / RNG: 60.1 NM');
     expect(panel).toHaveTextContent('G01 BRG: 180° TRUE / RNG: 60.1 NM');
     expect(panel).toHaveTextContent('TARGET: 0.00000, 1.00000');
     expect(panel).toHaveTextContent('CROSSING ANGLE: 90.00°');
     expect(panel).toHaveTextContent('QUALITY: GOOD');
     expect(panel).toHaveTextContent('METHOD: SPHERICAL GREAT CIRCLE');
-    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
     expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
@@ -233,14 +231,12 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: SEARCH');
     expect(panel).toHaveTextContent('COMMAND: PREDICT');
     expect(panel).toHaveTextContent('GHOST:');
     expect(panel).toHaveTextContent('VECTOR: 90.0°T @ 120.0 KT');
     expect(panel).toHaveTextContent('HORIZON: 2.0 MIN');
     expect(panel).toHaveTextContent('AGE: 4 S');
     expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT GROUND TRACK / GROUND SPEED');
-    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
   });
 
   it('explains closure and CPA as calculation-only relative motion', () => {
@@ -282,14 +278,12 @@ describe('CommandInterpretationPanel', () => {
     );
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: CALCULATION');
     expect(panel).toHaveTextContent('COMMAND: CPA');
     expect(panel).toHaveTextContent('CLOSURE: 120.0 KT');
     expect(panel).toHaveTextContent('CPA: 0.0 NM');
     expect(panel).toHaveTextContent('TCPA: 3.0 MIN');
     expect(panel).toHaveTextContent('STATUS: FUTURE_CPA');
     expect(panel).toHaveTextContent('ASSUMPTION: CONSTANT VELOCITY');
-    expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
   });
 
   it('omits generic empty fields from a nominal CPA interpretation', () => {
@@ -355,7 +349,6 @@ describe('CommandInterpretationPanel', () => {
     );
     let panel = screen.getByRole('region', { name: 'Command interpretation' });
     expect(panel).toHaveTextContent('COMMAND: INFO');
-    expect(panel).toHaveTextContent('SOURCE: RADAR');
     expect(panel).toHaveTextContent('AGE: 4 S');
     expect(panel).toHaveTextContent('FRESHNESS: FRESH');
     expect(panel).toHaveTextContent('QUALITY: GOOD');
@@ -396,6 +389,5 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('VALUE: 9.260 KM');
     expect(panel).toHaveTextContent('DIMENSION: DISTANCE');
     expect(panel).toHaveTextContent('SOURCE VALUE: 5 NM');
-    expect(panel).toHaveTextContent('EFFECT: CALCULATION ONLY');
   });
 });

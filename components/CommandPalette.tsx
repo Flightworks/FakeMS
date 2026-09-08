@@ -1007,19 +1007,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <div className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-100' : 'text-slate-200'}`}>
                           {cmd.label}
                         </div>
-                        {cmd.subLabel && !cmd.isPreview && (
-                          <div className="text-xs text-slate-500 truncate mt-0.5">
+                        {cmd.subLabel && (
+                          <div className="max-w-full truncate text-xs text-slate-500 mt-0.5">
                             {cmd.subLabel}
                           </div>
                         )}
                       </div>
 
-                      {/* Preview Pane logic: Show prominently if isPreview (Calculator result) */}
-                      {cmd.isPreview && cmd.subLabel && (
-                        <div className="bg-emerald-900/40 text-emerald-400 px-2 py-1 rounded text-xs font-bold border border-emerald-500/30">
-                          {cmd.subLabel}
-                        </div>
-                      )}
                     </div>
                     {cmd.isHistory && (
                       <div

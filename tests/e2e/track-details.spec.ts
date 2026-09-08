@@ -10,7 +10,6 @@ test('shows track details and stale ordering without mission effects', async ({ 
   const interpretation = page.getByTestId('command-interpretation');
   await input.fill('INFO HOSTILE 1');
   await expect(interpretation).toContainText('COMMAND: INFO');
-  await expect(interpretation).toContainText('SOURCE: RADAR');
   await expect(interpretation).toContainText('FRESHNESS: FRESH');
   await expect(interpretation).toContainText('QUALITY: GOOD');
   await expect(interpretation).toContainText('UNCERTAINTY: 40 M');

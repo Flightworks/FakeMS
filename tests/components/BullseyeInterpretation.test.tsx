@@ -30,18 +30,14 @@ describe('Bullseye command interpretation', () => {
       <CommandInterpretationPanel
         parsed={parsed}
         bullseyeMeasurement={measurement}
-        source="SIMULATED BULLSEYE"
         effect="LOCAL READ ONLY"
       />,
     );
 
     const panel = screen.getByTestId('command-interpretation');
-    expect(panel).toHaveTextContent('TYPE: BULLSEYE');
-    expect(panel).toHaveTextContent('SOURCE: SIMULATED BULLSEYE');
     expect(panel).toHaveTextContent('BRG:');
     expect(panel).toHaveTextContent('RNG:');
     expect(panel).toHaveTextContent('QUALIFICATION: CALCULATED');
-    expect(panel).toHaveTextContent('EFFECT: LOCAL READ ONLY');
     expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
@@ -53,17 +49,14 @@ describe('Bullseye command interpretation', () => {
       <CommandInterpretationPanel
         parsed={parsed}
         bullseyeProjection={projection}
-        source="SIMULATED BULLSEYE"
         effect="MAP PREVIEW ONLY"
       />,
     );
 
     const panel = screen.getByTestId('command-interpretation');
-    expect(panel).toHaveTextContent('TYPE: BULLSEYE');
     expect(panel).toHaveTextContent('BEARING: 270° TRUE');
     expect(panel).toHaveTextContent('RANGE: 15.0 NM');
     expect(panel).toHaveTextContent('METHOD: SPHERICAL DIRECT');
-    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
     expect(panel).not.toHaveTextContent('DCT');
   });
 });

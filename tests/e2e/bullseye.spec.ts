@@ -68,7 +68,6 @@ test('measures and previews from the simulated Bullseye without navigation effec
   await page.keyboard.press('Control+k');
   await input.fill('BULL HOSTILE 1');
   await expect(page.getByRole('option', { name: /BULL HOSTILE 1.*BRG:.*RNG:/i })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Command interpretation' })).toContainText('SOURCE: SIMULATED BULLSEYE');
   await expect(page.getByRole('region', { name: 'Command interpretation' })).toContainText('QUALIFICATION: CALCULATED');
   await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
 

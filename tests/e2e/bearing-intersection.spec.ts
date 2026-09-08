@@ -11,8 +11,7 @@ test('shows a local bearing intersection preview and clears it on Escape', async
   await input.fill('INT BRAVO/270 G01/180');
 
   const interpretation = page.getByRole('region', { name: 'Command interpretation' });
-  await expect(interpretation).toContainText('TYPE: INTERSECTION');
-  await expect(interpretation).toContainText('BRAVO ↔ G01');
+  await expect(interpretation).toContainText('BRAVO BRG:');
   await expect(interpretation).toContainText('QUALITY: GOOD');
 
   const intersection = page.getByRole('option', {

@@ -11,7 +11,6 @@ test('shows closure and CPA as local relative-motion calculations', async ({ pag
   await input.fill('CLOSURE HOSTILE 1');
 
   await expect(interpretation).toContainText('COMMAND: CLOSURE');
-  await expect(interpretation).toContainText('EFFECT: CALCULATION ONLY');
   await expect(interpretation).toContainText('ASSUMPTION: CONSTANT VELOCITY');
   await expect(interpretation).toContainText('CLOSURE:');
   await expect(page.getByRole('option', { name: /^CLOSURE HOSTILE 1 ·/i })).toBeVisible();

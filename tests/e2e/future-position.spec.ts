@@ -11,7 +11,6 @@ test('previews a future position locally and clears it without mission effects',
   await input.fill('PREDICT HOSTILE 1 +2MIN');
 
   await expect(interpretation).toContainText('COMMAND: PREDICT');
-  await expect(interpretation).toContainText('EFFECT: MAP PREVIEW ONLY');
   await expect(interpretation).toContainText('ASSUMPTION: CONSTANT GROUND TRACK / GROUND SPEED');
   const predictOption = page.getByRole('option', { name: /^PREDICT HOSTILE 1 \+2MIN ·/i });
   await expect(predictOption).toBeVisible();

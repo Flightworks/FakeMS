@@ -216,12 +216,11 @@ describe('CommandPalette Component', () => {
     fireEvent.change(input, { target: { value: 'TARGET1 180/5' } });
 
     const panel = screen.getByRole('region', { name: 'Command interpretation' });
-    expect(panel).toHaveTextContent('TYPE: PROJECTION');
-    expect(panel).toHaveTextContent('REFERENCE: TARGET1');
+
     expect(panel).toHaveTextContent('BEARING: 180° TRUE');
     expect(panel).toHaveTextContent('RANGE: 5.0 NM / 9 260 m');
     expect(panel).toHaveTextContent('ASSUMPTIONS: ASSUMED NM');
-    expect(panel).toHaveTextContent('EFFECT: MAP PREVIEW ONLY');
+
     expect(previewProjection).not.toHaveBeenCalled();
     expect(mockProps.onClose).not.toHaveBeenCalled();
   });

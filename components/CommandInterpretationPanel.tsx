@@ -85,25 +85,6 @@ const formatIntersectionBearing = (value: number): string => (
     : value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
 );
 
-const getReference = (parsed: ParsedCommand): string => {
-  const parameters = parsed.parameters;
-  if (typeof parameters.firstReference === 'string' && typeof parameters.secondReference === 'string') {
-    return `${parameters.firstReference} ↔ ${parameters.secondReference}`;
-  }
-  if (typeof parameters.reference === 'string') return parameters.reference;
-  if (parsed.type === 'BULLSEYE' && typeof parameters.targetReference === 'string') {
-    return `BULLSEYE → ${parameters.targetReference}`;
-  }
-  if (parsed.type === 'BULLSEYE' && typeof parameters.bearing === 'number') return 'BULLSEYE';
-  if (typeof parameters.fromReference === 'string' && typeof parameters.toReference === 'string') {
-    return `${parameters.fromReference} → ${parameters.toReference}`;
-  }
-  if (typeof parameters.target === 'string') return parameters.target;
-  if (typeof parameters.query === 'string' && parameters.query) return parameters.query;
-  if (typeof parameters.system === 'string') return parameters.system;
-  return 'N/A';
-};
-
 const getTarget = (
   parsed: ParsedCommand,
   projection?: ProjectionPreview,
@@ -346,8 +327,6 @@ export const CommandInterpretationPanel = ({
   intersection,
   bullseyeMeasurement,
   bullseyeProjection,
-  effect = 'SIMULATED CALCULATION',
-  source = 'LOCAL SCENARIO',
 }: CommandInterpretationPanelProps) => {
   const allowConversionError = parsed.type === 'CALCULATION' && parsed.parameters.command === 'CONVERT';
   if (parsed.errors.length > 0 && !allowConversionError) return null;
@@ -355,13 +334,9 @@ export const CommandInterpretationPanel = ({
   const assumptions = parsed.assumptions.length > 0 ? parsed.assumptions.join(', ') : 'NONE';
   const target = getTarget(parsed, projection, intersection, bullseyeProjection, futurePositionPreview);
   const lines = [
-    `TYPE: ${parsed.type}`,
-    `REFERENCE: ${getReference(parsed)}`,
     ...getDetails(parsed, angularCalculation, futurePositionPreview, futurePositionResult, relativeMotionPreview, relativeMotionResult, trackDetails, staleTrackDetails, unitConversionResult, unitConversionError, projection, intersection, bullseyeMeasurement, bullseyeProjection),
     ...(target === 'N/A' ? [] : [`TARGET: ${target}`]),
     ...(assumptions === 'NONE' ? [] : [`ASSUMPTIONS: ${assumptions}`]),
-    `SOURCE: ${source}`,
-    `EFFECT: ${effect}`,
   ];
 
   return (
@@ -371,7 +346,6 @@ export const CommandInterpretationPanel = ({
       aria-label="Command interpretation"
       data-testid="command-interpretation"
     >
-      <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-300">INTERPRETATION</div>
       <div className="grid gap-0.5">
         {lines.map(line => <div key={line}>{line}</div>)}
       </div>
