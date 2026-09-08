@@ -2185,19 +2185,7 @@ export const getCommands = (
     if (parsedMeasurement.type === 'SYSTEM' && trailCommand === 'TRAIL') {
         const requestedTrailCommand = parsedMeasurement.parameters.trailCommand;
         const trailState = trails ?? { trails: {} };
-        if (parsedMeasurement.errors.length > 0) {
-            commands.push({
-                id: 'trail-unavailable',
-                label: 'TRAIL UNAVAILABLE',
-                subLabel: `${parsedMeasurement.errors[0]?.message ?? 'INVALID TRAIL COMMAND'} · NO STATE CHANGED`,
-                icon: History,
-                keywords: ['trail', 'unavailable'],
-                historyValue: q,
-                isPreview: true,
-                keepPaletteOpen: true,
-                ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
-            });
-        } else if (requestedTrailCommand === 'STATUS') {
+        if (parsedMeasurement.errors.length === 0 && requestedTrailCommand === 'STATUS') {
             const entries = Object.values(trailState.trails);
             const summary = entries.length === 0
                 ? 'NO TRAIL HISTORY · HIDDEN BY DEFAULT'
@@ -2214,21 +2202,10 @@ export const getCommands = (
                 keepPaletteOpen: true,
                 ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
             });
-        } else if (typeof parsedMeasurement.parameters.targetReference === 'string') {
+        } else if (parsedMeasurement.errors.length === 0
+            && typeof parsedMeasurement.parameters.targetReference === 'string') {
             const resolution = resolveEntityReference(parsedMeasurement.parameters.targetReference, entities, ownship);
-            if (resolution.status !== 'RESOLVED' || !resolution.entity) {
-                commands.push({
-                    id: 'trail-unavailable',
-                    label: 'TRAIL UNAVAILABLE',
-                    subLabel: `${parsedMeasurement.parameters.targetReference} · TARGET ${resolution.status} · NO STATE CHANGED`,
-                    icon: History,
-                    keywords: ['trail', 'unknown', 'ambiguous'],
-                    historyValue: q,
-                    isPreview: true,
-                    keepPaletteOpen: true,
-                    ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
-                });
-            } else {
+            if (resolution.status === 'RESOLVED' && resolution.entity) {
                 const targetId = resolution.entity.id === ownship.id ? 'OWNSHIP' : resolution.entity.id;
                 const currentTrail = trailState.trails[targetId];
                 if (requestedTrailCommand === 'VISIBILITY' && typeof parsedMeasurement.parameters.visible === 'boolean') {
@@ -2245,19 +2222,7 @@ export const getCommands = (
                         ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
                     });
                 } else if (requestedTrailCommand === 'CLEAR') {
-                    if (!currentTrail || currentTrail.points.length === 0) {
-                        commands.push({
-                            id: 'trail-unavailable',
-                            label: 'TRAIL UNAVAILABLE',
-                            subLabel: `${resolution.entity.label} · NO TRAIL HISTORY · CLEAR NOT EXECUTED`,
-                            icon: History,
-                            keywords: ['trail', 'clear', 'no history'],
-                            historyValue: q,
-                            isPreview: true,
-                            keepPaletteOpen: true,
-                            ranking: { category: 'STRUCTURED_EXACT', completeness: 3, match: 'EXACT' },
-                        });
-                    } else {
+                    if (currentTrail && currentTrail.points.length > 0) {
                         commands.push({
                             id: 'trail-clear',
                             label: `TRAIL CLEAR ${resolution.entity.label}`,

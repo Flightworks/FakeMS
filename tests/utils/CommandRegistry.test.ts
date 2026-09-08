@@ -1284,6 +1284,16 @@ describe('CommandRegistry', () => {
       }));
     });
 
+    it('does not offer an unavailable trail result for incomplete or empty requests', () => {
+      const empty = getCommands('TRAIL', mockContext);
+      const unknown = getCommands('TRAIL UNKNOWN ON', mockContext);
+      const noHistory = getCommands('TRAIL CLEAR TARGET1', mockContext);
+
+      expect(empty.some(command => command.id === 'trail-unavailable')).toBe(false);
+      expect(unknown.some(command => command.id === 'trail-unavailable')).toBe(false);
+      expect(noHistory.some(command => command.id === 'trail-unavailable')).toBe(false);
+    });
+
     it('limits the empty palette to recent entries instead of a generic catalog', () => {
       const history = Array.from({ length: 5 }, (_, index) => ({
         id: String(index),
