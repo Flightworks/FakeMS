@@ -42,7 +42,7 @@ describe('Bullseye command interpretation', () => {
     expect(panel).toHaveTextContent('RNG:');
     expect(panel).toHaveTextContent('QUALIFICATION: CALCULATED');
     expect(panel).toHaveTextContent('EFFECT: LOCAL READ ONLY');
-    expect(panel).toHaveTextContent('STATUS: SIMULATED');
+    expect(panel).not.toHaveTextContent('STATUS: SIMULATED');
   });
 
   it('displays a Bullseye projection target and method without implying navigation', () => {
