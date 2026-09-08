@@ -10,6 +10,6 @@ export const SimulationBanner = ({ buildId }: SimulationBannerProps) => (
     <span>SIMULATION</span>
     <span className="mx-2 text-amber-500/70">·</span>
     <span>NOT FOR OPERATIONAL USE</span>
-    <span className="ml-2 text-slate-500">BUILD {buildId}</span>
+    <span aria-hidden="true" className="hidden">BUILD {buildId}</span>
   </div>
 );

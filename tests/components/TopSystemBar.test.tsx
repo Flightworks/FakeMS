@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { TopSystemBar } from '../../components/TopSystemBar';
 import { SystemStatus, NavMode, PrototypeSettings } from '../../types';
@@ -77,5 +77,36 @@ describe('TopSystemBar Component', () => {
     render(<TopSystemBar {...mockProps} />);
     expect(screen.getByText('STABLN')).toBeInTheDocument();
     expect(screen.getByText('HMI')).toBeInTheDocument();
+  });
+
+  it('keeps permanent widget labels while shortening toolbox headings', () => {
+    render(<TopSystemBar {...mockProps} />);
+
+    expect(screen.getByRole('button', { name: /NAV/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'STABLN CFG' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'HMI CFG' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'STABLN CFG' }));
+    expect(screen.getByText('STAB CFG')).toBeInTheDocument();
+    expect(screen.queryByText('Stab Options')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'HMI CFG' }));
+    expect(screen.getByText('HMI CFG')).toBeInTheDocument();
+    expect(screen.queryByText('HMI Config')).not.toBeInTheDocument();
+  });
+
+  it('shortens simulation actions without removing the simulation toolbox', () => {
+    render(<TopSystemBar {...mockProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /NAV/ }));
+    const toolbox = screen.getByRole('region', { name: 'Simulation toolbox' });
+
+    expect(toolbox).toBeInTheDocument();
+    expect(toolbox).toHaveTextContent('SIM');
+    expect(toolbox).not.toHaveTextContent('Sim Toolbox');
+    expect(toolbox).toHaveTextContent('LOCK HDG');
+    expect(toolbox).not.toHaveTextContent('LOCK HDG (Stop Rotation)');
+    expect(toolbox).toHaveTextContent('APPLY');
+    expect(toolbox).not.toHaveTextContent('Apply All');
   });
 });

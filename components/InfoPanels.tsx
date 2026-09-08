@@ -101,10 +101,12 @@ export const OwnshipPanel = React.memo(({
       {ownshipShowDetails && (
         <div className="p-2 grid grid-cols-4 gap-4 bg-slate-950/90 animate-in fade-in slide-in-from-top-2 duration-300">
           <DataField label="HDG" value={Math.round(ownship.heading || 0).toString().padStart(3, '0')} unit="°" />
-          <div>
-            <DataField label="HGT" value={hgt.value === null ? 'N/A' : Math.round(hgt.value)} unit={hgt.value === null ? undefined : hgt.unit} />
-            <MeasurementMeta source={hgt.source} qualification={hgt.qualification} />
-          </div>
+          {hgt.value !== null && (
+            <div>
+              <DataField label="HGT" value={Math.round(hgt.value)} unit={hgt.unit} />
+              <MeasurementMeta source={hgt.source} qualification={hgt.qualification} />
+            </div>
+          )}
           <DataField label="TAS" value={Math.round(ownship.speed || 0)} unit="kt" />
           <DataField label="ALT" value={Math.round(ownship.altitude || 0)} unit="ft" />
         </div>

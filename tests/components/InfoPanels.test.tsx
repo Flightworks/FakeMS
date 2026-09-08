@@ -74,8 +74,23 @@ describe('InfoPanels Components', () => {
 
       expect(screen.getByText('TAS')).toBeInTheDocument();
       expect(screen.getByText('250')).toBeInTheDocument();
-      expect(screen.getByText('N/A')).toBeInTheDocument();
-      expect(screen.getByText('UNAVAILABLE · UNAVAILABLE')).toBeInTheDocument();
+      expect(screen.queryByText('HGT')).not.toBeInTheDocument();
+      expect(screen.queryByText('N/A')).not.toBeInTheDocument();
+      expect(screen.queryByText('UNAVAILABLE · UNAVAILABLE')).not.toBeInTheDocument();
+    });
+
+    it('omits unavailable height metadata instead of duplicating its status', () => {
+      render(
+        <OwnshipPanel
+          ownship={mockOwnship}
+          origin={{ lat: 35.0, lon: -120.0 }}
+          prototypeSettings={defaultSettings}
+        />
+      );
+
+      expect(screen.queryByText('HGT')).not.toBeInTheDocument();
+      expect(screen.queryByText('N/A')).not.toBeInTheDocument();
+      expect(screen.queryByText('UNAVAILABLE · UNAVAILABLE')).not.toBeInTheDocument();
     });
 
     it('respects declutter settings', () => {

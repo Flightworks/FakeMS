@@ -33,6 +33,7 @@ const StatusBlock = ({
   <button
     type="button"
     disabled={!onClick}
+    aria-label={value ? `${label} ${value}` : label}
     onClick={onClick}
     className={`
       h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
@@ -83,12 +84,12 @@ const StabControlWidget = ({ gestureSettings, setGestureSettings, isOpen, onTogg
   const delayLabel = (ms: number) => ms === 0 ? 'OFF' : `${ms / 1000}s`;
 
   const toggles: { key: keyof PrototypeSettings; label: string; description: string }[] = [
-    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Automatically switch to GND stabilisation when the ownship drifts out of the viewport during a pan gesture.' },
-    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze the map heading at the current ownship heading when dropping into GND stab. In HUP, the map rotation locks so the view stays oriented.' },
-    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip the fly-back animation when recentering. The map jumps instantly to the ownship position.' },
-    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Automatically return to the ownship when toggling between North-Up and Heading-Up orientation modes.' },
-    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'When recentering from GND mode, smoothly animate the map rotation back to the live heading instead of snapping.' },
-    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'When switching between North-Up and Heading-Up, rotate the map around the current helicopter position on screen so it stays in the same place.' },
+    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Auto GND when a pan leaves ownship.' },
+    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading on GND drop.' },
+    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip recenter animation.' },
+    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Recenter when orientation changes.' },
+    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'Animate heading unfreeze.' },
+    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'Keep ownship screen position on orient.' },
   ];
 
   return (
@@ -117,19 +118,19 @@ const StabToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
   const delayLabel = (ms: number) => ms === 0 ? 'OFF' : `${ms / 1000}s`;
 
   const toggles: { key: keyof PrototypeSettings; label: string; description: string }[] = [
-    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Automatically switch to GND stabilisation when the ownship drifts out of the viewport during a pan gesture.' },
-    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze the map heading at the current ownship heading when dropping into GND stab. In HUP, the map rotation locks so the view stays oriented.' },
-    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip the fly-back animation when recentering. The map jumps instantly to the ownship position.' },
-    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Automatically return to the ownship when toggling between North-Up and Heading-Up orientation modes.' },
-    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'When recentering from GND mode, smoothly animate the map rotation back to the live heading instead of snapping.' },
-    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'When switching between North-Up and Heading-Up, rotate the map around the current helicopter position on screen so it stays in the same place.' },
+    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Auto GND when a pan leaves ownship.' },
+    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading on GND drop.' },
+    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip recenter animation.' },
+    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Recenter when orientation changes.' },
+    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'Animate heading unfreeze.' },
+    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'Keep ownship screen position on orient.' },
   ];
 
   return (
     <div className="w-80 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto">
       <div className="flex justify-between items-center mb-1">
         <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
-          <Crosshair size={14} className="text-indigo-400" /> Stab Options
+          <Crosshair size={14} className="text-indigo-400" /> STAB CFG
         </span>
         <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
       </div>
@@ -282,30 +283,30 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
       id: 'hud',
       label: 'HUD',
       children: [
-        { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, description: 'Ownship infobox corner position.', action: cycleHudPos },
-        { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, description: 'Ownship infobox scale.', action: cycleHudScale },
-        { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, description: 'HUD panel transparency.', action: cycleHudAlpha },
-        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', description: 'Speed vectors for all tracks.', action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })) },
-        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', description: 'Declutter HUD telemetry.', action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })) },
+        { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, description: 'HUD corner.', action: cycleHudPos },
+        { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, description: 'HUD scale.', action: cycleHudScale },
+        { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, description: 'HUD alpha.', action: cycleHudAlpha },
+        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', description: 'Track vectors.', action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })) },
+        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', description: 'HUD detail.', action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })) },
       ]
     },
     {
       id: 'gest',
       label: 'GEST',
       children: [
-        { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, description: 'Click vs hold threshold.', action: cycleTap },
-        { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, description: 'Pie menu ring delay.', action: cycleInd },
-        { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, description: 'Long press trigger duration.', action: cycleHld },
+        { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, description: 'Tap threshold.', action: cycleTap },
+        { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, description: 'Pie delay.', action: cycleInd },
+        { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, description: 'Hold duration.', action: cycleHld },
       ]
     },
     {
       id: 'vis',
       label: 'VIS',
       children: [
-        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, description: 'Overall UI scale factor.', action: cycleScl },
-        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, description: 'HUD glow intensity.', action: cycleGlo },
-        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, description: 'Map layer luminosity.', action: cycleDim },
-        { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, description: 'UI animation speed.', action: cycleAni },
+        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, description: 'UI scale.', action: cycleScl },
+        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, description: 'HUD glow.', action: cycleGlo },
+        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, description: 'Map dim.', action: cycleDim },
+        { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, description: 'Animation speed.', action: cycleAni },
       ]
     }
   ];
@@ -316,7 +317,7 @@ const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
     <div className="bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col min-w-[16rem] pointer-events-auto">
       <div className="flex justify-between items-center px-4 py-3 border-b border-slate-700">
         <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
-          <Layout size={14} className="text-indigo-400" /> HMI Config
+          <Layout size={14} className="text-indigo-400" /> HMI CFG
         </span>
         <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
       </div>
@@ -442,11 +443,11 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
       aria-label="Simulation toolbox"
     >
       <div className="flex justify-between items-center mb-2">
-        <span className="text-white font-bold text-sm uppercase">Sim Toolbox</span>
+        <span className="text-white font-bold text-sm uppercase">SIM</span>
         <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
       </div>
       <div className="flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-950/30 px-2 py-2" aria-live="polite">
-        <span className="text-[10px] font-bold uppercase text-amber-200">SIM CLOCK</span>
+        <span className="text-[10px] font-bold uppercase text-amber-200">CLOCK</span>
         <span className="text-[10px] font-mono font-bold text-amber-300">{simulationControls.status}</span>
       </div>
       <div className="grid grid-cols-3 gap-1" aria-label="Simulation playback controls">
@@ -480,7 +481,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-slate-300 text-xs font-bold uppercase">Mode:</span>
+        <span className="text-slate-300 text-xs font-bold uppercase">MODE</span>
         <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
           <button
             className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.REAL ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
@@ -495,7 +496,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
 
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <span className="text-slate-400 text-[10px] font-bold uppercase">Target Heading (°T)</span>
+          <span className="text-slate-400 text-[10px] font-bold uppercase">HDG (°T)</span>
           <span className="text-[10px] font-mono">
             <span className="text-slate-500">{actualHdg}° →</span>
             <span className={`ml-1 ${ownship.continuousTurn ? 'text-emerald-400' : Math.abs(hdgDiff) < 1 ? 'text-slate-500' : 'text-amber-400'}`}>{turnIndicator}</span>
@@ -522,7 +523,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-slate-400 text-[10px] font-bold uppercase">Continuous Turn</span>
+        <span className="text-slate-400 text-[10px] font-bold uppercase">TURN</span>
         <div className="flex gap-1">
           <button
             onClick={() => setContinuousTurn('L')}
@@ -551,12 +552,12 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
             : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-amber-600 hover:text-amber-400'
         }`}
       >
-        {isHeadingLocked ? '🔒 HDG LOCKED — Flying Straight' : 'LOCK HDG (Stop Rotation)'}
+        {isHeadingLocked ? '🔒 HDG LOCKED' : 'LOCK HDG'}
       </button>
 
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <span className="text-slate-400 text-[10px] font-bold uppercase">Target Speed (KTS)</span>
+          <span className="text-slate-400 text-[10px] font-bold uppercase">SPD (KTS)</span>
           <span className="text-[10px] font-mono">
             <span className="text-slate-500">{actualSpd}kt →</span>
             <span className={`ml-1 ${Math.abs(targetSpd - actualSpd) < 1 ? 'text-slate-500' : 'text-blue-400'}`}>{spdIndicator}</span>
@@ -573,7 +574,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-slate-400 text-[10px] font-bold uppercase">Turn Rate (°/S)</span>
+        <span className="text-slate-400 text-[10px] font-bold uppercase">RATE (°/S)</span>
         <input
           aria-label="Simulation turn rate"
           value={tempTrn}
@@ -588,7 +589,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
         onClick={(e) => { e.stopPropagation(); applyParams(); }}
         className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded font-bold text-xs text-white transition-colors uppercase tracking-wider"
         disabled={navMode !== NavMode.SIM}
-      >Apply All</button>
+      >APPLY</button>
     </div>
   );
 };

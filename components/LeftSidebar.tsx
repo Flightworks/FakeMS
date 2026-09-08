@@ -74,7 +74,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
     <div className="fixed right-6 top-24 w-64 bg-slate-950/90 border-2 border-emerald-600/50 rounded-lg p-4 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-300 pointer-events-none">
       <div className="flex items-center gap-2 mb-3 border-b border-emerald-900/50 pb-2">
         <BookOpen size={16} className="text-emerald-400" />
-        <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">DATA REF: {activeCategory.label}</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">REF: {activeCategory.label}</span>
       </div>
       <div className="flex flex-col gap-3">
         {activeCategory.children?.map(child => (
@@ -90,7 +90,7 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
         ))}
       </div>
       <div className="mt-4 pt-2 border-t border-slate-800 text-[8px] font-mono text-slate-500 text-right">
-        MISSION_SYSTEM_MANUAL_V2.5
+        REF
       </div>
     </div>
   );
@@ -127,7 +127,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       icon: Crosshair,
       active: stabMode === StabMode.GND,
       action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.GND),
-      description: 'Toggle map stabilisation between Ground (GND) and Helicopter/Cursor (H/C) mode.'
+      description: 'GND / H/C stabilisation.'
     },
     {
       id: 'version',
