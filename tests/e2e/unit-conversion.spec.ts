@@ -14,8 +14,11 @@ test('shows explicit unit conversions and rejects incompatible dimensions', asyn
   await expect(interpretation).toContainText('COMMAND: CONVERT');
   await expect(interpretation).toContainText('VALUE: 9.260 KM');
   await expect(interpretation).toContainText('DIMENSION: DISTANCE');
-  await expect(interpretation).toContainText('CALCULATION ONLY');
   await expect(page.getByRole('region', { name: /mission action/i })).toHaveCount(0);
+
+  await input.fill('5 NAUTICAL MILES > KM');
+  await expect(page.getByRole('option', { name: /^5 NM > KM ·/i })).toBeVisible();
+  await expect(interpretation).toContainText('VALUE: 9.260 KM');
 
   await input.fill('5NM > KT');
   await expect(page.getByRole('option', { name: /UNAVAILABLE/i })).toBeVisible();

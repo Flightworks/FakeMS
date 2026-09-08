@@ -1511,20 +1511,26 @@ const parseFavoriteCommand = (tokens: CommandToken[]): ParsedCommand => {
 const parseUnitConversion = (tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, string | number | null> = { command: 'CONVERT' };
   const errors: CommandParseError[] = [];
-  const sourceParts = splitNumericAndUnit(tokens[0]?.normalized === 'CONVERT' ? tokens[1]?.normalized : tokens[0]?.normalized);
+  const hasPrefix = tokens[0]?.normalized === 'CONVERT';
+  const contentStart = hasPrefix ? 1 : 0;
+  const separatorIndex = tokens.findIndex((token, index) => index > contentStart && token.normalized === '>');
+  const sourceParts = splitNumericAndUnit(tokens[contentStart]?.normalized);
   const sourceValue = sourceParts.numberToken && sourceParts.numberToken !== NON_FINITE_MARKER
     ? Number(sourceParts.numberToken)
     : null;
-  const sourceUnit = sourceParts.unitToken;
-  const targetUnit = tokens[0]?.normalized === 'CONVERT' ? tokens[3]?.normalized : tokens[2]?.normalized;
+  const spacedSourceUnit = separatorIndex > contentStart + 1
+    ? tokens.slice(contentStart + 1, separatorIndex).map(token => token.normalized).join(' ')
+    : undefined;
+  const sourceUnit = sourceParts.unitToken ?? spacedSourceUnit;
+  const targetUnit = separatorIndex >= 0 && separatorIndex < tokens.length - 1
+    ? tokens.slice(separatorIndex + 1).map(token => token.normalized).join(' ')
+    : undefined;
   parameters.value = Number.isFinite(sourceValue) ? sourceValue : null;
   parameters.sourceUnit = sourceUnit;
   parameters.targetUnit = targetUnit;
 
-  if (tokens[0]?.normalized === 'CONVERT') {
-    errors.push({ code: 'INVALID_SYNTAX', message: 'Use <VALUE><UNIT> > <UNIT>.' });
-  } else if (tokens.length !== 3 || tokens[1]?.normalized !== '>') {
-    errors.push({ code: 'INVALID_SYNTAX', message: 'Use <VALUE><UNIT> > <UNIT>.' });
+  if (separatorIndex < 0 || separatorIndex === contentStart || separatorIndex === tokens.length - 1) {
+    errors.push({ code: 'INVALID_SYNTAX', message: 'Use <VALUE> <UNIT> > <UNIT>.' });
   } else if (sourceParts.numberToken === NON_FINITE_MARKER || !Number.isFinite(sourceValue)) {
     errors.push(nonFiniteError());
   } else if (!sourceUnit || !targetUnit) {
@@ -1647,7 +1653,7 @@ const inferIntent = (tokens: CommandToken[], normalizedInput: string): CommandIn
     || (command === 'SET' && tokens[1]?.normalized === 'BULL')
     || (command === 'CLEAR' && tokens[1]?.normalized === 'BULL')) return 'BULLSEYE';
   if (command === 'NOTE') return 'NOTE';
-  if (command === 'CONVERT' || tokens[1]?.normalized === '>') return 'CALCULATION';
+  if (command === 'CONVERT' || tokens.some(token => token.normalized === '>')) return 'CALCULATION';
   if (command === 'TIME' || command === 'DIST' || command === 'GS') return 'CALCULATION';
   if (command === 'GRAD' || command === 'VSREQ' || command === 'TOD') return 'CALCULATION';
   if (command === 'RECIP' || command === 'DELTA' || command === 'REL'
@@ -1726,7 +1732,7 @@ export const parseCommand = (input: string): ParsedCommand => {
   if (type === 'ROUTE') return parseRoute(tokens);
 
   if (type === 'CALCULATION') {
-    if (tokens[0].normalized === 'CONVERT' || tokens[1]?.normalized === '>') {
+    if (tokens[0].normalized === 'CONVERT' || tokens.some(token => token.normalized === '>')) {
       return parseUnitConversion(tokens);
     }
     if (tokens[0].normalized === 'GRAD'

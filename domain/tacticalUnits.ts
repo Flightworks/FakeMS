@@ -48,7 +48,7 @@ const definitions: readonly TacticalUnitDefinition[] = [
     symbol: 'NM',
     dimension: 'DISTANCE',
     factorToBase: METERS_PER_NAUTICAL_MILE,
-    aliases: ['NM', 'NMI', 'NAUTICAL MILE', 'NAUTICAL MILES'],
+    aliases: ['NM', 'NMI', 'MN', 'NAUTICAL MILE', 'NAUTICAL MILES', 'MILLE NAUTIQUE', 'MILLES NAUTIQUES'],
   },
   {
     symbol: 'KM',

@@ -987,12 +987,14 @@ describe('CommandRegistry', () => {
     });
 
     it('offers explicit unit conversions as local calculations', () => {
-      const conversion = getCommands('5NM > KM', mockContext)
-        .find(command => command.id === 'unit-conversion');
-      expect(conversion?.label).toContain('5 NM');
-      expect(conversion?.subLabel).toContain('9.260 KM');
-      expect(conversion?.subLabel).toContain('CALCULATION ONLY');
-      expect(conversion?.isPreview).toBe(true);
+      for (const input of ['5NM > KM', '5 NM > KM', '5 NAUTICAL MILES > KM', 'CONVERT 5 MN > KM']) {
+        const conversion = getCommands(input, mockContext)
+          .find(command => command.id === 'unit-conversion');
+        expect(conversion?.label, input).toContain('5 NM');
+        expect(conversion?.subLabel, input).toContain('9.260 KM');
+        expect(conversion?.subLabel, input).toContain('CALCULATION ONLY');
+        expect(conversion?.isPreview, input).toBe(true);
+      }
 
       const incompatible = getCommands('5NM > KT', mockContext)
         .find(command => command.id === 'unit-conversion-unavailable');

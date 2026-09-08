@@ -12,6 +12,9 @@ describe('tactical unit dictionary', () => {
     const aliases: Array<[string, string]> = [
       [' NM ', 'NM'],
       ['nmi', 'NM'],
+      ['MN', 'NM'],
+      ['Mille nautique', 'NM'],
+      ['milles nautiques', 'NM'],
       ['Nautical Mile', 'NM'],
       ['nautical miles', 'NM'],
       [' km ', 'KM'],
