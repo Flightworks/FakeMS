@@ -16,6 +16,7 @@ const PRECACHE_ASSETS = [
   `${BASE_PATH}maps/ne_10m_airports_major.geojson`,
   ...BUILD_ASSETS.map(asset => `${BASE_PATH}${asset}`),
 ];
+const PRECACHE_URLS = new Set(PRECACHE_ASSETS.map(asset => new URL(asset, self.location.href).href));
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -46,6 +47,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (!PRECACHE_URLS.has(event.request.url)) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);

@@ -37,4 +37,14 @@ describe('loadTacticalGeoJson', () => {
 
     await expect(loadTacticalGeoJson('/maps/cache-fallback-land.json')).resolves.toEqual(land);
   });
+
+  it('allows a failed URL to be retried after a transient error', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({ ok: true, json: async () => land } as Response);
+
+    await expect(loadTacticalGeoJson('/maps/retry-land.json')).rejects.toThrow('temporary failure');
+    await expect(loadTacticalGeoJson('/maps/retry-land.json')).resolves.toEqual(land);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

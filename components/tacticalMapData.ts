@@ -42,7 +42,10 @@ export const loadTacticalGeoJson = (url: string): Promise<FeatureCollection> => 
       if (cacheFallback) return cacheFallback;
       throw error;
     }
-  })();
+  })().catch(error => {
+    loadedGeoJson.delete(url);
+    throw error;
+  });
 
   loadedGeoJson.set(url, request);
   return request;

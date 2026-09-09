@@ -27,6 +27,8 @@ describe('PWA static assets', () => {
     expect(serviceWorker).not.toContain('tile.openstreetmap.org');
     expect(serviceWorker).not.toContain('TILE_MAX_ENTRIES');
     expect(serviceWorker).not.toContain('TILE_MAX_AGE_MS');
+    expect(serviceWorker).toContain('PRECACHE_URLS');
+    expect(serviceWorker).toContain('if (!PRECACHE_URLS.has(event.request.url)) return;');
     expect(serviceWorker).toContain("type === 'SKIP_WAITING'");
     expect(serviceWorker).toContain('Offline shell unavailable');
   });
