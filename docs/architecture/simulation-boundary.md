@@ -9,6 +9,8 @@ FakeMS démarre en `REAL` et demande la position GPS via le navigateur. La banni
 - `SIM` : position issue de la cinématique locale du scénario, activée après sélection explicite de `SIM`.
 - `GPS` : source navigateur demandée au démarrage lorsque le mode `REAL` est actif.
 
+Sans GPS disponible, FakeMS utilise le repli de scénario du port militaire de Toulon (`43.1183, 5.9098`). Cette position reste simulée et ne doit pas être présentée comme une position réelle. Dès qu’une position GPS valide arrive, elle remplace le repli.
+
 Les états GPS sont distincts : `ACQUIRING`, `VALID`, `DENIED`, `LOST` et `STALE`. Un refus GPS ne transforme pas une position SIM en position réelle.
 
 ## Limites

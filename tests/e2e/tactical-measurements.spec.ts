@@ -111,12 +111,12 @@ test('converts and copies coordinates locally without claiming permission', asyn
   await expect(input).toBeVisible();
   await input.fill('COORD BRAVO DDM');
   await expect(page.getByRole('option', {
-    name: /COORD BRAVO: N34°04\.80' W118°09\.00'.*LOCAL DISPLAY.*FORMAT: DDM/i,
+    name: /COORD BRAVO: N43°08\.77' E006°00\.21'.*LOCAL DISPLAY.*FORMAT: DDM/i,
   })).toBeVisible();
 
   await input.fill('COPY POS BRAVO');
   await expect(page.getByRole('option', {
-    name: /COPY POS BRAVO: 34\.08000, -118\.15000.*LOCAL CLIPBOARD.*COPY IF PERMITTED/i,
+    name: /COPY POS BRAVO: 43\.14610, 6\.00350.*LOCAL CLIPBOARD.*COPY IF PERMITTED/i,
   })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
 });

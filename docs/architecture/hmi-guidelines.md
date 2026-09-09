@@ -255,6 +255,7 @@ Une confirmation simple suffit pour ces effets locaux. Ne pas imposer une séque
 
 ## Présentation visuelle
 
+- Le fond cartographique maritime reste sombre et simplifié ; les traits de côte et repères d’aéroports restent secondaires par rapport aux couches mission.
 - Réserver l’ambre et le rouge aux réserves et alertes réelles.
 - Utiliser les majuscules pour les commandes et états courts, pas pour tous les textes.
 - Éviter les animations continues, pulsations et halos décoratifs.

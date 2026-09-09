@@ -8,6 +8,7 @@ import { createDeclutterState } from '../../domain/declutter';
 import { createGridState } from '../../domain/grid';
 import { createDefaultZones } from '../../domain/zones';
 import { createTrailState } from '../../domain/trackTrails';
+import { translateScenarioPosition } from '../../domain/missionOrigin';
 
 describe('CommandRegistry', () => {
   const mockOwnship: Entity = {
@@ -1213,7 +1214,7 @@ describe('CommandRegistry', () => {
     it('lists local zones, shows a zone, and checks point membership', () => {
       const zones = createDefaultZones();
       const setVisibleZone = vi.fn();
-      const localOwnship = { ...mockOwnship, position: { lat: 34.05, lon: -118.2 } };
+      const localOwnship = { ...mockOwnship, position: translateScenarioPosition({ lat: 34.05, lon: -118.2 }) };
       const context = { ...mockContext, ownship: localOwnship, zones, setVisibleZone, visibleZoneId: null };
       const list = getCommands('ZONE LIST', context).find(command => command.id === 'zones-list');
       expect(list?.subLabel).toContain('TRAINING-A');

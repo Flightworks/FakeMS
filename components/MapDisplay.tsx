@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, Rectangle, Polygon, Pane, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, CircleMarker, Circle, Rectangle, Polygon, Pane, useMap, useMapEvents } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
@@ -16,6 +16,8 @@ import { buildGridLines, createGridState } from '../domain/grid';
 import type { NamedZone } from '../domain/zones';
 import type { TrackTrailState } from '../domain/trackTrails';
 import { getTrailSegments } from '../domain/trackTrails';
+import { TacticalBasemap } from './TacticalBasemap';
+import { TacticalAirports } from './TacticalAirports';
 import {
   createDeclutterState,
   isDeclutterCategoryHidden,
@@ -756,6 +758,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   return (
     <div
       className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
+      data-map-origin={`${origin.lat.toFixed(4)},${origin.lon.toFixed(4)}`}
       onPointerDownCapture={handleMapPointerDownCapture}
       onPointerMoveCapture={handleMapPointerMoveCapture}
       onPointerUpCapture={handleMapPointerUpCapture}
@@ -767,7 +770,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       <MapContainer
         center={centerLatLon}
         zoom={leafletZoom}
-        className="absolute -inset-[75%] z-0"
+        className="absolute -inset-[75%] z-0 tactical-map"
         zoomControl={false}
         attributionControl={false}
         zoomAnimation={true}
@@ -778,9 +781,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         doubleClickZoom={false}
         scrollWheelZoom={true}
       >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TacticalBasemap />
+        <TacticalAirports />
 
         <MapController
           center={centerLatLon}

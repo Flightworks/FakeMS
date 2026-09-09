@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.tactical-map,
+.tactical-map .leaflet-container,
+.tactical-map .leaflet-pane {
+  background: #090d12;
+}

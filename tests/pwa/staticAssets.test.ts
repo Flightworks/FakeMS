@@ -18,13 +18,16 @@ describe('PWA static assets', () => {
     expect(manifest.icons.every(icon => icon.src.startsWith('./icons/'))).toBe(true);
   });
 
-  it('defines a build-versioned and bounded service-worker cache', () => {
+  it('defines a build-versioned cache with local tactical map assets', () => {
     const serviceWorker = read('public/sw.js');
 
     expect(serviceWorker).toContain('__FAKEMS_BUILD_ID__');
-    expect(serviceWorker).toContain('TILE_MAX_ENTRIES = 150');
-    expect(serviceWorker).toContain('TILE_MAX_AGE_MS');
+    expect(serviceWorker).toContain('maps/ne_110m_land.geojson');
+    expect(serviceWorker).toContain('maps/ne_10m_airports_major.geojson');
+    expect(serviceWorker).not.toContain('tile.openstreetmap.org');
+    expect(serviceWorker).not.toContain('TILE_MAX_ENTRIES');
+    expect(serviceWorker).not.toContain('TILE_MAX_AGE_MS');
     expect(serviceWorker).toContain("type === 'SKIP_WAITING'");
-    expect(serviceWorker).toContain('Offline tile missing');
+    expect(serviceWorker).toContain('Offline shell unavailable');
   });
 });

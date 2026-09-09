@@ -13,6 +13,7 @@ Choisissez un guide :
 - [**Principes IHM**](./architecture/hmi-guidelines.md) — règles de nécessité, hiérarchie, interaction et honnêteté des données.
 - [**Check-list de revue IHM**](./testing/hmi-review-checklist.md) — contrôle mesurable avant intégration.
 - [**Inventaire des textes IHM**](./reviews/hmi-text-inventory.md) — classement des textes des PW, QAK, menus radiaux, panneaux et palette.
+- [**Fond tactique maritime**](./architecture/tactical-maritime-basemap.md) — fond local sombre, trait de côte, aéroports majeurs et fonctionnement hors ligne.
 - [**Plan d’assainissement de l’interface**](./plans/2026-09-07-interface-decluttering.md) — réduction des textes et impasses, avec conservation des menus radiaux, PW et QAK.
 
 Pour les détails techniques et les règles de développement, consultez [AGENTS.md](../AGENTS.md).

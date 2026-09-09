@@ -68,8 +68,13 @@ import {
   setTrailVisibility as setTrailVisibilityState,
   type TrackTrailState,
 } from './domain/trackTrails';
+import {
+  DEFAULT_MISSION_AIRPORT,
+  DEFAULT_MISSION_ORIGIN,
+  translateScenarioPosition,
+} from './domain/missionOrigin';
 
-const DEFAULT_ORIGIN = { lat: 34.0522, lon: -118.2437 };
+const DEFAULT_ORIGIN = DEFAULT_MISSION_ORIGIN;
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
 
 const formatTimerRemaining = (milliseconds: number): string => {
@@ -92,12 +97,12 @@ const INITIAL_OWNSHIP: Entity = {
 
 // Seeding test entities with Lat/Lon Native coordinates
 const INITIAL_ENTITIES: Entity[] = [
-  { id: 'wp-1', type: EntityType.WAYPOINT, position: { lat: 34.1, lon: -118.2 }, label: 'G01' },
-  { id: 'wp-2', type: EntityType.WAYPOINT, position: { lat: 34.08, lon: -118.15 }, label: 'BRAVO', metadata: { groundTrackDegrees: 180, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4 } },
-  { id: 'apt-1', type: EntityType.AIRPORT, position: { lat: 33.94, lon: -118.40 }, label: 'BASE' },
-  { id: 'en-1', type: EntityType.ENEMY, position: { lat: 34.07, lon: -118.10 }, label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3, metadata: { groundTrackDegrees: 270, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4, source: 'RADAR', quality: 'GOOD', uncertaintyMeters: 40, classification: 'HOSTILE', confidence: 0.9 } },
+  { id: 'wp-1', type: EntityType.WAYPOINT, position: translateScenarioPosition({ lat: 34.1, lon: -118.2 }), label: 'G01' },
+  { id: 'wp-2', type: EntityType.WAYPOINT, position: translateScenarioPosition({ lat: 34.08, lon: -118.15 }), label: 'BRAVO', metadata: { groundTrackDegrees: 180, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4 } },
+  { id: 'apt-1', type: EntityType.AIRPORT, position: DEFAULT_MISSION_AIRPORT, label: 'BASE' },
+  { id: 'en-1', type: EntityType.ENEMY, position: translateScenarioPosition({ lat: 34.07, lon: -118.10 }), label: 'HOSTILE 1', heading: 270, targetHeading: 270, speed: 60, targetSpeed: 60, turnRate: 3, metadata: { groundTrackDegrees: 270, groundSpeedKnots: 60, freshness: 'FRESH', ageSeconds: 4, source: 'RADAR', quality: 'GOOD', uncertaintyMeters: 40, classification: 'HOSTILE', confidence: 0.9 } },
   // Adding Waypoint routine to ENEMY 2 to test automatic navigation
-  { id: 'en-2', type: EntityType.ENEMY, position: { lat: 34.02, lon: -118.12 }, label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }], metadata: { freshness: 'STALE', ageSeconds: 90, source: 'RADAR', quality: 'DEGRADED', uncertaintyMeters: 250, classification: 'HOSTILE', confidence: 0.8 } },
+  { id: 'en-2', type: EntityType.ENEMY, position: translateScenarioPosition({ lat: 34.02, lon: -118.12 }), label: 'HOSTILE 2', heading: 320, targetHeading: 320, speed: 180, targetSpeed: 180, turnRate: 5, waypoints: [{ lat: 34.1, lon: -118.2 }, { lat: 34.08, lon: -118.15 }].map(translateScenarioPosition), metadata: { freshness: 'STALE', ageSeconds: 90, source: 'RADAR', quality: 'DEGRADED', uncertaintyMeters: 250, classification: 'HOSTILE', confidence: 0.8 } },
 ];
 
 type BullseyeProposal =

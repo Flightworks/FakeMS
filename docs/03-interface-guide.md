@@ -19,6 +19,9 @@ The map is the heart of the application.
     *   **Red Diamond (Hostile)**: Enemy targets or unknown surface/air contacts.
     *   **Amber Circle (Waypoint)**: Waypoints, airports, or points of interest.
 *   **Velocity Leaders**: Lines protruding from icons indicate their current heading and speed (Speed Vectors).
+*   **Maritime Basemap**: The sea is dark grey, land is simplified, and the coastline remains visible without roads or civilian points of interest.
+*   **Major Airports**: Small muted airport points provide geographic context. They are not simulated entities and are not interactive.
+*   **No GPS**: The initial simulated position is the military port of Toulon. A valid browser GPS position replaces it when available.
 
 ## 2. The Pie Menu (Radial Actions)
 

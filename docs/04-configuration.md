@@ -9,7 +9,7 @@ You can adjust how the application looks in real-time through the Sidebar settin
 *   **Panel Scale**: Make the info panels larger or smaller.
 *   **Opacity (Alpha)**: Make the interface more or less transparent so you can see more of the map underneath.
 *   **UI Glow**: Adjust the intensity of the "glow" effect on buttons and text for better visibility.
-*   **Map Dimming**: Adjust the brightness of the map tiles independently of the UI.
+*   **Map Dimming**: Adjust the brightness of the local tactical basemap independently of the UI.
 *   **Ownship Panel Position**: Quickly relocate the Ownship telemetry panel to any of the four corners (TL, TR, BL, BR) to avoid obscuring tactical data.
 
 ## Track & Information Management
@@ -27,7 +27,7 @@ Several settings control the underlying engine:
 *   **Gesture Calibration**: Adjust sensitivity for `tapThreshold`, `indicatorDelay`, and `longPressDuration`.
 *   **Animation Speed**: Control the duration of map transitions and panel animations.
 *   **Haptic Feedback**: Enable or disable vibration feedback for radial menu highlights and command executions.
-*   **Map Persistence**: The application automatically caches map tiles for offline use, ensuring the mission continues even without network access.
+*   **Map Persistence**: The local land/coastline and major-airport GeoJSON assets are precached for offline use. No external map tiles are required.
 
 ## Stabilization & Orientation
 

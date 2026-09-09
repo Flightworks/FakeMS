@@ -56,6 +56,9 @@ Tester au minimum : saisie vide, `CPA BRAVO`, `SIM RESET`, une commande inconnue
 ## 5. Carte et panneaux
 
 - [ ] La carte reste la zone visuelle dominante.
+- [ ] Le fond maritime est sombre, local et ne montre ni routes ni POI civils.
+- [ ] Les repères d’aéroports statiques restent discrets, sans remplacer les entités mission.
+- [ ] Sans GPS, l’origine visible du scénario est Toulon ; avec GPS, la position réelle prend le relais.
 - [ ] Le menu radial reste accessible sur la carte ou l’objet concerné.
 - [ ] Chaque secteur radial déclenche une fonction disponible.
 - [ ] Les PW indiquent un état ou donnent un accès direct avec un libellé court.

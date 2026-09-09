@@ -2,6 +2,7 @@ import type { GeographicBounds } from './constraints';
 import { METERS_PER_NAUTICAL_MILE } from './tacticalUnits';
 import type { Position } from '../types';
 import { distanceBetween } from '../utils/geo';
+import { translateScenarioPosition } from './missionOrigin';
 
 export type ZoneGeometry =
   | { kind: 'RECTANGLE'; bounds: GeographicBounds }
@@ -128,17 +129,25 @@ export const checkZoneContainment = (zone: NamedZone, point: Position): ZoneCont
 export const createDefaultZones = (): NamedZone[] => [
   {
     id: 'TRAINING-A', label: 'TRAINING-A', source: 'LOCAL SCENARIO', simulatedState: 'SIMULATED',
-    geometry: { kind: 'RECTANGLE', bounds: { minLat: 33.9, maxLat: 34.2, minLon: -118.5, maxLon: -118.0 } },
+    geometry: {
+      kind: 'RECTANGLE',
+      bounds: {
+        minLat: translateScenarioPosition({ lat: 33.9, lon: -118.5 }).lat,
+        maxLat: translateScenarioPosition({ lat: 34.2, lon: -118.0 }).lat,
+        minLon: translateScenarioPosition({ lat: 33.9, lon: -118.5 }).lon,
+        maxLon: translateScenarioPosition({ lat: 34.2, lon: -118.0 }).lon,
+      },
+    },
   },
   {
     id: 'TRAINING-CIRCLE', label: 'TRAINING-CIRCLE', source: 'LOCAL SCENARIO', simulatedState: 'SIMULATED',
-    geometry: { kind: 'CIRCLE', center: { lat: 34.05, lon: -118.2 }, radiusNm: 5 },
+    geometry: { kind: 'CIRCLE', center: translateScenarioPosition({ lat: 34.05, lon: -118.2 }), radiusNm: 5 },
   },
   {
     id: 'TRAINING-POLYGON', label: 'TRAINING-POLYGON', source: 'LOCAL SCENARIO', simulatedState: 'SIMULATED',
     geometry: { kind: 'POLYGON', points: [
-      { lat: 34.00, lon: -118.30 }, { lat: 34.15, lon: -118.25 },
-      { lat: 34.12, lon: -118.10 }, { lat: 33.98, lon: -118.12 },
+      translateScenarioPosition({ lat: 34.00, lon: -118.30 }), translateScenarioPosition({ lat: 34.15, lon: -118.25 }),
+      translateScenarioPosition({ lat: 34.12, lon: -118.10 }), translateScenarioPosition({ lat: 33.98, lon: -118.12 }),
     ] },
   },
 ];

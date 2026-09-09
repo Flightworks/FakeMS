@@ -18,7 +18,7 @@ test('shows and clears a temporary projection preview', async ({ page }) => {
   await expect(preview).toBeVisible();
   await expect(preview).toContainText('BRAVO');
   await expect(preview).toContainText('180.0°T / 5.0 NM');
-  await expect(preview).toContainText('TARGET 33.99682, -118.15000');
+  await expect(preview).toContainText('TARGET 43.06292, 6.00350');
   await expect(page.getByTestId('projection-preview-point')).toBeVisible();
   await expect(page.getByTestId('projection-preview-line')).toBeVisible();
   const previewPaths = page.locator('.projection-preview-pane path');
@@ -110,7 +110,7 @@ test('manages named designated points through the command palette', async ({ pag
   await page.keyboard.press('Control+k');
   await input.fill('RENAME P1 ALPHA');
   await page.getByRole('option', { name: /RENAME P1 ALPHA/ }).first().click();
-  await expect(page.getByTestId('confirmed-designation-ALPHA')).toContainText('ALPHA 33.99682, -118.15000');
+  await expect(page.getByTestId('confirmed-designation-ALPHA')).toContainText('ALPHA 43.06292, 6.00350');
   await expect(page.getByTestId('confirmed-designation-P1')).toHaveCount(0);
 
   await confirmProjection();
