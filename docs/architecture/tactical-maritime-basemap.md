@@ -19,6 +19,7 @@ Le fond ne contient pas de routes, bâtiments, commerces, noms de rues, villes o
 Les ressources sont servies depuis la PWA :
 
 - `public/maps/ne_110m_land.geojson` : polygones terrestres Natural Earth 1:110m, adaptés au fond global simplifié ;
+- `public/maps/ne_10m_land_toulon.geojson` : extraction Natural Earth 1:10m bornée à la Méditerranée nord-occidentale, rendue au-dessus du fond global pour une côte plus précise près de Toulon ;
 - `public/maps/ne_10m_airports_major.geojson` : sous-ensemble filtré des aéroports majeurs.
 
 Le service worker précharge ces fichiers. Le fonctionnement nominal ne demande aucune tuile externe et reste disponible sans réseau.

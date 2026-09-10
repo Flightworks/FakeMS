@@ -26,7 +26,7 @@ Fake MS is a local interface simulation. It does not connect to an operational m
 ## Troubleshooting
 
 - **App won't start**: Make sure you ran `npm install` successfully.
-- **Map not showing**: The tactical basemap is local and does not require Internet access. Check that the application build contains `maps/ne_110m_land.geojson` and `maps/ne_10m_airports_major.geojson`.
+- **Map not showing**: The tactical basemap is local and does not require Internet access. Check that the application build contains `maps/ne_110m_land.geojson`, `maps/ne_10m_land_toulon.geojson`, and `maps/ne_10m_airports_major.geojson`.
 
 ---
 [Back to Introduction](./01-introduction.md) | [Next: Interface Guide](./03-interface-guide.md)

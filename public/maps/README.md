@@ -13,6 +13,10 @@ Ces fichiers sont des ressources statiques locales utilisées par FakeMS. Ils ne
 
 ## Terre et trait de côte
 
+Le fond global reste volontairement léger. Une couche locale détaillée remplace son rendu autour de Toulon afin de garder un trait de côte lisible sans charger la géométrie 1:10m du monde entier.
+
+### Fond global
+
 Fichier local : `ne_110m_land.geojson`
 
 Source :
@@ -26,6 +30,21 @@ https://raw.githubusercontent.com/nvkelso/natural-earth-vector/789c9904087846cc3
 - Features : `127`
 - Taille : `138160` octets
 - SHA-256 : `9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9`
+
+### Détail côtier Toulon
+
+Fichier local : `ne_10m_land_toulon.geojson`
+
+Source : le même `ne_10m_land.geojson` Natural Earth, découpé par `scripts/prepare-toulon-coastal-detail.mjs`.
+
+- Échelle source : `1:10m` ;
+- zone de découpe : longitude `0` à `14`, latitude `38` à `47` ;
+- Features : `8` ;
+- Sommets : `3334` ;
+- Taille : `71576` octets ;
+- SHA-256 : `93aadf2f5e9fb9fd71d384e455e2485d62082e6a3b52a7ced75bb9ae9ffec87b`.
+
+Le rendu masque d’abord la forme 1:110m dans cette zone, puis applique les polygones 1:10m. Les limites de découpe restent au-delà de la vue nominale autour de Toulon.
 
 ## Aéroports majeurs
 

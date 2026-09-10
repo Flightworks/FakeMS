@@ -13,6 +13,7 @@ const PRECACHE_ASSETS = [
   `${BASE_PATH}icons/fakems-192.svg`,
   `${BASE_PATH}icons/fakems-512.svg`,
   `${BASE_PATH}maps/ne_110m_land.geojson`,
+  `${BASE_PATH}maps/ne_10m_land_toulon.geojson`,
   `${BASE_PATH}maps/ne_10m_airports_major.geojson`,
   ...BUILD_ASSETS.map(asset => `${BASE_PATH}${asset}`),
 ];

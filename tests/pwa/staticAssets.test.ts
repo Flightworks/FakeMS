@@ -23,6 +23,7 @@ describe('PWA static assets', () => {
 
     expect(serviceWorker).toContain('__FAKEMS_BUILD_ID__');
     expect(serviceWorker).toContain('maps/ne_110m_land.geojson');
+    expect(serviceWorker).toContain('maps/ne_10m_land_toulon.geojson');
     expect(serviceWorker).toContain('maps/ne_10m_airports_major.geojson');
     expect(serviceWorker).not.toContain('tile.openstreetmap.org');
     expect(serviceWorker).not.toContain('TILE_MAX_ENTRIES');

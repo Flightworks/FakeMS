@@ -17,6 +17,7 @@ import type { NamedZone } from '../domain/zones';
 import type { TrackTrailState } from '../domain/trackTrails';
 import { getTrailSegments } from '../domain/trackTrails';
 import { TacticalBasemap } from './TacticalBasemap';
+import { TacticalCoastalDetail } from './TacticalCoastalDetail';
 import { TacticalAirports } from './TacticalAirports';
 import {
   createDeclutterState,
@@ -782,6 +783,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         scrollWheelZoom={true}
       >
         <TacticalBasemap />
+        <TacticalCoastalDetail />
         <TacticalAirports />
 
         <MapController
