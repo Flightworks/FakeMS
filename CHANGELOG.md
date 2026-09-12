@@ -19,12 +19,12 @@
 
 - **Données cartographiques** : reprise possible après un échec transitoire de chargement des GeoJSON locaux.
 
-+## [1.3.6] - 2026-05-10
-+### Added
-+- **Visual Recenter Logic**: Re-implemented the map recenter button using a robust screen-pixel deviation check. The button now correctly appears whenever the ownship is visually off-center, covering zoom, touch, and programmatic shifts.
-+- **Immediate Map Loading**: Initial simulation origin is now set immediately on mount, preventing "black map" issues when geolocation is slow or blocked.
-+
- ## [1.3.5] - 2026-04-15
+## [1.3.6] - 2026-05-10
+### Added
+- **Visual Recenter Logic**: Re-implemented the map recenter button using a robust screen-pixel deviation check. The button now correctly appears whenever the ownship is visually off-center, covering zoom, touch, and programmatic shifts.
+- **Immediate Map Loading**: Initial simulation origin is now set immediately on mount, preventing "black map" issues when geolocation is slow or blocked.
+
+## [1.3.5] - 2026-04-15
  ### Changed
  - **UI Refinement**: Removed background gradients and shadows from the top system bar and map for a cleaner, "floating" HMI interface.
  
