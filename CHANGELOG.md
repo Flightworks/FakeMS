@@ -1,7 +1,24 @@
 # Changelog
  
  All notable changes to this project will be documented in this file.
- 
+
+## [1.4.0] - 2026-09-12
+
+### Added
+
+- **Fond tactique maritime local** : remplacement des tuiles civiles externes par un fond Natural Earth embarqué, sombre et utilisable hors ligne.
+- **Contexte Toulon** : origine de scénario à Toulon lorsque le GPS est indisponible, avec conservation de la position GPS réelle lorsqu’elle est disponible.
+- **Repères aéroportuaires majeurs** : points cartographiques locaux, non interactifs et distincts des entités de mission.
+- **Trait de côte Toulon détaillé** : couche terrestre Natural Earth 1:10m limitée à la Méditerranée nord-occidentale, superposée au fond global léger.
+
+### Changed
+
+- **Cache PWA** : précache explicite des ressources de carte et des assets de build, pour un fonctionnement hors réseau fiable sans cache runtime non borné.
+
+### Fixed
+
+- **Données cartographiques** : reprise possible après un échec transitoire de chargement des GeoJSON locaux.
+
 +## [1.3.6] - 2026-05-10
 +### Added
 +- **Visual Recenter Logic**: Re-implemented the map recenter button using a robust screen-pixel deviation check. The button now correctly appears whenever the ownship is visually off-center, covering zoom, touch, and programmatic shifts.
