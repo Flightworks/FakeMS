@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Entity, EntityType } from '../../types';
 import {
   normalizeEntityReference,
+  resolveEntityPairReference,
   resolveEntityReference,
 } from '../../domain/entityResolution';
 
@@ -133,6 +134,69 @@ describe('entity reference resolution', () => {
       status: 'UNKNOWN_REFERENCE',
       code: 'UNKNOWN_REFERENCE',
       match: 'NONE',
+      executable: false,
+      candidates: [],
+    });
+  });
+
+  it('resolves an explicit multi-word pair using every valid segmentation', () => {
+    const hostileOne: Entity = {
+      id: 'hostile-1',
+      label: 'HOSTILE 1',
+      type: EntityType.ENEMY,
+      position: { lat: 34.2, lon: -118.1 },
+    };
+    const bravoTwo: Entity = {
+      id: 'bravo-2',
+      label: 'BRAVO 2',
+      type: EntityType.WAYPOINT,
+      position: { lat: 34.3, lon: -118.2 },
+    };
+
+    const result = resolveEntityPairReference(
+      'HOSTILE 1 BRAVO 2',
+      [hostileOne, bravoTwo],
+      ownship,
+    );
+
+    expect(result).toMatchObject({
+      status: 'RESOLVED',
+      code: 'RESOLVED',
+      executable: true,
+      from: { id: 'hostile-1', label: 'HOSTILE 1' },
+      to: { id: 'bravo-2', label: 'BRAVO 2' },
+    });
+    expect(result.candidates).toHaveLength(1);
+  });
+
+  it('reports every valid pair when a query has ambiguous segmentations', () => {
+    const result = resolveEntityPairReference('BRAVO 2 ALPHA', [
+      { ...bravo, label: 'BRAVO' },
+      { ...bravoTwo, label: '2 ALPHA' },
+      { ...bravoTwo, id: 'bravo-2', label: 'BRAVO 2' },
+      { ...base, id: 'alpha', label: 'ALPHA' },
+    ], ownship);
+
+    expect(result.status).toBe('AMBIGUOUS_REFERENCE');
+    expect(result.executable).toBe(false);
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        from: expect.objectContaining({ label: 'BRAVO' }),
+        to: expect.objectContaining({ label: '2 ALPHA' }),
+      }),
+      expect.objectContaining({
+        from: expect.objectContaining({ label: 'BRAVO 2' }),
+        to: expect.objectContaining({ label: 'ALPHA' }),
+      }),
+    ]));
+  });
+
+  it('does not silently resolve an unknown pair', () => {
+    const result = resolveEntityPairReference('UNKNOWN TARGET', [bravo, base], ownship);
+
+    expect(result).toMatchObject({
+      status: 'UNKNOWN_REFERENCE',
+      code: 'UNKNOWN_REFERENCE',
       executable: false,
       candidates: [],
     });

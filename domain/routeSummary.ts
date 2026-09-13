@@ -1,6 +1,10 @@
 import type { Position } from '../types';
 import { bearingBetween, distanceBetween } from '../utils/geo';
-import type { GroundSpeedInput } from './etaEte';
+import {
+  isGroundSpeedStale,
+  isQualifiedGroundSpeed,
+  type GroundSpeedInput,
+} from './etaEte';
 import { METERS_PER_NAUTICAL_MILE } from './tacticalUnits';
 
 export interface RouteSummaryWaypoint {
@@ -27,7 +31,7 @@ export interface RouteSummaryInput {
 }
 
 export type RouteSummaryStatus = 'NO_ACTIVE_ROUTE' | 'ACTIVE' | 'COMPLETED';
-export type RouteTimingReason = 'SPEED_UNAVAILABLE' | 'SCENARIO_TIME_UNAVAILABLE';
+export type RouteTimingReason = 'SPEED_UNAVAILABLE' | 'SPEED_STALE' | 'SCENARIO_TIME_UNAVAILABLE';
 
 export interface RouteSummary {
   status: RouteSummaryStatus;
@@ -75,9 +79,7 @@ const unavailableTiming = (
 ): Pick<RouteSummary, 'eteSeconds' | 'etaUtcMs' | 'speedKnots' | 'speedSource' | 'speedQualification' | 'timingReason'> => ({
   eteSeconds: null,
   etaUtcMs: null,
-  speedKnots: Number.isFinite(speed?.speedKnots) && (speed?.speedKnots ?? 0) > 0
-    ? speed?.speedKnots ?? null
-    : null,
+  speedKnots: isQualifiedGroundSpeed(speed) ? speed.speedKnots : null,
   speedSource: speed?.source ?? 'UNAVAILABLE',
   speedQualification: speed?.qualification ?? 'UNAVAILABLE',
   timingReason: reason,
@@ -86,15 +88,19 @@ const unavailableTiming = (
 const availableTiming = (
   remainingDistanceNauticalMiles: number,
   speed: GroundSpeedInput,
-  scenarioTimeMs: number,
-): Pick<RouteSummary, 'eteSeconds' | 'etaUtcMs' | 'speedKnots' | 'speedSource' | 'speedQualification'> => {
+  scenarioTimeMs?: number,
+): Pick<RouteSummary, 'eteSeconds' | 'etaUtcMs' | 'speedKnots' | 'speedSource' | 'speedQualification' | 'timingReason'> => {
   const eteSeconds = remainingDistanceNauticalMiles / speed.speedKnots * 3600;
+  const etaUtcMs = Number.isFinite(scenarioTimeMs)
+    ? (scenarioTimeMs as number) + eteSeconds * 1000
+    : null;
   return {
     eteSeconds,
-    etaUtcMs: scenarioTimeMs + eteSeconds * 1000,
+    etaUtcMs,
     speedKnots: speed.speedKnots,
     speedSource: speed.source,
     speedQualification: speed.qualification,
+    ...(etaUtcMs === null ? { timingReason: 'SCENARIO_TIME_UNAVAILABLE' as const } : {}),
   };
 };
 
@@ -145,9 +151,9 @@ export const summarizeRoute = (
       branchDistanceNauticalMiles: null,
       cumulativeDistanceNauticalMiles: routeTotalDistance,
       remainingDistanceNauticalMiles: 0,
-      eteSeconds: Number.isFinite(input.scenarioTimeMs) ? 0 : null,
+      eteSeconds: 0,
       etaUtcMs: Number.isFinite(input.scenarioTimeMs) ? input.scenarioTimeMs ?? null : null,
-      speedKnots: Number.isFinite(input.speed?.speedKnots) ? input.speed?.speedKnots ?? null : null,
+      speedKnots: isQualifiedGroundSpeed(input.speed) ? input.speed.speedKnots : null,
       speedSource: input.speed?.source ?? 'UNAVAILABLE',
       speedQualification: input.speed?.qualification ?? 'UNAVAILABLE',
       ...(Number.isFinite(input.scenarioTimeMs) ? {} : { timingReason: 'SCENARIO_TIME_UNAVAILABLE' as const }),
@@ -161,11 +167,11 @@ export const summarizeRoute = (
     route.waypoints.slice(completedWaypointCount + 1),
   );
   const remainingDistanceNauticalMiles = branchDistanceNauticalMiles + remainingAfterNext;
-  const timing = input.speed && Number.isFinite(input.speed.speedKnots) && input.speed.speedKnots > 0
-    ? Number.isFinite(input.scenarioTimeMs)
-      ? availableTiming(remainingDistanceNauticalMiles, input.speed, input.scenarioTimeMs as number)
-      : unavailableTiming('SCENARIO_TIME_UNAVAILABLE', input.speed)
-    : unavailableTiming('SPEED_UNAVAILABLE', input.speed);
+  const timing = !isQualifiedGroundSpeed(input.speed)
+    ? unavailableTiming('SPEED_UNAVAILABLE', input.speed)
+    : isGroundSpeedStale(input.speed, input.scenarioTimeMs)
+      ? unavailableTiming('SPEED_STALE', input.speed)
+      : availableTiming(remainingDistanceNauticalMiles, input.speed, input.scenarioTimeMs);
 
   return {
     status: 'ACTIVE',

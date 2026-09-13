@@ -5,6 +5,12 @@ test('represents a denied GPS permission without promoting SIM data to real', as
   await page.goto('/');
   await expect(page.getByRole('button', { name: /NAV GPS DENIED/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('[data-map-origin="43.1183,5.9098"]')).toBeVisible();
+  await expect(page.getByTestId('nav-source-status')).toContainText('POS SIMULATION');
+  await expect(page.getByTestId('nav-source-status')).toContainText('SIM RUNNING');
+  await expect(page.getByTestId('ownship-position-status')).toContainText('SIMULATION POSITION');
+  await expect(page.getByText('GS', { exact: true })).toBeVisible();
+  await expect(page.getByText('UNAVAILABLE', { exact: true })).toBeVisible();
+  await expect(page.getByText('TAS', { exact: true })).toHaveCount(0);
   await page.keyboard.press('Control+k');
 
   const input = page.getByRole('textbox', { name: 'Command input' });

@@ -1,11 +1,15 @@
 import React from 'react';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, within, createEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapDisplay } from '../../components/MapDisplay';
 import { Entity, PrototypeSettings, MapMode, SystemStatus, EntityType } from '../../types';
 import { createProjectionPreview } from '../../domain/designations';
 import type { SimulatedDesignation } from '../../domain/designations';
 import type { TrackTrailState } from '../../domain/trackTrails';
+import type { ActiveSimulatedRoute } from '../../domain/routeSummary';
+import { dispatchContextAction } from '../../application/buildCommandContext';
+import { createLayerState, setLayerVisibility } from '../../domain/layers';
+import type { ContextActionRequest } from '../../application/buildCommandContext';
 
 // Mock Framer motion completely since useGesture and react-spring have complex internal physics
 vi.mock('@use-gesture/react', () => ({
@@ -290,8 +294,372 @@ describe('MapDisplay Component', () => {
     expect(document.querySelectorAll('.track-trail-line')).toHaveLength(0);
   });
 
+  it('opens the available map context tree instead of the legacy universal tracks menu', () => {
+    vi.useFakeTimers();
+    render(<MapDisplay {...defaultProps} onContextAction={vi.fn()} />);
+
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 11,
+      pointerType: 'mouse',
+      clientX: 420,
+      clientY: 300,
+    });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+
+    const radial = screen.getByRole('dialog', { name: 'MAP ACTION radial menu' });
+    const radialQueries = within(radial);
+    expect(radialQueries.getByText('Vue', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.getByText('Affichage', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.getByText('Mesurer', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.queryByText('TRACKS', { exact: true })).not.toBeInTheDocument();
+    expect(radialQueries.queryByText('VECTOR', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('dispatches the radial vector leaf through the authoritative layer state', () => {
+    vi.useFakeTimers();
+    const requests: ContextActionRequest[] = [];
+    const ContextActionHarness = () => {
+      const [layers, setLayers] = React.useState(createLayerState());
+      const onContextAction = (request: ContextActionRequest) => {
+        requests.push(request);
+        dispatchContextAction(request, {
+          toggleVectors: () => setLayers(previous => {
+            const update = setLayerVisibility(previous, 'VECTORS', !previous.VECTORS.visible);
+            return update.status === 'AVAILABLE' ? update.state : previous;
+          }),
+        });
+      };
+      return <MapDisplay {...defaultProps} layers={layers} setLayers={setLayers} onContextAction={onContextAction} />;
+    };
+
+    render(<ContextActionHarness />);
+    expect(document.querySelectorAll('.kinematic-vector-line')).toHaveLength(3);
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 12,
+      pointerType: 'mouse',
+      clientX: 420,
+      clientY: 300,
+    });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+    const radial = screen.getByRole('dialog', { name: 'MAP ACTION radial menu' });
+
+    // Select Affichage (inner midpoint -60°), then Vecteurs (outer midpoint -100°).
+    fireEvent.pointerDown(radial, { clientX: 368, clientY: 270, pointerId: 13, pointerType: 'mouse' });
+    fireEvent.pointerUp(radial, { clientX: 368, clientY: 270, pointerId: 13, pointerType: 'mouse' });
+    fireEvent.pointerDown(radial, { clientX: 285, clientY: 324, pointerId: 14, pointerType: 'mouse' });
+    fireEvent.pointerUp(radial, { clientX: 285, clientY: 324, pointerId: 14, pointerType: 'mouse' });
+
+    expect(document.querySelectorAll('.kinematic-vector-line')).toHaveLength(0);
+    expect(screen.getByTestId('vector-layer-status')).toHaveTextContent('VECTORS OFF');
+    expect(requests).toContainEqual(expect.objectContaining({
+      actionId: 'MAP:DISPLAY:VECTORS',
+      context: 'MAP',
+      position: { lat: 35, lon: -120 },
+    }));
+  });
+
+  it('opens a track-specific tree from an immutable display-entity snapshot', () => {
+    vi.useFakeTimers();
+    const onContextAction = vi.fn();
+    const { rerender } = render(<MapDisplay {...defaultProps} onContextAction={onContextAction} />);
+    const targetMarker = document.querySelectorAll('.custom-entity-icon')[1] as HTMLElement;
+    fireEvent.mouseDown(targetMarker, { clientX: 260, clientY: 280 });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+
+    const radial = screen.getByRole('dialog', { name: 'HOSTILE-1 radial menu' });
+    const radialQueries = within(radial);
+    expect(radialQueries.getByText('Données', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.getByText('Suivi', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.queryByText('Désigner', { exact: true })).not.toBeInTheDocument();
+    expect(radialQueries.queryByText('CPA / TCPA', { exact: true })).not.toBeInTheDocument();
+    expect(radialQueries.queryByText('TRACKS', { exact: true })).not.toBeInTheDocument();
+
+    rerender(
+      <MapDisplay
+        {...defaultProps}
+        entities={[{ ...mockEntities[0], position: { lat: 36, lon: -121 } }, mockEntities[1]]}
+        onContextAction={onContextAction}
+      />,
+    );
+    const stableRadial = screen.getByRole('dialog', { name: 'HOSTILE-1 radial menu' });
+    expect(stableRadial).toBeInTheDocument();
+
+    // The stored tree still uses the target's original position after the
+    // display entity itself has moved.
+    fireEvent.pointerDown(stableRadial, { clientX: 226, clientY: 231, pointerId: 15, pointerType: 'mouse' });
+    fireEvent.pointerUp(stableRadial, { clientX: 226, clientY: 231, pointerId: 15, pointerType: 'mouse' });
+    fireEvent.pointerDown(stableRadial, { clientX: 127, clientY: 245, pointerId: 16, pointerType: 'mouse' });
+    fireEvent.pointerUp(stableRadial, { clientX: 127, clientY: 245, pointerId: 16, pointerType: 'mouse' });
+    expect(onContextAction).toHaveBeenCalledWith(expect.objectContaining({
+      actionId: 'TRACK:TRACKING:CENTER',
+      targetId: 'target1',
+      targetLabel: 'HOSTILE-1',
+      targetType: EntityType.ENEMY,
+      position: { lat: 35.1, lon: -120.1 },
+    }));
+  });
+
+  it('never opens a mission radial for a decorative airport marker', () => {
+    vi.useFakeTimers();
+    const decorativeAirport: Entity = {
+      id: 'decorative-airport',
+      label: 'MARSEILLE PROVENCE',
+      type: EntityType.AIRPORT,
+      position: { lat: 43.4, lon: 5.2 },
+    };
+    render(<MapDisplay {...defaultProps} entities={[decorativeAirport]} onContextAction={vi.fn()} />);
+    const airportMarker = document.querySelector('.custom-entity-icon [data-entity-id="decorative-airport"]') as HTMLElement;
+    fireEvent.mouseDown(airportMarker, { clientX: 260, clientY: 280 });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+
+    expect(screen.queryByRole('dialog', { name: /radial menu$/ })).not.toBeInTheDocument();
+  });
+
+  it('opens the BASE tree only for the exact scenario airport marker', () => {
+    vi.useFakeTimers();
+    const scenarioBase: Entity = {
+      id: 'apt-base',
+      label: 'BASE',
+      type: EntityType.AIRPORT,
+      position: { lat: 35.2, lon: -120.2 },
+    };
+    render(<MapDisplay {...defaultProps} entities={[scenarioBase]} onContextAction={vi.fn()} />);
+    const baseMarker = document.querySelector('.custom-entity-icon [data-entity-id="apt-base"]') as HTMLElement;
+    fireEvent.mouseDown(baseMarker, { clientX: 260, clientY: 280 });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+
+    const radial = screen.getByRole('dialog', { name: 'BASE radial menu' });
+    const radialQueries = within(radial);
+    expect(radialQueries.getByText('Données', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.getByText('Rejoindre', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.getByText('Vue', { exact: true })).toBeInTheDocument();
+    expect(radialQueries.queryByText('Mesurer', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('keeps pointer, wheel, and touch ownership in the overlay while a map radial is open', () => {
+    vi.useFakeTimers();
+    const onPan = vi.fn();
+    const onSelectEntity = vi.fn();
+    const onContextAction = vi.fn();
+    const onMapDrop = vi.fn();
+    render(
+      <MapDisplay
+        {...defaultProps}
+        onPan={onPan}
+        onSelectEntity={onSelectEntity}
+        onContextAction={onContextAction}
+        onMapDrop={onMapDrop}
+      />,
+    );
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 61,
+      pointerType: 'mouse',
+      clientX: 420,
+      clientY: 300,
+    });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+
+    const radial = screen.getByRole('dialog', { name: 'MAP ACTION radial menu' });
+    expect(radial).toHaveClass('z-[200]');
+    const down = createEvent.pointerDown(radial, {
+      pointerId: 62,
+      pointerType: 'touch',
+      clientX: 420,
+      clientY: 300,
+    });
+    fireEvent(radial, down);
+    const move = createEvent.pointerMove(radial, {
+      pointerId: 62,
+      pointerType: 'touch',
+      clientX: 700,
+      clientY: 700,
+    });
+    fireEvent(radial, move);
+    const wheel = createEvent.wheel(radial, { deltaY: 120 });
+    fireEvent(radial, wheel);
+    fireEvent.drop(mapRoot, { dataTransfer: {} });
+    const up = createEvent.pointerUp(radial, {
+      pointerId: 62,
+      pointerType: 'touch',
+      clientX: 700,
+      clientY: 700,
+    });
+    fireEvent(radial, up);
+
+    expect(down.defaultPrevented).toBe(true);
+    expect(move.defaultPrevented).toBe(true);
+    expect(up.defaultPrevented).toBe(true);
+    expect(onPan).not.toHaveBeenCalled();
+    expect(onSelectEntity).not.toHaveBeenCalled();
+    expect(onContextAction).not.toHaveBeenCalled();
+    expect(onMapDrop).not.toHaveBeenCalled();
+  });
+
+  it('prevents entity radial overlay release from selecting the map or entity again', () => {
+    vi.useFakeTimers();
+    const onSelectEntity = vi.fn();
+    const onPan = vi.fn();
+    render(
+      <MapDisplay
+        {...defaultProps}
+        onSelectEntity={onSelectEntity}
+        onPan={onPan}
+        onContextAction={vi.fn()}
+      />,
+    );
+    const targetMarker = document.querySelectorAll('.custom-entity-icon')[1] as HTMLElement;
+    fireEvent.mouseDown(targetMarker, { clientX: 260, clientY: 280 });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+    const radial = screen.getByRole('dialog', { name: 'HOSTILE-1 radial menu' });
+    expect(onSelectEntity).not.toHaveBeenCalled();
+    fireEvent.pointerDown(radial, { pointerId: 63, pointerType: 'touch', clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(radial, { pointerId: 63, pointerType: 'touch', clientX: 10, clientY: 10 });
+    expect(onSelectEntity).not.toHaveBeenCalled();
+    expect(onPan).not.toHaveBeenCalled();
+  });
+
+  it('blocks direct marker callbacks while an entity radial is open', () => {
+    vi.useFakeTimers();
+    const onSelectEntity = vi.fn();
+    const onPan = vi.fn();
+    render(
+      <MapDisplay
+        {...defaultProps}
+        onSelectEntity={onSelectEntity}
+        onPan={onPan}
+        onContextAction={vi.fn()}
+      />,
+    );
+    const targetMarker = document.querySelectorAll('.custom-entity-icon')[1] as HTMLElement;
+    fireEvent.mouseDown(targetMarker, { clientX: 260, clientY: 280 });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+    expect(screen.getByRole('dialog', { name: 'HOSTILE-1 radial menu' })).toBeInTheDocument();
+    onSelectEntity.mockClear();
+    onPan.mockClear();
+
+    fireEvent.mouseDown(targetMarker, { clientX: 260, clientY: 280 });
+    fireEvent.mouseMove(targetMarker, { clientX: 280, clientY: 300 });
+    fireEvent.mouseUp(targetMarker, { clientX: 280, clientY: 300 });
+    expect(onSelectEntity).not.toHaveBeenCalled();
+    expect(onPan).not.toHaveBeenCalled();
+  });
+
+  it('resets map touch ownership after a touch-opened radial is closed', () => {
+    vi.useFakeTimers();
+    const onPan = vi.fn();
+    render(<MapDisplay {...defaultProps} onPan={onPan} onContextAction={vi.fn()} />);
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 81,
+      pointerType: 'touch',
+      clientX: 420,
+      clientY: 300,
+    });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+    const radial = screen.getByRole('dialog', { name: 'MAP ACTION radial menu' });
+    fireEvent.pointerDown(radial, { pointerId: 82, pointerType: 'touch', clientX: 420, clientY: 300 });
+    fireEvent.pointerUp(radial, { pointerId: 82, pointerType: 'touch', clientX: 420, clientY: 300 });
+
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 83,
+      pointerType: 'touch',
+      clientX: 420,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(mapRoot, {
+      pointerId: 83,
+      pointerType: 'touch',
+      clientX: 460,
+      clientY: 300,
+    });
+    expect(onPan).toHaveBeenCalled();
+  });
+
+  it('restores focus to the map surface after closing a map radial', () => {
+    vi.useFakeTimers();
+    render(<MapDisplay {...defaultProps} onContextAction={vi.fn()} />);
+    const mapRoot = document.querySelector('.absolute.inset-0.bg-slate-950') as HTMLElement;
+    expect(mapRoot).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.pointerDown(mapRoot, {
+      pointerId: 51,
+      pointerType: 'mouse',
+      clientX: 420,
+      clientY: 300,
+    });
+    act(() => {
+      vi.advanceTimersByTime(defaultSettings.longPressDuration + 1);
+    });
+    const radial = screen.getByRole('dialog', { name: 'MAP ACTION radial menu' });
+    fireEvent.keyDown(radial, { key: 'Escape' });
+    expect(mapRoot).toHaveFocus();
+  });
+
+  it('keeps mission markers, vectors, and trails present while the coast pack is pending', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    const ownship = { ...mockOwnship, position: { lat: 43.1183, lon: 5.9098 } };
+    const entities = mockEntities.map((entity, index) => ({
+      ...entity,
+      position: { lat: 43.12 + index * 0.01, lon: 5.91 + index * 0.01 },
+    }));
+    const trails: TrackTrailState = {
+      trails: {
+        target1: {
+          targetId: 'target1',
+          label: 'HOSTILE-1',
+          visible: true,
+          limited: false,
+          points: [
+            { position: { lat: 43.12, lon: 5.91 }, atMs: 1_000, segmentId: 1 },
+            { position: { lat: 43.13, lon: 5.91 }, atMs: 3_000, segmentId: 1 },
+          ],
+        },
+      },
+    };
+
+    const route: ActiveSimulatedRoute = {
+      id: 'route-pending',
+      label: 'PENDING ROUTE',
+      origin: ownship.position,
+      waypoints: [{ id: 'route-point', label: 'R1', position: { lat: 43.15, lon: 5.95 } }],
+      remainingWaypointCount: 1,
+    };
+
+    render(<MapDisplay {...defaultProps} ownship={ownship} entities={entities} trails={trails} activeRoute={route} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/maps/toulon/manifest.json')));
+    expect(document.querySelectorAll('.custom-entity-icon')).toHaveLength(3);
+    expect(document.querySelectorAll('.kinematic-vector-line')).toHaveLength(3);
+    expect(document.querySelectorAll('.track-trail-line')).toHaveLength(1);
+    expect(document.querySelectorAll('.leaflet-simulatedRouteLayer-pane path').length).toBeGreaterThan(0);
+    expect(document.querySelector('.tactical-coast-pack')).toHaveAttribute('data-coast-state', 'pending');
+    fetchMock.mockRestore();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
   });
+
 });

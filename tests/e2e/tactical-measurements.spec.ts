@@ -30,7 +30,11 @@ test('blocks an ambiguous tactical measurement reference', async ({ page }) => {
   await expect(input).toBeVisible();
   await input.fill('RNG HOSTILE');
 
-  await expect(page.getByRole('option', { name: /AMBIGUOUS_REFERENCE: HOSTILE/i })).toBeVisible();
+  const ambiguous = page.getByRole('option', { name: /RNG HOSTILE: UNAVAILABLE/i });
+  await expect(ambiguous).toBeVisible();
+  await expect(ambiguous).toContainText('STATE: AMBIGUOUS');
+  await expect(ambiguous).toContainText('CANDIDATE: HOSTILE 1');
+  await expect(ambiguous).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('[role="option"][id^="measurement-result-"]')).toHaveCount(0);
 });
 
@@ -119,4 +123,32 @@ test('converts and copies coordinates locally without claiming permission', asyn
     name: /COPY POS BRAVO: 43\.14610, 6\.00350.*LOCAL CLIPBOARD.*COPY IF PERMITTED/i,
   })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Projection preview' })).toHaveCount(0);
+});
+
+test('shows missing speed as an honest result card without an execute control', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await expect(input).toBeVisible();
+  await input.fill('ETE BRAVO');
+
+  const option = page.getByRole('option', { name: /^ETE BRAVO ·/i }).first();
+  await expect(option).toBeVisible();
+  await expect(option).toHaveAttribute('aria-disabled', 'true');
+  const card = option.getByTestId('command-result-card');
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId('command-result-reason')).toContainText('Vitesse sol absente');
+  await expect(card.getByTestId('command-result-primary')).toContainText('UNAVAILABLE');
+  await expect(card.getByText('Détails')).toBeVisible();
+  await expect(card.getByRole('button', { name: /Exécuter|Execute/i })).toHaveCount(0);
+
+  const geometry = await option.evaluate((element) => ({
+    optionWidth: element.clientWidth,
+    optionScrollWidth: element.scrollWidth,
+    cardWidth: (element.querySelector('[data-testid="command-result-card"]') as HTMLElement | null)?.clientWidth ?? 0,
+    cardScrollWidth: (element.querySelector('[data-testid="command-result-card"]') as HTMLElement | null)?.scrollWidth ?? 0,
+  }));
+  expect(geometry.optionScrollWidth).toBeLessThanOrEqual(geometry.optionWidth + 1);
+  expect(geometry.cardScrollWidth).toBeLessThanOrEqual(geometry.cardWidth + 1);
 });

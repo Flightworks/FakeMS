@@ -2,6 +2,18 @@
  
  All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-09-13
+
+### Changed
+
+- **Qualification technique IHM** : intégration des cinq contextes radiaux, des contrats de palette/PW/QAK, des états de navigation explicites et du pack côtier local hors ligne.
+- **Version de branche** : livraison technique documentée en `1.4.1` sur `dev/mission-simulation-foundation`, sans prétention opérationnelle.
+- **AC18** : mesure sur appareil cible exclue du périmètre par décision produit ; aucune mesure matérielle n’est revendiquée.
+
+### Fixed
+
+- **Parcours protégés** : confirmations, annulations, rappel d’historique et actions tactiles conservent leur état local observable.
+
 ## [1.4.0] - 2026-09-12
 
 ### Added
@@ -14,6 +26,7 @@
 ### Changed
 
 - **Cache PWA** : précache explicite des ressources de carte et des assets de build, pour un fonctionnement hors réseau fiable sans cache runtime non borné.
+- **Qualification technique IHM (T30)** : mapping AC01–AC21, couverture technique S01–S12 et limites OSM/ODbL/PWA documentés ; validation facteurs humains T29 restant à faire, sans revendication opérationnelle et sans changement de version.
 
 ### Fixed
 

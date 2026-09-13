@@ -47,4 +47,27 @@ describe('loadTacticalGeoJson', () => {
     await expect(loadTacticalGeoJson('/maps/retry-land.json')).resolves.toEqual(land);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('rejects a Feature missing its geometry member in an otherwise non-empty FeatureCollection', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {} }],
+      }),
+    } as Response);
+
+    await expect(loadTacticalGeoJson('/maps/malformed-land.json'))
+      .rejects.toThrow('Tactical map data is not a non-empty FeatureCollection');
+  });
+
+  it('rejects an empty FeatureCollection', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'FeatureCollection', features: [] }),
+    } as Response);
+
+    await expect(loadTacticalGeoJson('/maps/empty-land.json'))
+      .rejects.toThrow('Tactical map data is not a non-empty FeatureCollection');
+  });
 });

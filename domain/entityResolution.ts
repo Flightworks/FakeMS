@@ -33,6 +33,23 @@ export interface EntityReferenceResolution {
   candidates: EntityReferenceCandidate[];
 }
 
+export interface EntityReferencePairCandidate {
+  from: EntityReferenceCandidate;
+  to: EntityReferenceCandidate;
+}
+
+export interface EntityReferencePairResolution {
+  reference: string;
+  normalizedReference: string;
+  status: EntityResolutionStatus;
+  code: EntityResolutionStatus;
+  match: EntityResolutionMatch;
+  executable: boolean;
+  from?: Entity;
+  to?: Entity;
+  candidates: EntityReferencePairCandidate[];
+}
+
 const stripDiacritics = (value: string): string =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -270,6 +287,147 @@ export const resolveEntityReference = (
     'NONE',
     [],
   );
+};
+
+type ResolutionCandidateEntity = {
+  candidate: EntityReferenceCandidate;
+  entity: Entity;
+};
+
+const entitiesForResolution = (
+  resolution: EntityReferenceResolution,
+  entityPool: readonly Entity[],
+  ownship: Entity,
+): ResolutionCandidateEntity[] => {
+  if (resolution.entity) {
+    return [{
+      candidate: toCandidate(resolution.entity, ownship),
+      entity: resolution.entity,
+    }];
+  }
+
+  return resolution.candidates.flatMap(candidate => {
+    const entity = entityPool.find(item => (
+      item.id === candidate.id && item.type === candidate.type
+    ));
+    return entity ? [{ candidate, entity }] : [];
+  });
+};
+
+const pairCandidateKey = (candidate: EntityReferencePairCandidate): string => (
+  `${candidate.from.type}:${candidate.from.id}->${candidate.to.type}:${candidate.to.id}`
+);
+
+const pairMatch = (
+  from: EntityReferenceResolution,
+  to: EntityReferenceResolution,
+): EntityResolutionMatch => {
+  if (from.match === 'FUZZY' || to.match === 'FUZZY') return 'FUZZY';
+  if (from.match === 'PREFIX' || to.match === 'PREFIX') return 'PREFIX';
+  if (from.match === 'IDENTIFIER_EXACT' && to.match === 'IDENTIFIER_EXACT') return 'IDENTIFIER_EXACT';
+  return 'LABEL_EXACT';
+};
+
+export const resolveEntityPairReference = (
+  reference: string,
+  entities: readonly Entity[],
+  ownship: Entity,
+): EntityReferencePairResolution => {
+  const normalizedReference = normalizeEntityReference(reference);
+  const entityPool = uniqueEntityPool(entities, ownship);
+  const words = normalizedReference.split(' ').filter(Boolean);
+  const pairCandidates: EntityReferencePairCandidate[] = [];
+  const resolvedPairCandidates: EntityReferencePairCandidate[] = [];
+  const pairResolutions: Array<{
+    from: EntityReferenceResolution;
+    to: EntityReferenceResolution;
+  }> = [];
+  const seen = new Set<string>();
+
+  for (let splitIndex = 1; splitIndex < words.length; splitIndex += 1) {
+    const fromResolution = resolveEntityReference(
+      words.slice(0, splitIndex).join(' '),
+      entities,
+      ownship,
+    );
+    const toResolution = resolveEntityReference(
+      words.slice(splitIndex).join(' '),
+      entities,
+      ownship,
+    );
+    const fromCandidates = entitiesForResolution(fromResolution, entityPool, ownship);
+    const toCandidates = entitiesForResolution(toResolution, entityPool, ownship);
+    if (fromCandidates.length === 0 || toCandidates.length === 0) continue;
+
+    pairResolutions.push({ from: fromResolution, to: toResolution });
+    for (const from of fromCandidates) {
+      for (const to of toCandidates) {
+        if (from.entity.id === to.entity.id && from.entity.type === to.entity.type) continue;
+        const candidate: EntityReferencePairCandidate = {
+          from: from.candidate,
+          to: to.candidate,
+        };
+        const key = pairCandidateKey(candidate);
+        if (!seen.has(key)) {
+          seen.add(key);
+          pairCandidates.push(candidate);
+        }
+        if (fromResolution.status === 'RESOLVED'
+          && toResolution.status === 'RESOLVED'
+          && !resolvedPairCandidates.some(item => pairCandidateKey(item) === key)) {
+          resolvedPairCandidates.push(candidate);
+        }
+      }
+    }
+  }
+
+  const pairWasFuzzy = pairResolutions.some(({ from, to }) => (
+    from.status === 'FUZZY_SUGGESTION' || to.status === 'FUZZY_SUGGESTION'
+  ));
+  const pairWasAmbiguous = pairResolutions.some(({ from, to }) => (
+    from.status === 'AMBIGUOUS_REFERENCE' || to.status === 'AMBIGUOUS_REFERENCE'
+  ));
+  const effectiveCandidates = resolvedPairCandidates.length > 0
+    ? resolvedPairCandidates
+    : pairCandidates;
+  const exactPairResolution = pairResolutions.find(({ from, to }) => (
+    from.status === 'RESOLVED' && to.status === 'RESOLVED'
+  ));
+  const match = exactPairResolution
+    ? pairMatch(exactPairResolution.from, exactPairResolution.to)
+    : pairResolutions.length > 0
+      ? pairMatch(pairResolutions[0].from, pairResolutions[0].to)
+    : 'NONE';
+  const status: EntityResolutionStatus = resolvedPairCandidates.length === 1
+    ? 'RESOLVED'
+    : resolvedPairCandidates.length > 1
+      ? 'AMBIGUOUS_REFERENCE'
+      : pairWasAmbiguous || effectiveCandidates.length > 1
+        ? 'AMBIGUOUS_REFERENCE'
+        : effectiveCandidates.length === 1 || pairWasFuzzy
+        ? 'FUZZY_SUGGESTION'
+        : 'UNKNOWN_REFERENCE';
+  const resolvedCandidate = status === 'RESOLVED' ? resolvedPairCandidates[0] : undefined;
+  const resolvedFrom = resolvedCandidate
+    ? entityPool.find(entity => entity.id === resolvedCandidate.from.id
+      && entity.type === resolvedCandidate.from.type)
+    : undefined;
+  const resolvedTo = resolvedCandidate
+    ? entityPool.find(entity => entity.id === resolvedCandidate.to.id
+      && entity.type === resolvedCandidate.to.type)
+    : undefined;
+
+  return {
+    reference,
+    normalizedReference,
+    status,
+    code: status,
+    match,
+    executable: status === 'RESOLVED',
+    ...(resolvedFrom ? { from: copyEntity(resolvedFrom) } : {}),
+    ...(resolvedTo ? { to: copyEntity(resolvedTo) } : {}),
+    candidates: effectiveCandidates,
+  };
 };
 
 export const resolveReference = resolveEntityReference;

@@ -2,8 +2,275 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+
+  --hmi-surface-canvas: #090d12;
+  --hmi-surface-panel: #0f1720;
+  --hmi-surface-raised: #17212b;
+  --hmi-surface-inset: #111a24;
+
+  --hmi-text-primary: #f8fafc;
+  --hmi-text-secondary: #cbd5e1;
+  --hmi-text-muted: #94a3b8;
+  --hmi-text-qualification: #a5f3fc;
+
+  --hmi-state-available-foreground: #a7f3d0;
+  --hmi-state-available-background: #064e3b;
+  --hmi-state-available-indicator: #34d399;
+  --hmi-state-partial-foreground: #fef3c7;
+  --hmi-state-partial-background: #713f12;
+  --hmi-state-partial-indicator: #fbbf24;
+  --hmi-state-incomplete-foreground: #e2e8f0;
+  --hmi-state-incomplete-background: #1e293b;
+  --hmi-state-incomplete-indicator: #cbd5e1;
+  --hmi-state-ambiguous-foreground: #fed7aa;
+  --hmi-state-ambiguous-background: #7c2d12;
+  --hmi-state-ambiguous-indicator: #fb923c;
+  --hmi-state-unavailable-foreground: #ffe4e6;
+  --hmi-state-unavailable-background: #881337;
+  --hmi-state-unavailable-indicator: #fb7185;
+  --hmi-state-disabled-foreground: #cbd5e1;
+  --hmi-state-disabled-background: #1e293b;
+  --hmi-state-disabled-indicator: #64748b;
+  --hmi-state-unknown-foreground: #cbd5e1;
+  --hmi-state-unknown-background: #1e293b;
+  --hmi-state-unknown-indicator: #94a3b8;
+
+  --hmi-focus-ring: #67e8f9;
+  --hmi-focus-ring-offset: 2px;
+
+  --hmi-font-primary-value: 18px;
+  --hmi-font-action: 14px;
+  --hmi-font-qualification: 14px;
+  --hmi-font-unit: 14px;
+  --hmi-target-min-size: 48px;
+
+  --hmi-spacing-inline: 0.5rem;
+  --hmi-spacing-row: 0.75rem;
+  --hmi-spacing-panel: 1rem;
+  --hmi-spacing-section: 1.5rem;
+  --hmi-motion-reduced-transition: 0ms;
+  --hmi-motion-reduced-animation: 0ms;
+}
+
 .tactical-map,
 .tactical-map .leaflet-container,
 .tactical-map .leaflet-pane {
-  background: #090d12;
+  background: var(--hmi-surface-canvas);
+}
+
+.hmi-surface-panel {
+  background-color: var(--hmi-surface-panel);
+  color: var(--hmi-text-primary);
+}
+
+.hmi-surface-raised {
+  background-color: var(--hmi-surface-raised);
+  color: var(--hmi-text-primary);
+}
+
+.hmi-primary-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: var(--hmi-font-primary-value);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.hmi-action-text {
+  font-size: var(--hmi-font-action);
+  line-height: 1.25;
+}
+
+.hmi-qualification {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: var(--hmi-font-qualification);
+  line-height: 1.25;
+  color: var(--hmi-text-qualification);
+}
+
+.hmi-unit {
+  flex-shrink: 0;
+  white-space: normal;
+  font-size: var(--hmi-font-unit);
+  line-height: 1.2;
+}
+
+.hmi-active-target {
+  box-sizing: border-box;
+  min-width: var(--hmi-target-min-size);
+  min-height: var(--hmi-target-min-size);
+}
+
+.hmi-focus-ring:focus-visible {
+  outline: 3px solid var(--hmi-focus-ring);
+  outline-offset: var(--hmi-focus-ring-offset);
+}
+
+.hmi-value-row,
+.hmi-result-summary,
+.hmi-result-details,
+.hmi-wrap,
+.hmi-data-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hmi-data-grid > *,
+.hmi-wrap > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hmi-value-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--hmi-spacing-inline);
+}
+
+.hmi-value-row > *,
+.hmi-result-summary > *,
+.hmi-result-details > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.hmi-state-available {
+  color: var(--hmi-state-available-foreground);
+  background-color: var(--hmi-state-available-background);
+  border-color: var(--hmi-state-available-indicator);
+}
+
+.hmi-state-partial {
+  color: var(--hmi-state-partial-foreground);
+  background-color: var(--hmi-state-partial-background);
+  border-color: var(--hmi-state-partial-indicator);
+}
+
+.hmi-state-incomplete {
+  color: var(--hmi-state-incomplete-foreground);
+  background-color: var(--hmi-state-incomplete-background);
+  border-color: var(--hmi-state-incomplete-indicator);
+}
+
+.hmi-state-ambiguous {
+  color: var(--hmi-state-ambiguous-foreground);
+  background-color: var(--hmi-state-ambiguous-background);
+  border-color: var(--hmi-state-ambiguous-indicator);
+}
+
+.hmi-state-unavailable {
+  color: var(--hmi-state-unavailable-foreground);
+  background-color: var(--hmi-state-unavailable-background);
+  border-color: var(--hmi-state-unavailable-indicator);
+}
+
+.hmi-state-disabled {
+  color: var(--hmi-state-disabled-foreground);
+  background-color: var(--hmi-state-disabled-background);
+  border-color: var(--hmi-state-disabled-indicator);
+}
+
+.hmi-state-unknown {
+  color: var(--hmi-state-unknown-foreground);
+  background-color: var(--hmi-state-unknown-background);
+  border-color: var(--hmi-state-unknown-indicator);
+}
+
+.hmi-active-target:disabled {
+  color: var(--hmi-state-disabled-foreground);
+  background-color: var(--hmi-state-disabled-background);
+  border-color: var(--hmi-state-disabled-indicator);
+  cursor: not-allowed;
+}
+
+.hmi-palette [role="option"][aria-disabled="true"] {
+  color: var(--hmi-state-disabled-foreground);
+}
+
+/* CommandResultCard is intentionally unchanged; its stable data contract lets
+   this parent-level presentation patch keep result states readable. */
+[data-testid="command-result-card"][data-result-state="AVAILABLE"] [data-testid="command-result-primary"],
+[data-testid="command-result-card"][data-result-state="AVAILABLE"] [data-testid="command-result-state"] {
+  color: var(--hmi-state-available-foreground);
+  background-color: var(--hmi-state-available-background);
+  border-color: var(--hmi-state-available-indicator);
+}
+
+[data-testid="command-result-card"][data-result-state="PARTIAL"] [data-testid="command-result-primary"],
+[data-testid="command-result-card"][data-result-state="PARTIAL"] [data-testid="command-result-state"] {
+  color: var(--hmi-state-partial-foreground);
+  background-color: var(--hmi-state-partial-background);
+  border-color: var(--hmi-state-partial-indicator);
+}
+
+[data-testid="command-result-card"][data-result-state="INCOMPLETE"] [data-testid="command-result-primary"],
+[data-testid="command-result-card"][data-result-state="INCOMPLETE"] [data-testid="command-result-state"] {
+  color: var(--hmi-state-incomplete-foreground);
+  background-color: var(--hmi-state-incomplete-background);
+  border-color: var(--hmi-state-incomplete-indicator);
+}
+
+[data-testid="command-result-card"][data-result-state="AMBIGUOUS"] [data-testid="command-result-primary"],
+[data-testid="command-result-card"][data-result-state="AMBIGUOUS"] [data-testid="command-result-state"] {
+  color: var(--hmi-state-ambiguous-foreground);
+  background-color: var(--hmi-state-ambiguous-background);
+  border-color: var(--hmi-state-ambiguous-indicator);
+}
+
+[data-testid="command-result-card"][data-result-state="UNAVAILABLE"] [data-testid="command-result-primary"],
+[data-testid="command-result-card"][data-result-state="UNAVAILABLE"] [data-testid="command-result-state"] {
+  color: var(--hmi-state-unavailable-foreground);
+  background-color: var(--hmi-state-unavailable-background);
+  border-color: var(--hmi-state-unavailable-indicator);
+}
+
+/* The card owns its markup. These parent selectors avoid changing command
+   calculation/transport semantics while keeping the value and qualification
+   visible in the nominal touch profile. */
+.hmi-palette [data-testid="command-result-primary"] > strong {
+  font-size: var(--hmi-font-primary-value);
+}
+
+.hmi-palette [data-testid="command-result-primary"] > span:last-child {
+  font-size: var(--hmi-font-unit);
+}
+
+.hmi-palette [data-testid="command-result-qualification"],
+.hmi-palette [data-testid="command-result-qualification"] > span {
+  font-size: var(--hmi-font-qualification);
+  line-height: 1.25;
+}
+
+.hmi-palette [data-testid="command-result-card"],
+.hmi-palette [data-testid="command-result-card"] summary,
+.hmi-palette [data-testid="command-result-card"] button,
+.hmi-palette [data-testid="command-interpretation"] summary {
+  min-width: var(--hmi-target-min-size);
+  min-height: var(--hmi-target-min-size);
+  box-sizing: border-box;
+}
+
+.hmi-palette [data-testid="command-result-card"] summary,
+.hmi-palette [data-testid="command-result-card"] button,
+.hmi-palette [data-testid="command-interpretation"] summary {
+  font-size: var(--hmi-font-action);
+  line-height: 1.25;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--hmi-motion-reduced-animation) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--hmi-motion-reduced-transition) !important;
+    scroll-behavior: auto !important;
+  }
 }

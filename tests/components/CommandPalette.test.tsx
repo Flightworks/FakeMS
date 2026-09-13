@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { CommandPalette } from '../../components/CommandPalette';
+import { HMI_CLASSES } from '../../components/hmiTokens';
 import { Entity, EntityType, NavMode } from '../../types';
 
 const originalVisualViewport = window.visualViewport;
@@ -89,6 +90,20 @@ describe('CommandPalette Component', () => {
     expect(screen.getByRole('dialog', { name: 'Tactical command palette' })).toBeInTheDocument();
     expect(screen.getByRole('listbox', { name: 'Command results' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Type a command (e.g., 'DCT', 'TK2 180 5')...")).toBeInTheDocument();
+  });
+
+  it('uses shared readable text, focus, and target contracts for palette controls', () => {
+    render(<CommandPalette {...mockProps} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Tactical command palette' });
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+    const closeButton = screen.getByRole('button', { name: 'Close command palette' });
+    const firstResult = screen.getAllByRole('option')[0];
+
+    expect(dialog).toHaveClass(HMI_CLASSES.surfacePanel, 'hmi-palette');
+    expect(input).toHaveClass(HMI_CLASSES.actionText, HMI_CLASSES.focusRing);
+    expect(closeButton).toHaveClass(HMI_CLASSES.activeTarget, HMI_CLASSES.actionText, HMI_CLASSES.focusRing);
+    expect(firstResult).toHaveClass(HMI_CLASSES.activeTarget, HMI_CLASSES.actionText, HMI_CLASSES.focusRing);
   });
 
   it('updates input value when typing', () => {
@@ -307,5 +322,59 @@ describe('CommandPalette Component', () => {
     expect(screen.queryByText('DIRECT TO')).not.toBeInTheDocument();
     expect(screen.queryByText(/PRO TIP:/)).not.toBeInTheDocument();
     expect(screen.queryByText('TACTICAL COMMAND PALETTE')).not.toBeInTheDocument();
+  });
+
+  it('renders the typed ETE envelope as a primary result card in the palette', () => {
+    sessionStorage.clear();
+    render(<CommandPalette {...mockProps} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'ETE TARGET1 @ 140KT' } });
+
+    const resultOption = screen.getByRole('option', { name: /^ETE TARGET1 ·/ });
+    const card = within(resultOption).getByTestId('command-result-card');
+    expect(card).toHaveAttribute('data-result-state', 'PARTIAL');
+    expect(within(card).getByTestId('command-result-primary')).toHaveTextContent('ETE');
+    expect(within(card).getByTestId('command-result-primary')).toHaveTextContent('DURATION');
+    expect(within(card).getByTestId('command-result-qualification')).toHaveTextContent('GS HYPOTHÈSE');
+    expect(within(card).getByTestId('command-result-reason')).toHaveTextContent(/Heure de scénario absente|scenario clock is unavailable/i);
+    expect(within(card).getByRole('button', { name: 'Copier le résultat' })).toBeInTheDocument();
+  });
+
+  it('opens result details without activating the preview row', () => {
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    const previewProjection = vi.fn();
+    render(<CommandPalette {...mockProps} previewProjection={previewProjection} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'TARGET1 180/5' } });
+
+    const resultOption = screen.getByRole('option', { name: /^PROJ: TARGET1/ });
+    const details = within(resultOption).getByText('Détails').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(within(resultOption).getByText('Détails'));
+
+    expect(details).toHaveAttribute('open');
+    expect(previewProjection).not.toHaveBeenCalled();
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+  });
+
+  it('does not execute or close the palette for an unavailable read-only result', () => {
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    render(<CommandPalette {...mockProps} />);
+    const input = screen.getByRole('textbox', { name: 'Command input' });
+
+    fireEvent.change(input, { target: { value: 'ETA TARGET1' } });
+
+    const resultOption = screen.getByRole('option', { name: /^ETA TARGET1 ·/ });
+    expect(resultOption).toHaveAttribute('aria-disabled', 'true');
+    expect(resultOption).not.toHaveAccessibleName('SPEED_UNAVAILABLE');
+    expect(resultOption).toHaveAccessibleName(/Vitesse sol absente/i);
+    expect(within(resultOption).queryByRole('button', { name: /Exécuter|Execute/i })).not.toBeInTheDocument();
+    fireEvent.click(resultOption);
+
+    expect(mockProps.onClose).not.toHaveBeenCalled();
   });
 });

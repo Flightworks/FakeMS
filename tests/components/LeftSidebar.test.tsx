@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LeftSidebar } from '../../components/LeftSidebar';
 import { MapMode, StabMode, EntityType } from '../../types';
+import { HMI_CLASSES } from '../../components/hmiTokens';
 
 // Mock package.json since it's imported in the component
 vi.mock('../../package.json', () => ({
@@ -112,5 +113,43 @@ describe('LeftSidebar Component', () => {
     // Should call onResetStab (which handles the centering and state change)
     expect(propsInGnd.onResetStab).toHaveBeenCalled();
     expect(propsInGnd.setStabMode).not.toHaveBeenCalled();
+  });
+
+  it('returns focus to VER after the changelog is closed with Escape', () => {
+    render(<LeftSidebar {...mockProps} />);
+
+    const versionButton = screen.getByRole('button', { name: 'VER' });
+    fireEvent.click(versionButton);
+
+    const closeButton = screen.getByRole('button', { name: 'Close changelog' });
+    expect(closeButton).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByText('Changelog')).not.toBeInTheDocument();
+    expect(versionButton).toHaveFocus();
+  });
+
+  it('keeps ordered QAK controls visible and described when the sidebar is closed', () => {
+    render(<LeftSidebar {...mockProps} isOpen={false} />);
+
+    const qak = screen.getByRole('navigation', { name: 'Quick access keys' });
+    const buttons = within(qak).getAllByRole('button');
+
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['STAB', 'FIND', 'VER']);
+    for (const button of buttons) {
+      expect(button).toHaveClass(HMI_CLASSES.activeTarget, HMI_CLASSES.actionText, HMI_CLASSES.focusRing);
+      expect(button).toHaveAttribute('aria-describedby');
+    }
+  });
+
+  it('opens the shared stabilisation panel without changing the explicit STAB state', () => {
+    const onOpenStabilizationPanel = vi.fn();
+    render(<LeftSidebar {...mockProps} onOpenStabilizationPanel={onOpenStabilizationPanel} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'STAB' }));
+
+    expect(onOpenStabilizationPanel).toHaveBeenCalledOnce();
+    expect(mockProps.setStabMode).not.toHaveBeenCalled();
+    expect(mockProps.onResetStab).not.toHaveBeenCalled();
   });
 });

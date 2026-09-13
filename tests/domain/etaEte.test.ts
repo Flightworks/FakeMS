@@ -31,6 +31,40 @@ describe('reliable ETA and ETE calculations', () => {
     expect(result.speedQualification).toBe('SIMULATED');
   });
 
+  it('calculates ETE without an absolute scenario clock and leaves ETA unavailable', () => {
+    const result = calculateEtaEte(
+      { lat: 0, lon: 0 },
+      { lat: 0, lon: 1 },
+      simulatedSpeed,
+    );
+
+    expect(result.status).toBe('AVAILABLE');
+    expect(result.eteSeconds).toBeCloseTo((result.distanceNauticalMiles ?? 0) / 60 * 3600, 8);
+    expect(result.etaUtcMs).toBeNull();
+    expect(result.reason).toBe('SCENARIO_TIME_UNAVAILABLE');
+
+    const display = formatEtaEte(result);
+    expect(display.ete).toMatch(/^ETE:/);
+    expect(display.etaUtc).toBe('ETA UTC: UNAVAILABLE');
+  });
+
+  it('does not compare speed age across an unavailable absolute clock', () => {
+    const result = calculateEtaEte(
+      { lat: 0, lon: 0 },
+      { lat: 0, lon: 1 },
+      {
+        ...simulatedSpeed,
+        updatedAt: 0,
+        staleAfterMs: 1,
+      },
+    );
+
+    expect(result.status).toBe('AVAILABLE');
+    expect(result.eteSeconds).not.toBeNull();
+    expect(result.etaUtcMs).toBeNull();
+    expect(result.reason).toBe('SCENARIO_TIME_UNAVAILABLE');
+  });
+
   it('marks an explicit speed as a user assumption', () => {
     const result = calculateEtaEte(
       { lat: 0, lon: 0 },

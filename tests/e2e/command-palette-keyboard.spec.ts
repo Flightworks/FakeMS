@@ -100,3 +100,79 @@ test('completes tactical projection parts without executing the command', async 
   await expect(input).toHaveValue('BRAVO 180/5NM');
   await expect(palette).toBeVisible();
 });
+
+test('uses the same semantic command action for click and Enter', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  const proposal = page.getByRole('dialog', { name: 'Direct-to route proposal status' });
+
+  await input.fill('DCT G01');
+  await page.getByRole('option', { name: /DCT G01.*Direct To/i }).first().click();
+  await expect(proposal).toContainText('AWAITING AUTHORIZATION');
+  await expect(proposal).toContainText('G01');
+  await proposal.getByRole('button', { name: 'Reject route proposal' }).click();
+  await expect(proposal).toContainText('REJECTED');
+
+  await page.keyboard.press('Control+k');
+  await input.fill('DCT G01');
+  await input.press('Enter');
+  await expect(proposal).toContainText('AWAITING AUTHORIZATION');
+  await expect(proposal).toContainText('G01');
+});
+
+test('keeps the selected command id when the result list rebuilds', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  const results = page.getByRole('listbox', { name: 'Command results' });
+  await input.fill('DCT');
+  await expect(results.getByRole('option').nth(1)).toBeVisible();
+
+  const selectedOption = results.locator('[role="option"][aria-selected="true"]');
+  const firstSelectedLabel = await selectedOption.getAttribute('aria-label');
+  await expect.poll(() => selectedOption.getAttribute('aria-label')).toBe(firstSelectedLabel);
+  await input.press('ArrowDown');
+  await expect.poll(() => selectedOption.getAttribute('aria-label')).not.toBe(firstSelectedLabel);
+  const selectedBeforeRebuild = await selectedOption.getAttribute('aria-label');
+
+  await input.fill('DCT ');
+  await expect.poll(() => selectedOption.getAttribute('aria-label')).toBe(selectedBeforeRebuild);
+});
+
+test('does not execute a different command when the selected id leaves the list', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  const palette = page.getByRole('dialog', { name: 'Tactical command palette' });
+  const results = page.getByRole('listbox', { name: 'Command results' });
+  await input.fill('DCT');
+  await expect(results.getByRole('option').first()).toBeVisible();
+  await input.press('ArrowDown');
+  await input.press('ArrowUp');
+  await expect(results.locator('[role="option"][aria-selected="true"]')).toHaveAccessibleName(/DCT BASE · Direct To/i);
+
+  await input.fill('FOCUS BRAVO');
+  await expect(results.getByRole('option', { name: /FOCUS BRAVO/i }).first()).toBeVisible();
+  await input.press('Enter');
+
+  await expect(palette).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Direct-to route proposal status' })).toHaveCount(0);
+});
+
+test('keeps incomplete coordinate suggestions open and non-executable', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+k');
+
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  const palette = page.getByRole('dialog', { name: 'Tactical command palette' });
+  await input.fill('N45');
+  const suggestion = page.getByRole('option', { name: /Complete format/i }).first();
+  await expect(suggestion).toBeVisible();
+  await input.press('Enter');
+  await expect(palette).toBeVisible();
+  await expect(input).toHaveValue('N45');
+});

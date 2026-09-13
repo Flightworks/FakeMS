@@ -25,6 +25,7 @@ export const TacticalCoastalDetail: React.FC<TacticalCoastalDetailProps> = ({ da
 
   useEffect(() => {
     let cancelled = false;
+    setLand(null);
     loadTacticalGeoJson(dataUrl)
       .then(data => {
         if (!cancelled) setLand(data);
@@ -37,6 +38,8 @@ export const TacticalCoastalDetail: React.FC<TacticalCoastalDetailProps> = ({ da
       cancelled = true;
     };
   }, [dataUrl]);
+
+  if (!land) return null;
 
   return (
     <Pane

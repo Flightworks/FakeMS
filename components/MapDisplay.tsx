@@ -3,6 +3,18 @@ import { MapContainer, Marker, Polyline, CircleMarker, Circle, Rectangle, Polygo
 import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Entity, EntityType, MapMode, PrototypeSettings, SystemStatus, StabMode } from '../types';
+import type { Position } from '../types';
+import type { CoastBBox } from '../domain/coastPack';
+import type { ContextActionRequest } from '../application/buildCommandContext';
+import {
+  CONTEXT_ACTION_IDS,
+  getAvailableContextActionTree,
+  type ContextActionContextKind,
+  type ContextActionFamily,
+  type ContextActionInput,
+  type ContextActionLeaf,
+  type ContextActionTarget,
+} from '../domain/contextActions';
 import type { MissionActionRequest } from '../domain/missionActions';
 import type { ProjectionPreview, SimulatedDesignation } from '../domain/designations';
 import type { BearingIntersectionResult } from '../domain/bearingIntersection';
@@ -10,7 +22,7 @@ import type { BullseyeProjectionPreview, BullseyeReference } from '../domain/bul
 import type { FuturePositionPreview } from '../domain/futurePosition';
 import type { ActiveSimulatedRoute } from '../domain/routeSummary';
 import type { TacticalLayerState } from '../domain/layers';
-import { createLayerState } from '../domain/layers';
+import { createLayerState, isLayerEffectivelyVisible } from '../domain/layers';
 import type { GridState } from '../domain/grid';
 import { buildGridLines, createGridState } from '../domain/grid';
 import type { NamedZone } from '../domain/zones';
@@ -18,6 +30,7 @@ import type { TrackTrailState } from '../domain/trackTrails';
 import { getTrailSegments } from '../domain/trackTrails';
 import { TacticalBasemap } from './TacticalBasemap';
 import { TacticalCoastalDetail } from './TacticalCoastalDetail';
+import { TacticalCoastPack } from './TacticalCoastPack';
 import { TacticalAirports } from './TacticalAirports';
 import {
   createDeclutterState,
@@ -32,8 +45,22 @@ import { positionToMeterOffset } from '../domain/mapCoordinates';
 import { getDestinationPoint } from '../utils/geo';
 import { HelicopterSymbol, WaypointSymbol, EnemySymbol, AirportSymbol } from './IconSymbols';
 import { PieMenu, PieMenuOption } from './PieMenu';
-import { Crosshair, ArrowLeftRight, TrendingUp, ChevronUp } from 'lucide-react';
+import {
+  Crosshair,
+  ArrowLeftRight,
+  TrendingUp,
+  ChevronUp,
+  MapPin,
+  Info,
+  Eye,
+  Flag,
+  Target,
+  CornerUpRight,
+  FileText,
+} from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+export type ContextActionHandler = (request: ContextActionRequest) => void;
 
 // Fix Leaflet's default icon path issues
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -60,7 +87,6 @@ interface MapDisplayProps {
   onSelectEntity: (id: string | null) => void;
   origin: { lat: number; lon: number };
   gestureSettings: PrototypeSettings;
-  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   onMapDrop?: (e: React.DragEvent) => void;
   stabMode: StabMode;
   setStabMode: (m: StabMode) => void;
@@ -71,12 +97,14 @@ interface MapDisplayProps {
   groundAnchor: {lat: number, lon: number} | null;
   onGhostEvent?: (isGhost: boolean) => void;
   onMissionAction?: (request: MissionActionRequest) => void;
+  onContextAction?: ContextActionHandler;
   projectionPreview?: ProjectionPreview | null;
   intersectionPreview?: BearingIntersectionResult | null;
   bullseye?: BullseyeReference | null;
   bullseyeProjectionPreview?: BullseyeProjectionPreview | null;
   futurePositionPreview?: FuturePositionPreview | null;
   layers?: TacticalLayerState;
+  setLayers?: (state: TacticalLayerState) => void;
   activeRoute?: ActiveSimulatedRoute;
   declutter?: DeclutterState;
   grid?: GridState;
@@ -91,8 +119,116 @@ interface MapDisplayProps {
   onClearFuturePositionPreview?: () => void;
 }
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  type: 'ENTITY' | 'MAP';
+  entityId?: string;
+  target?: ContextActionTarget;
+  input: ContextActionInput;
+  tree: ReturnType<typeof getAvailableContextActionTree>;
+};
+
+const contextKindForEntity = (entity: Entity): ContextActionContextKind | null => {
+  if (entity.type === EntityType.OWNSHIP) return 'OWNSHIP';
+  if (entity.type === EntityType.WAYPOINT) return 'WAYPOINT';
+  if (entity.type === EntityType.ENEMY || entity.type === EntityType.FRIENDLY) return 'TRACK';
+  if (entity.type === EntityType.AIRPORT && entity.label === 'BASE') return 'BASE';
+  return null;
+};
+
+const copyContextTarget = (entity: Entity): ContextActionTarget => ({
+  id: entity.id,
+  label: entity.label,
+  type: entity.type,
+  position: { ...entity.position },
+  ...(entity.metadata ? { metadata: { ...entity.metadata } } : {}),
+});
+
+const hasCompleteFuturePositionKinematics = (entity: Entity | undefined): boolean => {
+  if (!entity) return false;
+  const freshness = entity.metadata?.freshness;
+  return Number.isFinite(entity.position.lat)
+    && Number.isFinite(entity.position.lon)
+    && Number.isFinite(entity.heading)
+    && (entity.heading ?? -1) >= 0
+    && (entity.heading ?? 360) < 360
+    && Number.isFinite(entity.speed)
+    && (entity.speed ?? -1) >= 0
+    && (freshness === undefined || freshness === 'FRESH');
+};
+
+const disabledContextActionIds = (
+  context: ContextActionContextKind,
+  targetEntity: Entity | undefined,
+): string[] => {
+  switch (context) {
+    case 'MAP':
+      // The catalogue's labels leaf has no independent display callback. The
+      // explicit DECLUTTER leaf below is the only executable label policy.
+      return [CONTEXT_ACTION_IDS.MAP.LABELS];
+    case 'OWNSHIP':
+      return hasCompleteFuturePositionKinematics(targetEntity)
+        ? []
+        : [CONTEXT_ACTION_IDS.OWNSHIP.FUTURE_POSITION];
+    case 'WAYPOINT':
+      return hasCompleteFuturePositionKinematics(targetEntity)
+        ? []
+        : [CONTEXT_ACTION_IDS.WAYPOINT.PROJECTION];
+    case 'TRACK':
+      return [
+        CONTEXT_ACTION_IDS.TRACK.CPA,
+        CONTEXT_ACTION_IDS.TRACK.CLOSURE,
+        CONTEXT_ACTION_IDS.TRACK.LOCAL_REFERENCE,
+        ...(hasCompleteFuturePositionKinematics(targetEntity)
+          ? []
+          : [CONTEXT_ACTION_IDS.TRACK.FUTURE_POSITION]),
+      ];
+    case 'BASE':
+      return hasCompleteFuturePositionKinematics(targetEntity)
+        ? []
+        : [CONTEXT_ACTION_IDS.BASE.PROJECTION];
+  }
+};
+
+const contextIconFor = (category: string): React.ElementType => {
+  switch (category) {
+    case 'VIEW': return Crosshair;
+    case 'DISPLAY': return Eye;
+    case 'MEASURE': return ArrowLeftRight;
+    case 'NAV_SIM': return TrendingUp;
+    case 'STABILIZE': return Crosshair;
+    case 'TRAIL': return TrendingUp;
+    case 'DATA': return Info;
+    case 'DIRECT_SIM': return CornerUpRight;
+    case 'POINT': return MapPin;
+    case 'ROUTE': return Flag;
+    case 'TRACKING': return TrendingUp;
+    case 'DESIGNATE': return Target;
+    case 'JOIN': return CornerUpRight;
+    case 'CREATE': return MapPin;
+    default: return FileText;
+  }
+};
+
 
 const EARTH_RADIUS = 6378137;
+
+// The map is intentionally oversized inside the visible viewport. This stable
+// geographic envelope mirrors that extent and changes only with the live center
+// and Leaflet zoom, not with stale entity props or every pointer event.
+const buildCoastViewport = (center: { lat: number; lon: number }, zoom: number): CoastBBox => {
+  const scale = Math.pow(2, Math.max(0, zoom));
+  const halfLongitude = Math.min(180, 900 / scale);
+  const halfLatitude = Math.min(90, 450 / scale);
+  return [
+    Math.max(-180, center.lon - halfLongitude),
+    Math.max(-90, center.lat - halfLatitude),
+    Math.min(180, center.lon + halfLongitude),
+    Math.min(90, center.lat + halfLatitude),
+  ];
+};
+
 const formatIntersectionBearing = (value: number): string => (
   Number.isInteger(value)
     ? value.toFixed(0).padStart(3, '0')
@@ -318,7 +454,6 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onSelectEntity,
   origin,
   gestureSettings,
-  setGestureSettings,
   onMapDrop,
   stabMode,
   setStabMode,
@@ -328,12 +463,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   setMapMode,
   groundAnchor,
   onGhostEvent,
+  onContextAction,
   projectionPreview,
   intersectionPreview,
   bullseye,
   bullseyeProjectionPreview,
   futurePositionPreview,
   layers = createLayerState(),
+  setLayers,
   activeRoute,
   declutter = createDeclutterState(),
   grid = createGridState(),
@@ -347,7 +484,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   onClearBullseyeProjectionPreview,
   onClearFuturePositionPreview,
 }) => {
-  const [pieMenu, setPieMenu] = useState<{ x: number, y: number, type: 'ENTITY' | 'MAP', entityId?: string } | null>(null);
+  const [pieMenu, setPieMenu] = useState<ContextMenuState | null>(null);
+  const mapRootRef = useRef<HTMLDivElement>(null);
   const [longPressIndicator, setLongPressIndicator] = useState<{ x: number, y: number } | null>(null);
   const [ghostData, setGhostData] = useState<{x: number, y: number, angle: number} | null>(null);
   const [isOffCenter, setIsOffCenter] = useState(false);
@@ -444,6 +582,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   // --- Interaction Logic ---
 
   const startInteraction = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string, pointerType: 'mouse' | 'touch' | 'pen' = 'mouse') => {
+    if (pieMenu) {
+      cancelCustomInteraction();
+      return;
+    }
     // SOTA Ghost Buster:
     // If this is a mouse event, but we had a touch event < 1000ms ago, it's a ghost. Ignore it.
     if (pointerType === 'mouse' && Date.now() - lastTouchTime.current < 1000) {
@@ -484,7 +626,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const moveInteraction = (x: number, y: number) => {
-    if (!interactionRef.current) return;
+    if (pieMenu || !interactionRef.current) return;
     const dx = x - interactionRef.current.startX;
     const dy = y - interactionRef.current.startY;
 
@@ -522,6 +664,10 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const endInteraction = (x: number, y: number) => {
+    if (pieMenu) {
+      cancelCustomInteraction();
+      return;
+    }
     if (!interactionRef.current) return;
 
     const { startTime, type, entityId, autoTriggered } = interactionRef.current;
@@ -559,13 +705,60 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   const openMenu = (x: number, y: number, type: 'MAP' | 'ENTITY', entityId?: string) => {
     cancelCustomInteraction();
-    setPieMenu({ x, y, type, entityId });
+    activeTouchPointersRef.current.clear();
+    isPinchingRef.current = false;
+    const targetEntity = type === 'ENTITY'
+      ? entityId === ownship.id
+        ? ownship
+        : entities.find(entity => entity.id === entityId)
+      : undefined;
+    const context = type === 'MAP' ? 'MAP' : targetEntity ? contextKindForEntity(targetEntity) : null;
+    if (!context) {
+      // Static/decorative airports and unknown markers are never mission
+      // contexts. They may still be rendered, but they cannot open a radial.
+      setPieMenu(null);
+      return;
+    }
+
+    const mapPosition: Position = Array.isArray(centerLatLon)
+      ? { lat: centerLatLon[0], lon: centerLatLon[1] }
+      : { lat: centerLatLon.lat, lon: centerLatLon.lng };
+    const target = targetEntity ? copyContextTarget(targetEntity) : undefined;
+    const activeActionIds = [
+      ...(vectorsEffectivelyVisible ? [CONTEXT_ACTION_IDS.MAP.VECTORS] : []),
+      ...(grid.enabled ? [CONTEXT_ACTION_IDS.MAP.GRID] : []),
+      ...(declutter.preset !== 'FULL' ? [CONTEXT_ACTION_IDS.MAP.DECLUTTER] : []),
+    ];
+    const input: ContextActionInput = target
+      ? {
+        context,
+        target,
+        activeActionIds,
+        disabledActionIds: disabledContextActionIds(context, targetEntity),
+      }
+      : {
+        context: 'MAP',
+        position: { ...mapPosition },
+        activeActionIds,
+        disabledActionIds: disabledContextActionIds('MAP', undefined),
+      };
+    const tree = getAvailableContextActionTree(input);
+    if (!tree.accepted || !tree.available) {
+      setPieMenu(null);
+      return;
+    }
+
+    setPieMenu({ x, y, type, entityId, target, input, tree });
     setLongPressIndicator(null);
     menuOpenTimeRef.current = Date.now();
     if (navigator.vibrate && gestureSettings.hapticEnabled) navigator.vibrate(50);
   };
 
-  const closePieMenu = () => setPieMenu(null);
+  const closePieMenu = () => {
+    activeTouchPointersRef.current.clear();
+    isPinchingRef.current = false;
+    setPieMenu(null);
+  };
 
   const checkMapClickBlock = () => {
     // Prevent ghost clicks from closing the menu immediately
@@ -575,16 +768,34 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const getPieOptions = (): PieMenuOption[] => {
     if (!pieMenu) return [];
 
-    return [{
-      label: 'TRACKS',
-      icon: TrendingUp,
-      subOptions: [{
-        label: 'VECTOR',
-        icon: ArrowLeftRight,
-        action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })),
-        color: gestureSettings.showSpeedVectors ? 'primary' : 'default',
-      }],
-    }];
+    const dispatchLeaf = (leaf: ContextActionLeaf) => {
+      const position = leaf.position ?? pieMenu.tree.position;
+      if (!position || !onContextAction) return;
+      onContextAction({
+        actionId: leaf.id,
+        context: pieMenu.tree.context,
+        ...(leaf.targetId === undefined ? {} : { targetId: leaf.targetId }),
+        ...(pieMenu.target?.label === undefined ? {} : { targetLabel: pieMenu.target.label }),
+        ...(pieMenu.target?.type === undefined ? {} : { targetType: pieMenu.target.type }),
+        position: { ...position },
+      });
+    };
+    const toOption = (leaf: ContextActionLeaf): PieMenuOption => ({
+      label: leaf.label,
+      icon: contextIconFor(leaf.category),
+      color: leaf.active ? 'primary' : 'default',
+      ...(onContextAction ? { action: () => dispatchLeaf(leaf) } : {}),
+    });
+    const toFamilyOption = (family: ContextActionFamily): PieMenuOption => ({
+      label: family.label,
+      icon: contextIconFor(family.category),
+      color: family.active ? 'primary' : 'default',
+      subOptions: family.children.map(toOption),
+    });
+
+    return pieMenu.tree.roots
+      .filter(root => root.available)
+      .map(root => root.kind === 'FAMILY' ? toFamilyOption(root) : toOption(root));
   };
 
   const createEntityIcon = (entity: Entity, rotation: number, isSelected: boolean) => {
@@ -660,8 +871,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) {
+      event.preventDefault();
+      return;
+    }
     if (cancelProjectionPreviewInteraction(event)) return;
-    if (pieMenu) return;
 
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.add(event.pointerId);
@@ -677,13 +891,22 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   };
 
   const handleMapPointerMoveCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) {
+      event.preventDefault();
+      return;
+    }
     if (cancelProjectionPreviewInteraction(event)) return;
-    if (pieMenu || isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
+    if (isPinchingRef.current || (event.pointerType === 'touch' && activeTouchPointersRef.current.size > 1)) return;
     moveInteraction(event.clientX, event.clientY);
   };
 
   const handleMapPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) {
+      event.preventDefault();
+      return;
+    }
     if (cancelProjectionPreviewInteraction(event)) return;
+
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
       if (isPinchingRef.current) {
@@ -694,11 +917,14 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       if (activeTouchPointersRef.current.size > 0) return;
     }
 
-    if (pieMenu) return;
     endInteraction(event.clientX, event.clientY);
   };
 
   const handleMapPointerCancelCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pieMenu) {
+      event.preventDefault();
+      return;
+    }
     if (cancelProjectionPreviewInteraction(event)) return;
     if (event.pointerType === 'touch') {
       activeTouchPointersRef.current.delete(event.pointerId);
@@ -719,8 +945,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const futurePositionLinePositions: LatLngExpression[] = futurePositionPreview
     ? futurePositionPreview.result.line.map(position => [position.lat, position.lon] as [number, number])
     : [];
-  const vectorLinePositions: LatLngExpression[][] = layers.VECTORS.visible
-    && !isDeclutterCategoryHidden(declutter, 'VECTORS')
+  const vectorsHiddenByDeclutter = isDeclutterCategoryHidden(declutter, 'VECTORS');
+  const vectorsEffectivelyVisible = isLayerEffectivelyVisible(layers, 'VECTORS', vectorsHiddenByDeclutter);
+  const vectorLinePositions: LatLngExpression[][] = vectorsEffectivelyVisible
     ? [ownship, ...entities]
       .filter(entity => Number.isFinite(entity.heading) && Number.isFinite(entity.speed) && (entity.speed ?? 0) > 0)
       .map(entity => {
@@ -740,6 +967,15 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
   const gridCenter = Array.isArray(centerLatLon)
     ? { lat: centerLatLon[0], lon: centerLatLon[1] }
     : { lat: centerLatLon.lat, lon: centerLatLon.lng };
+  const coastViewport = useMemo(
+    () => buildCoastViewport(
+      Array.isArray(centerLatLon)
+        ? { lat: centerLatLon[0], lon: centerLatLon[1] }
+        : { lat: centerLatLon.lat, lon: centerLatLon.lng },
+      leafletZoom,
+    ),
+    [centerLatLon, leafletZoom],
+  );
   const gridLinePositions: LatLngExpression[][] = grid.enabled
     ? buildGridLines(gridCenter, leafletZoom, grid.stepMinutes)
       .map(line => line.map(position => [position.lat, position.lon] as [number, number]))
@@ -758,6 +994,9 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
 
   return (
     <div
+      ref={mapRootRef}
+      tabIndex={-1}
+      aria-label="Map interaction surface"
       className="absolute inset-0 bg-slate-950 overflow-hidden touch-none"
       data-map-origin={`${origin.lat.toFixed(4)},${origin.lon.toFixed(4)}`}
       onPointerDownCapture={handleMapPointerDownCapture}
@@ -765,9 +1004,36 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       onPointerUpCapture={handleMapPointerUpCapture}
       onTouchStartCapture={() => { lastTouchTime.current = Date.now(); }}
       onPointerCancelCapture={handleMapPointerCancelCapture}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
-      onDrop={(e) => { e.preventDefault(); onMapDrop?.(e); }}
+      onWheelCapture={(event) => {
+        if (pieMenu) event.preventDefault();
+      }}
+      onClickCapture={(event) => {
+        if (pieMenu) event.preventDefault();
+      }}
+      onContextMenuCapture={(event) => {
+        if (pieMenu) event.preventDefault();
+      }}
+      onDragOver={(e) => {
+        if (pieMenu) {
+          e.preventDefault();
+          return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (!pieMenu) onMapDrop?.(e);
+      }}
     >
+      <div
+        className="sr-only"
+        role="status"
+        aria-label="Vector layer visibility"
+        data-testid="vector-layer-status"
+      >
+        VECTORS {vectorsEffectivelyVisible ? 'ON' : 'OFF'}{vectorsHiddenByDeclutter ? ' · DECLUTTER' : ''}
+      </div>
       <MapContainer
         center={centerLatLon}
         zoom={leafletZoom}
@@ -784,6 +1050,11 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
       >
         <TacticalBasemap />
         <TacticalCoastalDetail />
+        <TacticalCoastPack
+          center={gridCenter}
+          viewport={coastViewport}
+          zoom={leafletZoom}
+        />
         <TacticalAirports />
 
         <MapController
@@ -910,6 +1181,7 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
               <Polyline
                 key={`vector-${index}`}
                 positions={line}
+                className="kinematic-vector-line"
                 interactive={false}
                 pathOptions={{ color: '#22d3ee', weight: 1.5, opacity: 0.8, dashArray: '4 3' }}
               />
@@ -1382,7 +1654,8 @@ export const MapDisplay: React.FC<MapDisplayProps> = ({
         <PieMenu
           x={pieMenu.x} y={pieMenu.y}
           options={getPieOptions()} onClose={closePieMenu}
-          title={pieMenu.type === 'ENTITY' ? entities.find(e => e.id === pieMenu.entityId)?.label || ownship.label : 'MAP ACTION'}
+          returnFocusRef={mapRootRef}
+          title={pieMenu.type === 'ENTITY' ? pieMenu.target?.label || 'ENTITY' : 'MAP ACTION'}
           glowIntensity={gestureSettings.glowIntensity}
           hapticEnabled={gestureSettings.hapticEnabled}
         />

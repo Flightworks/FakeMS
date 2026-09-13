@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SystemStatus, Entity, NavMode, PrototypeSettings, OwnshipPanelPos } from '../types';
+import { SystemStatus, Entity, MapMode, NavMode, PrototypeSettings, StabMode } from '../types';
 import type { SimulationControls } from '../utils/useSimulation';
-import { navigationStatusLabel, OwnshipNavigationState } from '../domain/navigation';
 import {
-  X, Layout, Move, Maximize, Eye, TrendingUp, MoreHorizontal,
-  MousePointer2, Timer, Fingerprint, Zap, Crosshair, ChevronRight, Info
-} from 'lucide-react';
+  navigationStatusLabel,
+  OwnshipNavigationState,
+} from '../domain/navigation';
+import { createDeclutterState, type DeclutterState } from '../domain/declutter';
+import type { TacticalLayerState } from '../domain/layers';
+import { X } from 'lucide-react';
+import { HMI_CLASSES } from './hmiTokens';
+import { HmiSettingsPanel } from './pw/HmiSettingsPanel';
+import { StabilizationPanel } from './pw/StabilizationPanel';
+
+const hmiButtonClass = `${HMI_CLASSES.activeTarget} ${HMI_CLASSES.actionText} ${HMI_CLASSES.focusRing}`;
 
 interface TopSystemBarProps {
   systems: SystemStatus;
@@ -17,32 +24,54 @@ interface TopSystemBarProps {
   gestureSettings: PrototypeSettings;
   setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
   simulationControls: SimulationControls;
+  stabMode: StabMode;
+  setStabMode: (mode: StabMode | ((previous: StabMode) => StabMode)) => void;
+  mapMode: MapMode;
+  setMapMode: (mode: MapMode | ((previous: MapMode) => MapMode)) => void;
+  groundAnchor: { lat: number; lon: number } | null;
+  onResetStab: () => void;
+  layers: TacticalLayerState;
+  setLayers: (state: TacticalLayerState) => void;
+  declutter?: DeclutterState;
+  requestSimulationReset: () => void;
+  requestSimulationReplay: () => void;
 }
 
 const StatusBlock = ({
   label,
   value,
+  detail,
   status = 'default',
-  onClick
+  onClick,
+  buttonRef,
+  ariaLabel,
+  ariaDescribedBy,
 }: {
   label: string;
   value?: string;
+  detail?: string;
   status?: 'default' | 'active' | 'warning';
   onClick?: () => void;
+  buttonRef?: React.Ref<HTMLButtonElement>;
+  ariaLabel?: string;
+  ariaDescribedBy?: string;
 }) => (
   <button
+    ref={buttonRef}
     type="button"
     disabled={!onClick}
-    aria-label={value ? `${label} ${value}` : label}
+    aria-label={ariaLabel ?? (value ? `${label} ${value}` : label)}
+    aria-describedby={ariaDescribedBy}
     onClick={onClick}
     className={`
-      h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
+      ${HMI_CLASSES.surfaceRaised} ${hmiButtonClass} h-12 min-w-[4rem] px-3 mx-1 flex flex-col items-center justify-center rounded bg-slate-800 border-2 shadow-md
       ${status === 'active' ? 'border-emerald-600' : status === 'warning' ? 'border-amber-600' : 'border-slate-600'}
       ${onClick ? 'cursor-pointer hover:bg-slate-700 transition-colors active:scale-95' : 'cursor-default'}
     `}
   >
-    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
-    {value && <span className="text-sm font-bold text-white leading-none">{value}</span>}
+    <span className={`${HMI_CLASSES.actionText} font-bold text-slate-400 uppercase tracking-wider mb-0.5`}>{label}</span>
+    {value && <span className={`${HMI_CLASSES.actionText} font-bold text-white leading-tight`}>{value}</span>}
+    {detail && <span className={`${HMI_CLASSES.actionText} max-w-[12rem] break-words whitespace-normal text-center font-mono font-bold uppercase leading-tight text-slate-300`} data-testid="nav-source-status">{detail}</span>}
   </button>
 );
 
@@ -55,7 +84,7 @@ const ClockWidget = () => {
   }, []);
 
   return (
-    <div className="h-12 px-4 flex items-center justify-center bg-slate-900 border-2 border-slate-600 rounded mr-4 shadow-lg">
+    <div className={`h-12 px-4 flex items-center justify-center ${HMI_CLASSES.surfacePanel} border-2 border-slate-600 rounded mr-4 shadow-lg`}>
       <span className="text-xl font-mono font-bold text-white tracking-widest">
         {time.toISOString().substring(11, 19)} <span className="text-sm text-slate-400">Z</span>
       </span>
@@ -64,312 +93,86 @@ const ClockWidget = () => {
 };
 
 // ── STAB CONTROL WIDGET ──────────────────────────────────────────────────────
-const StabControlWidget = ({ gestureSettings, setGestureSettings, isOpen, onToggle }: {
-  gestureSettings: PrototypeSettings;
-  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
+const StabControlWidget = ({ stabMode, mapMode, isOpen, onToggle, buttonRef }: {
+  stabMode: StabMode;
+  mapMode: MapMode;
   isOpen: boolean;
   onToggle: () => void;
+  buttonRef: React.Ref<HTMLButtonElement>;
 }) => {
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-
-  const toggleStabParam = (key: keyof PrototypeSettings) => {
-    setGestureSettings(s => ({ ...s, [key]: !s[key as keyof PrototypeSettings] }));
-  };
-
-  const cycleDelay = () => {
-    const vals = [0, 5000, 10000, 15000];
-    setGestureSettings(s => ({ ...s, stabAutoRecenterDelay: vals[(vals.indexOf(s.stabAutoRecenterDelay) + 1) % vals.length] }));
-  };
-
-  const delayLabel = (ms: number) => ms === 0 ? 'OFF' : `${ms / 1000}s`;
-
-  const toggles: { key: keyof PrototypeSettings; label: string; description: string }[] = [
-    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Auto GND when a pan leaves ownship.' },
-    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading on GND drop.' },
-    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip recenter animation.' },
-    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Recenter when orientation changes.' },
-    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'Animate heading unfreeze.' },
-    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'Keep ownship screen position on orient.' },
-  ];
+  const anchorLabel = stabMode === StabMode.GND ? 'SOL' : 'SUIVI';
+  const orientationLabel = mapMode === MapMode.NORTH_UP ? 'NORD' : 'CAP';
 
   return (
     <div className="relative">
-      <StatusBlock label="STABLN" value="CFG" status={isOpen ? 'active' : 'default'} onClick={onToggle} />
-    </div>
-  );
-};
-
-const StabToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
-  gestureSettings: PrototypeSettings;
-  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
-  onClose: () => void;
-}) => {
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-
-  const toggleStabParam = (key: keyof PrototypeSettings) => {
-    setGestureSettings(s => ({ ...s, [key]: !s[key as keyof PrototypeSettings] }));
-  };
-
-  const cycleDelay = () => {
-    const vals = [0, 5000, 10000, 15000];
-    setGestureSettings(s => ({ ...s, stabAutoRecenterDelay: vals[(vals.indexOf(s.stabAutoRecenterDelay) + 1) % vals.length] }));
-  };
-
-  const delayLabel = (ms: number) => ms === 0 ? 'OFF' : `${ms / 1000}s`;
-
-  const toggles: { key: keyof PrototypeSettings; label: string; description: string }[] = [
-    { key: 'stabAutoGndOnPan', label: 'Auto GND on Pan', description: 'Auto GND when a pan leaves ownship.' },
-    { key: 'stabFreezeHeadingDrop', label: 'Freeze HDG (GND)', description: 'Freeze heading on GND drop.' },
-    { key: 'stabSnapRecenter', label: 'Snap Recenter', description: 'Skip recenter animation.' },
-    { key: 'stabRecenterOnOrientSwitch', label: 'Recenter on Orient', description: 'Recenter when orientation changes.' },
-    { key: 'stabSmoothUnfreeze', label: 'Smooth Unfreeze', description: 'Animate heading unfreeze.' },
-    { key: 'stabMaintainScreenPosOnOrient', label: 'Maintain Pos on Orient', description: 'Keep ownship screen position on orient.' },
-  ];
-
-  return (
-    <div className="w-80 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
-          <Crosshair size={14} className="text-indigo-400" /> STAB CFG
-        </span>
-        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
-      </div>
-      <div className="flex flex-col gap-1 pt-1 border-t border-slate-700">
-        {toggles.map(p => (
-          <div key={p.key} className="relative flex items-center justify-between gap-2 py-1.5 px-1 rounded hover:bg-slate-800/50">
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              <span className="text-slate-200 text-xs font-bold uppercase truncate">{p.label}</span>
-              <span
-                className="text-slate-500 hover:text-indigo-400 cursor-default shrink-0 transition-colors"
-                onMouseEnter={() => setHoveredKey(p.key)}
-                onMouseLeave={() => setHoveredKey(null)}
-              >
-                <Info size={11} />
-              </span>
-            </div>
-            <button
-              aria-label={`Toggle ${p.label}`}
-              className={`px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors ${gestureSettings[p.key] ? 'bg-indigo-600 text-white' : 'text-slate-400 bg-slate-800 hover:bg-slate-700'}`}
-              onClick={(e) => { e.stopPropagation(); toggleStabParam(p.key); }}
-            >
-              {gestureSettings[p.key] ? 'ON' : 'OFF'}
-            </button>
-            {hoveredKey === p.key && (
-              <div className="absolute left-0 top-full mt-1 w-72 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-md shadow-2xl z-[60] pointer-events-none">
-                <p className="text-[10px] text-slate-300 leading-relaxed">{p.description}</p>
-              </div>
-            )}
-          </div>
-        ))}
-        <div className="relative flex items-center justify-between gap-2 py-1.5 px-1 rounded hover:bg-slate-800/50">
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-slate-200 text-xs font-bold uppercase truncate">Auto Recenter</span>
-            <span
-              className="text-slate-500 hover:text-indigo-400 cursor-default shrink-0 transition-colors"
-              onMouseEnter={() => setHoveredKey('stabAutoRecenterDelay')}
-              onMouseLeave={() => setHoveredKey(null)}
-            >
-              <Info size={11} />
-            </span>
-          </div>
-          <button
-            aria-label="Cycle automatic recenter delay"
-            className="px-3 py-1 text-xs font-bold rounded shrink-0 transition-colors text-emerald-400 bg-slate-800 hover:bg-slate-700 font-mono"
-            onClick={(e) => { e.stopPropagation(); cycleDelay(); }}
-          >
-            {delayLabel(gestureSettings.stabAutoRecenterDelay)}
-          </button>
-          {hoveredKey === 'stabAutoRecenterDelay' && (
-            <div className="absolute left-0 top-full mt-1 w-72 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-md shadow-2xl z-[60] pointer-events-none">
-              <p className="text-[10px] text-slate-300 leading-relaxed">After this period of inactivity in GND mode, the map automatically recenters on the ownship. Set to OFF to disable.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <StatusBlock
+        label="STABLN"
+        value={`${anchorLabel} · ${orientationLabel}`}
+        status={isOpen ? 'active' : 'default'}
+        onClick={onToggle}
+        buttonRef={buttonRef}
+        ariaLabel="STABLN CFG"
+        ariaDescribedBy="stabilisation-trigger-description"
+      />
+      <span id="stabilisation-trigger-description" className="sr-only">
+        {`Current stabilisation: ${stabMode === StabMode.GND ? 'GND fixed-ground anchor' : 'HELICO ownship follow'}, ${mapMode === MapMode.NORTH_UP ? 'NORTH UP' : 'HEADING UP'}. Open for controls.`}
+      </span>
     </div>
   );
 };
 
 // ── HMI CONFIG WIDGET ─────────────────────────────────────────────────────────
-interface HmiCategory {
-  id: string;
-  label: string;
-  children: HmiOption[];
-}
-
-interface HmiOption {
-  id: string;
-  label: string;
-  subLabel: string;
-  description: string;
-  action: () => void;
-}
-
-const HmiControlWidget = ({ isOpen, onToggle }: {
+interface HmiControlWidgetProps {
   isOpen: boolean;
   onToggle: () => void;
-}) => {
+  buttonRef: React.Ref<HTMLButtonElement>;
+}
+
+const HmiControlWidget = ({ isOpen, onToggle, buttonRef }: HmiControlWidgetProps) => {
   return (
     <div className="relative">
-      <StatusBlock label="HMI" value="CFG" status={isOpen ? 'active' : 'default'} onClick={onToggle} />
-    </div>
-  );
-};
-
-const HmiToolbox = ({ gestureSettings, setGestureSettings, onClose }: {
-  gestureSettings: PrototypeSettings;
-  setGestureSettings: React.Dispatch<React.SetStateAction<PrototypeSettings>>;
-  onClose: () => void;
-}) => {
-  const [activeCat, setActiveCat] = useState<string | null>(null);
-
-  const vib = (pattern: number | number[]) => {
-    if (gestureSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(pattern);
-  };
-
-  const cycleTap = () => {
-    const vals = [150, 250, 300, 400, 500];
-    setGestureSettings(s => ({ ...s, tapThreshold: vals[(vals.indexOf(s.tapThreshold) + 1) % vals.length] }));
-    vib([10, 5, 10]);
-  };
-  const cycleInd = () => {
-    const vals = [250, 400, 600, 700, 800, 1000];
-    setGestureSettings(s => ({ ...s, indicatorDelay: vals[(vals.indexOf(s.indicatorDelay) + 1) % vals.length] }));
-    vib(10);
-  };
-  const cycleHld = () => {
-    const vals = [800, 1000, 1200, 1500, 2000];
-    setGestureSettings(s => ({ ...s, longPressDuration: vals[(vals.indexOf(s.longPressDuration) + 1) % vals.length] }));
-    vib(20);
-  };
-  const cycleScl = () => {
-    const vals = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
-    setGestureSettings(s => ({ ...s, uiScale: vals[(vals.indexOf(s.uiScale) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleGlo = () => {
-    const vals = [0, 0.3, 0.6, 1.0, 1.5];
-    setGestureSettings(s => ({ ...s, glowIntensity: vals[(vals.indexOf(s.glowIntensity) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleAni = () => {
-    const vals = [0, 150, 300, 600, 1000];
-    setGestureSettings(s => ({ ...s, animationSpeed: vals[(vals.indexOf(s.animationSpeed) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleDim = () => {
-    const vals = [0.2, 0.4, 0.6, 0.8, 1.0];
-    setGestureSettings(s => ({ ...s, mapDim: vals[(vals.indexOf(s.mapDim) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleHudPos = () => {
-    const vals: OwnshipPanelPos[] = ['BL', 'TL', 'TR', 'BR'];
-    setGestureSettings(s => ({ ...s, ownshipPanelPos: vals[(vals.indexOf(s.ownshipPanelPos) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleHudScale = () => {
-    const vals = [0.75, 1.0, 1.25, 1.5];
-    setGestureSettings(s => ({ ...s, ownshipPanelScale: vals[(vals.indexOf(s.ownshipPanelScale) + 1) % vals.length] }));
-    vib(5);
-  };
-  const cycleHudAlpha = () => {
-    const vals = [0.4, 0.6, 0.8, 0.95];
-    setGestureSettings(s => ({ ...s, ownshipPanelOpacity: vals[(vals.indexOf(s.ownshipPanelOpacity) + 1) % vals.length] }));
-    vib(5);
-  };
-
-  const categories: HmiCategory[] = [
-    {
-      id: 'hud',
-      label: 'HUD',
-      children: [
-        { id: 'hpos', label: 'POS', subLabel: gestureSettings.ownshipPanelPos, description: 'HUD corner.', action: cycleHudPos },
-        { id: 'hscl', label: 'SCL', subLabel: `${gestureSettings.ownshipPanelScale}X`, description: 'HUD scale.', action: cycleHudScale },
-        { id: 'halp', label: 'ALP', subLabel: `${Math.round(gestureSettings.ownshipPanelOpacity * 100)}%`, description: 'HUD alpha.', action: cycleHudAlpha },
-        { id: 'hvec', label: 'VEC', subLabel: gestureSettings.showSpeedVectors ? 'ON' : 'OFF', description: 'Track vectors.', action: () => setGestureSettings(s => ({ ...s, showSpeedVectors: !s.showSpeedVectors })) },
-        { id: 'hdet', label: 'DET', subLabel: gestureSettings.ownshipShowDetails ? 'FULL' : 'MIN', description: 'HUD detail.', action: () => setGestureSettings(s => ({ ...s, ownshipShowDetails: !s.ownshipShowDetails })) },
-      ]
-    },
-    {
-      id: 'gest',
-      label: 'GEST',
-      children: [
-        { id: 'ptap', label: 'TAP', subLabel: `${gestureSettings.tapThreshold}MS`, description: 'Tap threshold.', action: cycleTap },
-        { id: 'pind', label: 'IND', subLabel: `${gestureSettings.indicatorDelay}MS`, description: 'Pie delay.', action: cycleInd },
-        { id: 'phld', label: 'HLD', subLabel: `${gestureSettings.longPressDuration}MS`, description: 'Hold duration.', action: cycleHld },
-      ]
-    },
-    {
-      id: 'vis',
-      label: 'VIS',
-      children: [
-        { id: 'vscl', label: 'VSCL', subLabel: `${gestureSettings.uiScale}X`, description: 'UI scale.', action: cycleScl },
-        { id: 'vglo', label: 'GLO', subLabel: `${Math.round(gestureSettings.glowIntensity * 100)}%`, description: 'HUD glow.', action: cycleGlo },
-        { id: 'vdim', label: 'DIM', subLabel: `${Math.round(gestureSettings.mapDim * 100)}%`, description: 'Map dim.', action: cycleDim },
-        { id: 'vani', label: 'ANI', subLabel: `${gestureSettings.animationSpeed}MS`, description: 'Animation speed.', action: cycleAni },
-      ]
-    }
-  ];
-
-  const activeCategory = categories.find(c => c.id === activeCat);
-
-  return (
-    <div className="bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col min-w-[16rem] pointer-events-auto">
-      <div className="flex justify-between items-center px-4 py-3 border-b border-slate-700">
-        <span className="text-white font-bold text-sm uppercase flex items-center gap-2">
-          <Layout size={14} className="text-indigo-400" /> HMI CFG
-        </span>
-        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
-      </div>
-
-      <div className="flex">
-        <div className="flex flex-col gap-1 p-2 border-r border-slate-700 min-w-[7rem]">
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={(e) => { e.stopPropagation(); setActiveCat(activeCat === cat.id ? null : cat.id); }}
-              className={`flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase transition-colors ${activeCat === cat.id ? 'bg-indigo-700 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-            >
-              {cat.label}
-              <ChevronRight size={12} className={`transition-transform ${activeCat === cat.id ? 'rotate-90' : ''}`} />
-            </button>
-          ))}
-        </div>
-
-        {activeCategory && (
-          <div className="flex flex-col gap-1 p-2 min-w-[11rem]">
-            {activeCategory.children.map(opt => (
-              <button
-                key={opt.id}
-                onClick={(e) => { e.stopPropagation(); opt.action(); }}
-                className="flex items-center justify-between w-full px-3 py-2 rounded text-xs font-bold uppercase text-slate-200 hover:bg-slate-800 transition-colors group"
-                title={opt.description}
-              >
-                <span className="text-slate-400 group-hover:text-slate-200">{opt.label}</span>
-                <span className="text-emerald-400 font-mono">{opt.subLabel}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <StatusBlock
+        label="HMI"
+        value="CFG"
+        status={isOpen ? 'active' : 'default'}
+        onClick={onToggle}
+        buttonRef={buttonRef}
+        ariaLabel="HMI CFG"
+      />
     </div>
   );
 };
 
 // ── SIM CONTROL WIDGET ────────────────────────────────────────────────────────
-const SimControlWidget = ({ navigationState, onToggle, isOpen }: {
+const SimControlWidget = ({ navigationState, navMode, simulationStatus, simulationIsRunning, onToggle, isOpen }: {
   navigationState: OwnshipNavigationState;
+  navMode: NavMode;
+  simulationStatus: SimulationControls['status'];
+  simulationIsRunning: boolean;
   onToggle: () => void;
   isOpen: boolean;
 }) => {
   const statusLabel = navigationStatusLabel(navigationState);
   const status = navigationState.source === 'GPS' && navigationState.validity === 'VALID' ? 'active' : 'warning';
+  const positionSource = (navigationState.positionSource ?? navigationState.source) === 'GPS'
+    ? navigationState.positionStatus === 'RETAINED' ? 'GPS RETAINED' : 'GPS'
+    : 'SIMULATION';
+  const speedSource = navigationState.groundSpeed?.source
+    ?? (navMode === NavMode.SIM ? 'SIMULATION' : 'GPS');
+  const speedQualification = navigationState.groundSpeed?.qualification ?? 'UNAVAILABLE';
+  const scenarioStatus = simulationStatus === 'REPLAY · RUNNING'
+    ? 'REPLAY'
+    : simulationIsRunning
+      ? 'RUNNING'
+      : 'PAUSED';
+  const detail = `POS ${positionSource} · GS ${speedSource}/${speedQualification} · SIM ${scenarioStatus}`;
 
   return (
     <div className="relative">
       <StatusBlock
         label="NAV"
         value={statusLabel}
+        detail={detail}
         status={status}
         onClick={onToggle}
       />
@@ -377,13 +180,15 @@ const SimControlWidget = ({ navigationState, onToggle, isOpen }: {
   );
 };
 
-const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulationControls }: {
+const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulationControls, requestSimulationReset, requestSimulationReplay }: {
   navMode: NavMode;
   setNavMode: (mode: NavMode) => void;
   ownship: Entity;
   setOwnship: React.Dispatch<React.SetStateAction<Entity>>;
   onClose: () => void;
   simulationControls: SimulationControls;
+  requestSimulationReset: () => void;
+  requestSimulationReplay: () => void;
 }) => {
   const [tempHdg, setTempHdg] = useState<string>('0');
   const [tempSpd, setTempSpd] = useState<string>('120');
@@ -438,13 +243,13 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
 
   return (
     <div
-      className="w-64 p-4 bg-slate-900 border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto"
+      className={`w-64 p-4 ${HMI_CLASSES.surfacePanel} border border-slate-600 rounded-lg shadow-xl flex flex-col gap-3 pointer-events-auto`}
       role="region"
       aria-label="Simulation toolbox"
     >
       <div className="flex justify-between items-center mb-2">
         <span className="text-white font-bold text-sm uppercase">SIM</span>
-        <button onClick={onClose} aria-label="Close panel" className="text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+        <button onClick={onClose} aria-label="Close panel" className={`${hmiButtonClass} text-slate-400 hover:text-white transition-colors`}><X size={16}/></button>
       </div>
       <div className="flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-950/30 px-2 py-2" aria-live="polite">
         <span className="text-[10px] font-bold uppercase text-amber-200">CLOCK</span>
@@ -456,27 +261,27 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
             type="button"
             aria-label="Pause simulation"
             onClick={(e) => { e.stopPropagation(); simulationControls.pause(); }}
-            className="min-h-10 rounded border border-amber-500/70 bg-amber-950/40 px-2 py-2 text-[10px] font-bold text-amber-200 hover:bg-amber-900"
+            className={`${hmiButtonClass} rounded border border-amber-500/70 bg-amber-950/40 px-2 py-2 text-[10px] font-bold text-amber-200 hover:bg-amber-900`}
           >PAUSE</button>
         ) : (
           <button
             type="button"
             aria-label="Resume simulation"
             onClick={(e) => { e.stopPropagation(); simulationControls.resume(); }}
-            className="min-h-10 rounded border border-emerald-500/70 bg-emerald-950/40 px-2 py-2 text-[10px] font-bold text-emerald-200 hover:bg-emerald-900"
+            className={`${hmiButtonClass} rounded border border-emerald-500/70 bg-emerald-950/40 px-2 py-2 text-[10px] font-bold text-emerald-200 hover:bg-emerald-900`}
           >RESUME</button>
         )}
         <button
           type="button"
           aria-label="Reset simulation"
-          onClick={(e) => { e.stopPropagation(); simulationControls.reset(); }}
-          className="min-h-10 rounded border border-slate-500/70 bg-slate-800 px-2 py-2 text-[10px] font-bold text-slate-200 hover:bg-slate-700"
+          onClick={(e) => { e.stopPropagation(); requestSimulationReset(); }}
+          className={`${hmiButtonClass} rounded border border-slate-500/70 bg-slate-800 px-2 py-2 text-[10px] font-bold text-slate-200 hover:bg-slate-700`}
         >RESET</button>
         <button
           type="button"
           aria-label="Replay simulation"
-          onClick={(e) => { e.stopPropagation(); simulationControls.replay(); }}
-          className="min-h-10 rounded border border-cyan-500/70 bg-cyan-950/40 px-2 py-2 text-[10px] font-bold text-cyan-200 hover:bg-cyan-900"
+          onClick={(e) => { e.stopPropagation(); requestSimulationReplay(); }}
+          className={`${hmiButtonClass} rounded border border-cyan-500/70 bg-cyan-950/40 px-2 py-2 text-[10px] font-bold text-cyan-200 hover:bg-cyan-900`}
         >REPLAY</button>
       </div>
 
@@ -484,11 +289,11 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
         <span className="text-slate-300 text-xs font-bold uppercase">MODE</span>
         <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
           <button
-            className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.REAL ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
+            className={`${hmiButtonClass} px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.REAL ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
             onClick={(e) => { e.stopPropagation(); setNavMode(NavMode.REAL); }}
           >REAL</button>
           <button
-            className={`px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.SIM ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
+            className={`${hmiButtonClass} px-3 py-1 text-xs font-bold rounded ${navMode === NavMode.SIM ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
             onClick={(e) => { e.stopPropagation(); setNavMode(NavMode.SIM); }}
           >SIM</button>
         </div>
@@ -516,7 +321,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
               key={p.label}
               onClick={(e) => { e.stopPropagation(); applyHeadingPreset(p.delta); }}
               disabled={navMode !== NavMode.SIM}
-              className="flex-1 py-0.5 text-[10px] font-bold rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-300 transition-colors"
+              className={`${hmiButtonClass} flex-1 py-0.5 text-[10px] font-bold rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-300 transition-colors`}
             >{p.label}</button>
           ))}
         </div>
@@ -528,17 +333,17 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
           <button
             onClick={() => setContinuousTurn('L')}
             disabled={navMode !== NavMode.SIM}
-            className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'L' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
+            className={`${hmiButtonClass} flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'L' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >↺ L</button>
           <button
             onClick={() => setContinuousTurn(null)}
             disabled={navMode !== NavMode.SIM}
-            className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${!ownship.continuousTurn ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
+            className={`${hmiButtonClass} flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${!ownship.continuousTurn ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >OFF</button>
           <button
             onClick={() => setContinuousTurn('R')}
             disabled={navMode !== NavMode.SIM}
-            className={`flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'R' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
+            className={`${hmiButtonClass} flex-1 py-1 text-[10px] font-bold rounded border transition-colors ${ownship.continuousTurn === 'R' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}
           >↻ R</button>
         </div>
       </div>
@@ -546,7 +351,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
       <button
         onClick={(e) => { e.stopPropagation(); setIsHeadingLocked(v => !v); }}
         disabled={navMode !== NavMode.SIM}
-        className={`w-full py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-40 ${
+        className={`${hmiButtonClass} w-full py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-40 ${
           isHeadingLocked
             ? 'bg-amber-600/20 border-amber-500 text-amber-400'
             : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-amber-600 hover:text-amber-400'
@@ -587,7 +392,7 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
 
       <button
         onClick={(e) => { e.stopPropagation(); applyParams(); }}
-        className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded font-bold text-xs text-white transition-colors uppercase tracking-wider"
+        className={`${hmiButtonClass} w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded font-bold text-xs text-white transition-colors uppercase tracking-wider`}
         disabled={navMode !== NavMode.SIM}
       >APPLY</button>
     </div>
@@ -596,26 +401,115 @@ const SimToolbox = ({ navMode, setNavMode, ownship, setOwnship, onClose, simulat
 
 // ── MAIN TOP SYSTEM BAR ────────────────────────────────────────────────────────
 export const TopSystemBar: React.FC<TopSystemBarProps> = ({
-  systems, navMode, navigationState, setNavMode, ownship, setOwnship, gestureSettings, setGestureSettings, simulationControls
+  systems,
+  navMode,
+  navigationState,
+  setNavMode,
+  ownship,
+  setOwnship,
+  gestureSettings,
+  setGestureSettings,
+  simulationControls,
+  stabMode,
+  setStabMode,
+  mapMode,
+  setMapMode,
+  groundAnchor,
+  onResetStab,
+  layers,
+  setLayers,
+  declutter = createDeclutterState(),
+  requestSimulationReset,
+  requestSimulationReplay,
 }) => {
-  const [openToolboxes, setOpenToolboxes] = useState<Set<string>>(new Set());
+  type ToolboxId = 'sim' | 'stab' | 'hmi';
+  const [openToolboxes, setOpenToolboxes] = useState<Set<ToolboxId>>(new Set());
+  const stabTriggerRef = useRef<HTMLButtonElement>(null);
+  const stabPanelRef = useRef<HTMLDivElement>(null);
+  const hmiTriggerRef = useRef<HTMLButtonElement>(null);
+  const hmiPanelRef = useRef<HTMLDivElement>(null);
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
 
-  const toggleToolbox = (id: string) => {
+  const toggleToolbox = (id: ToolboxId) => {
     setOpenToolboxes(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+      if (prev.has(id)) return new Set();
+      return new Set([id]);
     });
   };
+
+  const closeToolbox = React.useCallback((id: ToolboxId) => {
+    setOpenToolboxes(prev => {
+      if (!prev.has(id)) return prev;
+      return new Set();
+    });
+    if (id === 'stab') stabTriggerRef.current?.focus();
+    if (id === 'hmi') hmiTriggerRef.current?.focus();
+  }, []);
 
   const isSimOpen = openToolboxes.has('sim');
   const isStabOpen = openToolboxes.has('stab');
   const isHmiOpen = openToolboxes.has('hmi');
 
+  useEffect(() => {
+    if (!isStabOpen) return undefined;
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (stabPanelRef.current?.contains(target) || stabTriggerRef.current?.contains(target)) return;
+
+      closeToolbox('stab');
+      // Do not let an outside close become a map tap or pan. Other top-bar
+      // controls still receive their own pointer event and can open normally.
+      if (!target.closest('[data-top-system-bar]')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsidePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
+  }, [closeToolbox, isStabOpen]);
+
+  useEffect(() => {
+    if (!isStabOpen) return undefined;
+    const handleStabKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeToolbox('stab');
+    };
+    document.addEventListener('keydown', handleStabKeyDown);
+    return () => document.removeEventListener('keydown', handleStabKeyDown);
+  }, [closeToolbox, isStabOpen]);
+
+  useEffect(() => {
+    if (!isHmiOpen) return undefined;
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (hmiPanelRef.current?.contains(target) || hmiTriggerRef.current?.contains(target)) return;
+      // Other top-bar controls still receive their own pointer event and can
+      // replace the transient HMI panel. Map input must not leak through it.
+      if (!target.closest('[data-top-system-bar]')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsidePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
+  }, [isHmiOpen]);
+
+  useEffect(() => {
+    if (!isHmiOpen) return undefined;
+    const handleHmiKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeToolbox('hmi');
+    };
+    document.addEventListener('keydown', handleHmiKeyDown);
+    return () => document.removeEventListener('keydown', handleHmiKeyDown);
+  }, [closeToolbox, isHmiOpen]);
+
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 flex flex-col pointer-events-none">
+    <div data-top-system-bar className="absolute top-0 left-0 right-0 z-40 flex flex-col pointer-events-none">
       {/* Top Bar Background Gradient removed */}
 
       {/* Main Bar */}
@@ -631,19 +525,24 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
           <div className="flex space-x-1">
             <SimControlWidget
               navigationState={navigationState}
+              navMode={navMode}
+              simulationStatus={simulationControls.status}
+              simulationIsRunning={simulationControls.isRunning}
               isOpen={isSimOpen}
               onToggle={() => toggleToolbox('sim')}
             />
 
             <StabControlWidget
-              gestureSettings={gestureSettings}
-              setGestureSettings={setGestureSettings}
+              stabMode={stabMode}
+              mapMode={mapMode}
               isOpen={isStabOpen}
+              buttonRef={stabTriggerRef}
               onToggle={() => toggleToolbox('stab')}
             />
 
             <HmiControlWidget
               isOpen={isHmiOpen}
+              buttonRef={hmiTriggerRef}
               onToggle={() => toggleToolbox('hmi')}
             />
           </div>
@@ -663,21 +562,34 @@ export const TopSystemBar: React.FC<TopSystemBarProps> = ({
               ownship={ownship}
               setOwnship={setOwnship}
               simulationControls={simulationControls}
+              requestSimulationReset={requestSimulationReset}
+              requestSimulationReplay={requestSimulationReplay}
               onClose={() => toggleToolbox('sim')}
             />
           )}
           {isStabOpen && (
-            <StabToolbox
+            <StabilizationPanel
+              stabMode={stabMode}
+              setStabMode={setStabMode}
+              mapMode={mapMode}
+              setMapMode={setMapMode}
+              groundAnchor={groundAnchor}
+              onResetStab={onResetStab}
               gestureSettings={gestureSettings}
               setGestureSettings={setGestureSettings}
-              onClose={() => toggleToolbox('stab')}
+              panelRef={stabPanelRef}
+              onClose={() => closeToolbox('stab')}
             />
           )}
           {isHmiOpen && (
-            <HmiToolbox
+            <HmiSettingsPanel
               gestureSettings={gestureSettings}
               setGestureSettings={setGestureSettings}
-              onClose={() => toggleToolbox('hmi')}
+              layers={layers}
+              setLayers={setLayers}
+              declutter={declutter}
+              panelRef={hmiPanelRef}
+              onClose={() => closeToolbox('hmi')}
             />
           )}
         </div>

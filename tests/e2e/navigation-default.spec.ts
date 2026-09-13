@@ -7,4 +7,10 @@ test('uses real GPS navigation by default when permission is granted', async ({ 
 
   await expect(page.getByRole('button', { name: /NAV GPS OK/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('[data-map-origin="43.2965,5.3698"]')).toBeVisible();
+  await expect(page.getByTestId('ownship-position-status')).toContainText('GPS POSITION');
+  await expect(page.getByTestId('ownship-position-status')).toContainText('MEASURED GPS POSITION');
+  await expect(page.getByText('GS', { exact: true })).toBeVisible();
+  await expect(page.getByText('TAS', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('scenario-clock')).toContainText('SCENARIO UTC');
+  await expect(page.getByTestId('scenario-clock')).toContainText('T+');
 });

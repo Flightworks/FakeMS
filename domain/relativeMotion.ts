@@ -1,6 +1,11 @@
 import type { Position } from '../types';
 import { distanceBetween, bearingBetween } from '../utils/geo';
 import { METERS_PER_NAUTICAL_MILE } from './tacticalUnits';
+import type {
+  KinematicsQualification,
+  KinematicsSnapshot,
+  KinematicsSource,
+} from './kinematics';
 
 export type RelativeMotionFreshness = 'FRESH' | 'STALE' | 'UNKNOWN';
 export type RelativeMotionCpaStatus = 'FUTURE_CPA' | 'PAST_CPA' | 'NO_RELATIVE_MOTION';
@@ -21,7 +26,28 @@ export interface RelativeMotionTrack {
   groundTrackDegrees?: number;
   groundSpeedKnots?: number;
   freshness?: RelativeMotionFreshness;
+  source?: KinematicsSource;
+  sourceLabel?: string;
+  qualification?: KinematicsQualification;
+  timestampMs?: number | null;
+  ageSeconds?: number | null;
+  assumption?: 'CONSTANT VELOCITY';
 }
+
+export const toRelativeMotionTrack = (snapshot: KinematicsSnapshot): RelativeMotionTrack => ({
+  id: snapshot.id,
+  label: snapshot.label,
+  position: { ...snapshot.position },
+  groundTrackDegrees: snapshot.groundTrackDegrees ?? undefined,
+  groundSpeedKnots: snapshot.groundSpeedKnots ?? undefined,
+  freshness: snapshot.freshness,
+  source: snapshot.source,
+  sourceLabel: snapshot.sourceLabel,
+  qualification: snapshot.qualification,
+  timestampMs: snapshot.timestampMs,
+  ageSeconds: snapshot.ageSeconds,
+  assumption: snapshot.assumption,
+});
 
 export interface RelativeMotionRequest {
   reference: RelativeMotionTrack;

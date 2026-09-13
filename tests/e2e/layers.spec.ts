@@ -2,6 +2,30 @@ import { expect, test } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
+test('keeps vector visibility aligned across PW HMI and palette controls', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.leaflet-container').waitFor({ state: 'visible' });
+
+  const vectors = page.locator('.kinematic-vector-line');
+  await expect(vectors).toHaveCount(3);
+  await expect(page.getByTestId('vector-layer-status')).toHaveText('VECTORS ON');
+
+  await page.getByRole('button', { name: 'HMI CFG' }).click();
+  await page.getByRole('button', { name: 'HUD' }).click();
+  await page.getByRole('button', { name: /^VECTORS ON/ }).click();
+  await expect(vectors).toHaveCount(0);
+  await expect(page.getByTestId('vector-layer-status')).toHaveText('VECTORS OFF');
+  await expect(page.getByRole('button', { name: /^VECTORS OFF/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close panel' }).click();
+  await page.keyboard.press('Control+k');
+  const input = page.getByRole('textbox', { name: 'Command input' });
+  await input.fill('LAYER VECTORS ON');
+  await page.getByRole('option', { name: /LAYER VECTORS ON · HIDDEN → VISIBLE/i }).click();
+  await expect(vectors).toHaveCount(3);
+  await expect(page.getByTestId('vector-layer-status')).toHaveText('VECTORS ON');
+});
+
 test('controls only the local rendered tactical layers', async ({ page }) => {
   await page.goto('/');
   await page.locator('.leaflet-container').waitFor({ state: 'visible' });

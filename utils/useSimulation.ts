@@ -22,7 +22,10 @@ export interface SimulationControls {
     replay: () => void;
     speed?: number;
     setSpeed?: (speed: number) => boolean;
+    /** Elapsed scenario duration from its origin; never an epoch timestamp. */
     simTimeMs: number;
+    /** Absolute scenario clock used for ETA when it is available. */
+    scenarioTimeMs?: number;
 }
 
 /**
@@ -42,7 +45,7 @@ export const useSimulation = (
     const [status, setStatus] = useState<SimulationControls['status']>('RUNNING');
     const initialScenarioTimeRef = useRef<number>(Date.now());
     const [simulationClock, setSimulationClock] = useState(() => ({
-        ...createSimulationClock(initialScenarioTimeRef.current),
+        ...createSimulationClock(0),
         running: true,
     }));
     const simulationClockRef = useRef(simulationClock);
@@ -80,7 +83,7 @@ export const useSimulation = (
         setOwnship(resetOwnship);
         lastTickRef.current = Date.now();
         const resetClock = {
-            ...createSimulationClock(initialScenarioTimeRef.current),
+            ...createSimulationClock(0),
             running: false,
         };
         simulationClockRef.current = resetClock;
@@ -96,7 +99,7 @@ export const useSimulation = (
         setOwnship(replayOwnship);
         lastTickRef.current = Date.now();
         const replayClock = {
-            ...createSimulationClock(initialScenarioTimeRef.current),
+            ...createSimulationClock(0),
             running: true,
         };
         simulationClockRef.current = replayClock;
@@ -160,6 +163,9 @@ export const useSimulation = (
             speed: simulationClock.speed,
             setSpeed,
             simTimeMs: simulationClock.simTimeMs,
+            scenarioTimeMs: Number.isFinite(initialScenarioTimeRef.current)
+                ? initialScenarioTimeRef.current + simulationClock.simTimeMs
+                : undefined,
         },
     };
 };

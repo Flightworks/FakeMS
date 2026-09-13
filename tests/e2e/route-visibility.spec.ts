@@ -15,6 +15,7 @@ test('shows, hides, and clears a simulated route only after confirmation', async
   await directTo.getByRole('button', { name: 'Accept route proposal' }).click();
   await expect(directTo).toContainText('AUTHORIZED · SIM ROUTE SET');
   await expect(page.locator('.leaflet-simulatedRouteLayer-pane path')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Close direct-to route proposal' }).click();
 
   await page.keyboard.press('Control+k');
   await input.fill('ROUTE HIDE');
@@ -37,6 +38,7 @@ test('shows, hides, and clears a simulated route only after confirmation', async
   await cancelledMissionAction.getByRole('button', { name: 'Reject mission action' }).click();
   await expect(cancelledMissionAction).toContainText('REJECTED');
   await expect(page.locator('.leaflet-simulatedRouteLayer-pane path')).toHaveCount(1);
+  await cancelledMissionAction.getByRole('button', { name: 'Close mission action panel' }).click();
 
   await page.keyboard.press('Control+k');
   await input.fill('ROUTE CLEAR');

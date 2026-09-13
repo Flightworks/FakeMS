@@ -17,6 +17,26 @@ test('shows track details and stale ordering without mission effects', async ({ 
   await expect(interpretation).toContainText('CONFIDENCE: 90%');
   await expect(page.getByRole('option', { name: /^INFO HOSTILE 1 ·/i })).toBeVisible();
 
+  await page.keyboard.press('Escape');
+  const marker = page.locator('.custom-entity-icon', { has: page.locator('[data-entity-id="en-1"]') });
+  await expect(marker).toBeVisible();
+  const bounds = await marker.boundingBox();
+  if (!bounds) throw new Error('en-1 marker is not measurable');
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  await marker.dispatchEvent('mousedown', { button: 0, buttons: 1, clientX: x, clientY: y, detail: 1 });
+  await marker.dispatchEvent('mouseup', { button: 0, buttons: 0, clientX: x, clientY: y, detail: 1 });
+  const targetDetails = page.getByTestId('target-track-details');
+  await expect(targetDetails).toBeVisible();
+  await expect(targetDetails).toContainText('TRACK SOURCE: RADAR');
+  await expect(targetDetails).toContainText('QUALIFICATION: SIMULATED');
+  await expect(targetDetails).toContainText('QUALITY: GOOD');
+  await expect(targetDetails).toContainText('UNCERTAINTY: 40 M');
+  await expect(targetDetails).toContainText('CLASSIFICATION: HOSTILE');
+  await expect(targetDetails).toContainText('CONFIDENCE: 90%');
+  await page.keyboard.press('Control+k');
+  await expect(input).toBeVisible();
+
   await input.fill('AGE HOSTILE 1');
   await expect(interpretation).toContainText('COMMAND: AGE');
   await expect(interpretation).toContainText('AGE: 4 S');

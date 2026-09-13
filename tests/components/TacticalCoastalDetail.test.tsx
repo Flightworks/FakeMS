@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeatureCollection } from 'geojson';
 import {
@@ -48,6 +48,74 @@ describe('TacticalCoastalDetail', () => {
       fillColor: TACTICAL_COASTAL_DETAIL_STYLE.landFill,
       color: TACTICAL_COASTAL_DETAIL_STYLE.coastline,
       weight: TACTICAL_COASTAL_DETAIL_STYLE.coastlineWeight,
+    });
+  });
+
+  it('renders no coastal detail pane or mask after the detail request is rejected', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+
+    render(<TacticalCoastalDetail dataUrl="/maps/rejected-coast.json" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/maps/rejected-coast.json'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('coastal-detail-pane')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('coastal-detail-mask')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders no coastal detail pane while a canceled request is superseded', async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(() => new Promise<Response>(resolve => {
+      resolvers.push(resolve);
+    }));
+
+    const { rerender } = render(<TacticalCoastalDetail dataUrl="/maps/cancelled-coast.json" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender(<TacticalCoastalDetail dataUrl="/maps/replacement-coast.json" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolvers[0]({ ok: true, json: async () => land } as Response);
+    });
+
+    expect(screen.queryByTestId('coastal-detail-pane')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('coastal-detail-mask')).not.toBeInTheDocument();
+  });
+
+  it('removes an already-rendered detail pane while replacement data is pending', async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(() => new Promise<Response>(resolve => {
+      resolvers.push(resolve);
+    }));
+
+    const { rerender } = render(<TacticalCoastalDetail dataUrl="/maps/initial-coast.json" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolvers[0]({ ok: true, json: async () => land } as Response);
+    });
+    expect(await screen.findByTestId('coastal-detail-geojson')).toBeInTheDocument();
+
+    rerender(<TacticalCoastalDetail dataUrl="/maps/replacement-pending-coast.json" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(screen.queryByTestId('coastal-detail-pane')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('coastal-detail-mask')).not.toBeInTheDocument();
+  });
+
+  it('renders no coastal detail pane or mask for an empty FeatureCollection', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'FeatureCollection', features: [] }),
+    } as Response);
+
+    render(<TacticalCoastalDetail dataUrl="/maps/empty-coast.json" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/maps/empty-coast.json'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('coastal-detail-pane')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('coastal-detail-mask')).not.toBeInTheDocument();
     });
   });
 });

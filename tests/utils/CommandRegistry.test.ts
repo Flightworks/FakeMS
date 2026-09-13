@@ -260,6 +260,48 @@ describe('CommandRegistry', () => {
       expect(commands[0]?.id).not.toBe('save-text-note');
     });
 
+    it('returns only the exact ETE result for a recognized ETE query', () => {
+      const commands = getCommands('ETE TARGET1', mockContext);
+
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.id).toBe('ete-target1');
+      expect(commands.some(command => command.id === 'save-text-note')).toBe(false);
+      expect(commands.some(command => command.id.startsWith('dct-'))).toBe(false);
+      expect(commands.some(command => command.id.startsWith('sys-'))).toBe(false);
+    });
+
+    it('keeps the implicit-ownship CPA label target-focused when motion is unavailable', () => {
+      const commands = getCommands('CPA TARGET1', mockContext);
+
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.label).toBe('CPA TARGET1: UNAVAILABLE');
+      expect(commands[0]?.id).toBe('relative-cpa-unavailable-TARGET1');
+    });
+
+    it('keeps incomplete and unknown ETE input typed, non-executable, and isolated', () => {
+      const incomplete = getCommands('ETE', mockContext);
+      expect(incomplete).toHaveLength(1);
+      expect(incomplete[0]?.result).toMatchObject({
+        state: 'INCOMPLETE',
+        kind: 'READ_ONLY',
+        reason: { code: 'INPUT_INCOMPLETE' },
+      });
+      expect(incomplete[0]?.action).toBeUndefined();
+
+      const unknown = getCommands('ETE NOT_PRESENT', mockContext);
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0]?.label).not.toContain('UNKNOWN_REFERENCE');
+      expect(unknown[0]?.result).toMatchObject({
+        state: 'UNAVAILABLE',
+        reason: {
+          code: 'REFERENCE_UNKNOWN',
+          rawCode: 'UNKNOWN_REFERENCE',
+          remedy: expect.any(String),
+        },
+      });
+      expect(unknown[0]?.action).toBeUndefined();
+    });
+
     it('solves TIME, DIST, and GS locally without changing the map', () => {
       const focusMapAt = vi.fn();
       const context = { ...mockContext, focusMapAt };
@@ -525,7 +567,7 @@ describe('CommandRegistry', () => {
       };
       const commands = getCommands('RNG BRAVO', context);
 
-      expect(commands.some(command => command.label.includes('AMBIGUOUS_REFERENCE'))).toBe(true);
+      expect(commands.some(command => command.result?.state === 'AMBIGUOUS')).toBe(true);
       expect(commands.filter(command => command.id.startsWith('measurement-result-'))).toHaveLength(0);
     });
 
@@ -640,6 +682,25 @@ describe('CommandRegistry', () => {
       expect(focusMapAt).toHaveBeenCalledWith({ lat: 0.1, lon: 0 });
       expect(proposeDirectTo).not.toHaveBeenCalled();
       expect(proposeRoute).not.toHaveBeenCalled();
+    });
+
+    it('preserves nearest result cardinality and distance ordering for an exact list query', () => {
+      const context = {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { id: 'wp-far', label: 'FAR', type: EntityType.WAYPOINT, position: { lat: 0.2, lon: 0 } },
+          { id: 'wp-near', label: 'NEAR', type: EntityType.WAYPOINT, position: { lat: 0.1, lon: 0 } },
+          { id: 'wp-mid', label: 'MID', type: EntityType.WAYPOINT, position: { lat: 0.15, lon: 0 } },
+        ],
+      };
+      const commands = getCommands('NEAREST 2 WAYPOINTS', context);
+      const nearest = commands.filter(command => command.id.startsWith('nearest-result-'));
+
+      expect(nearest).toHaveLength(2);
+      expect(nearest.map(command => command.label)).toEqual(['NEAR', 'MID']);
+      expect(commands).toHaveLength(2);
+      expect(commands.some(command => command.id === 'save-text-note')).toBe(false);
     });
 
     it('blocks nearest searches when the reference is ambiguous', () => {
@@ -793,6 +854,8 @@ describe('CommandRegistry', () => {
           mockOwnship,
           {
             ...mockEntities[1],
+            heading: undefined,
+            speed: undefined,
             metadata: {
               groundTrackDegrees: 90,
               groundSpeedKnots: 120,
@@ -816,7 +879,11 @@ describe('CommandRegistry', () => {
       expect(previewFuturePosition).toHaveBeenCalledOnce();
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
 
-      const unavailable = getCommands('PREDICT TARGET1 +2MIN', mockContext);
+      const unavailableContext = {
+        ...mockContext,
+        entities: [mockOwnship, { ...mockEntities[1], heading: undefined, speed: undefined }],
+      };
+      const unavailable = getCommands('PREDICT TARGET1 +2MIN', unavailableContext);
       expect(unavailable.some(command => command.label.includes('UNAVAILABLE'))).toBe(true);
       expect(mockContext.requestMissionAction).not.toHaveBeenCalled();
     });
@@ -855,6 +922,7 @@ describe('CommandRegistry', () => {
       const context = {
         ...mockContext,
         ownship,
+        ownshipNavMode: NavMode.SIM,
         entities: [ownship, bravo, g01],
         previewRelativeMotion,
         requestMissionAction: vi.fn(),
@@ -1320,6 +1388,175 @@ describe('CommandRegistry', () => {
       expect(commands.some(command => command.id.startsWith('sys-'))).toBe(false);
     });
 
+    it('uses live simulated kinematics for CPA after a turn and speed update', () => {
+      const updatedOwnship = {
+        ...mockOwnship,
+        position: { lat: 0, lon: 0 },
+        heading: 90,
+        speed: 120,
+        metadata: {
+          groundTrackDegrees: 0,
+          groundSpeedKnots: 10,
+          freshness: 'FRESH',
+        },
+      };
+      const updatedTarget = {
+        ...mockEntities[1],
+        position: { lat: 0, lon: 1 / 6 },
+        heading: 270,
+        speed: 120,
+        metadata: {
+          groundTrackDegrees: 0,
+          groundSpeedKnots: 10,
+          freshness: 'FRESH',
+        },
+      };
+      const context = {
+        ...mockContext,
+        ownship: updatedOwnship,
+        entities: [updatedOwnship, updatedTarget],
+        ownshipNavMode: NavMode.SIM,
+      };
+
+      const cpa = getCommands('CPA TARGET1', context)
+        .find(command => command.id === 'relative-cpa-ownship-target1');
+
+      expect(cpa?.relativeMotionResult).toMatchObject({
+        status: 'AVAILABLE',
+        cpaStatus: 'FUTURE_CPA',
+      });
+      expect(cpa?.relativeMotionResult?.closureRateKnots).toBeGreaterThan(200);
+      expect(cpa?.relativeMotionResult?.tcpaMinutes).toBeCloseTo(2.5, 1);
+    });
+
+    it('uses live simulated kinematics for future position after a speed and turn update', () => {
+      const updatedOwnship = { ...mockOwnship, heading: 0, speed: 120 };
+      const updatedTarget = {
+        ...mockEntities[1],
+        position: { lat: 0, lon: 0 },
+        heading: 90,
+        speed: 120,
+        metadata: {
+          groundTrackDegrees: 270,
+          groundSpeedKnots: 10,
+          freshness: 'FRESH',
+          ageSeconds: 90,
+        },
+      };
+      const context = {
+        ...mockContext,
+        ownship: updatedOwnship,
+        entities: [updatedOwnship, updatedTarget],
+        ownshipNavMode: NavMode.SIM,
+        scenarioTimeMs: 10_000,
+      };
+
+      const prediction = getCommands('PREDICT TARGET1 +2MIN', context)
+        .find(command => command.id === 'future-position-target1');
+
+      expect(prediction?.futurePositionResult).toMatchObject({
+        status: 'AVAILABLE',
+        projectedRangeNauticalMiles: 4,
+        ageSeconds: 0,
+      });
+      expect(prediction?.subLabel).toContain('VECTOR: 90.0°T @ 120.0 KT');
+      expect(prediction?.subLabel).toContain('RANGE: 4.0 NM');
+    });
+
+    it('does not reuse a GPS vector after switching to simulation source', () => {
+      const ownship = {
+        ...mockOwnship,
+        heading: 90,
+        speed: 120,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 120,
+          freshness: 'FRESH',
+        },
+      };
+      const target = {
+        ...mockEntities[1],
+        position: { lat: 0, lon: 1 / 6 },
+        heading: 270,
+        speed: 120,
+        metadata: {
+          groundTrackDegrees: 0,
+          groundSpeedKnots: 10,
+          freshness: 'FRESH',
+        },
+      };
+      const baseContext = {
+        ...mockContext,
+        ownship,
+        entities: [ownship, target],
+      };
+
+      const gps = getCommands('CPA TARGET1', {
+        ...baseContext,
+        ownshipNavMode: NavMode.REAL,
+      }).find(command => command.relativeMotionResult?.status === 'UNAVAILABLE');
+      const simulation = getCommands('CPA TARGET1', {
+        ...baseContext,
+        ownshipNavMode: NavMode.SIM,
+      }).find(command => command.relativeMotionResult?.status === 'AVAILABLE');
+
+      expect(gps?.relativeMotionResult).toMatchObject({
+        status: 'UNAVAILABLE',
+        reason: 'MISSING_GROUND_SPEED',
+      });
+      expect(simulation?.relativeMotionResult).toMatchObject({
+        status: 'AVAILABLE',
+        cpaStatus: 'FUTURE_CPA',
+      });
+    });
+
+    it('names a stale vector instead of presenting it as a future position', () => {
+      const target = {
+        ...mockEntities[1],
+        heading: undefined,
+        speed: undefined,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 120,
+          freshness: 'STALE',
+        },
+      };
+      const prediction = getCommands('PREDICT TARGET1 +2MIN', {
+        ...mockContext,
+        entities: [mockOwnship, target],
+      }).find(command => command.id.startsWith('future-position-unavailable-'));
+
+      expect(prediction?.futurePositionResult).toMatchObject({
+        status: 'UNAVAILABLE',
+        reason: 'STALE_TRACK',
+      });
+      expect(prediction?.subLabel).toContain('REASON: STALE_TRACK');
+    });
+
+    it('names an absent vector while keeping the target position available', () => {
+      const target = {
+        ...mockEntities[1],
+        heading: undefined,
+        speed: undefined,
+        metadata: undefined,
+      };
+      const context = {
+        ...mockContext,
+        entities: [mockOwnship, target],
+      };
+      const prediction = getCommands('PREDICT TARGET1 +2MIN', context)
+        .find(command => command.id.startsWith('future-position-unavailable-'));
+      const range = getCommands('RNG TARGET1', context)
+        .find(command => command.id.startsWith('measurement-result-'));
+
+      expect(prediction?.futurePositionResult).toMatchObject({
+        status: 'UNAVAILABLE',
+        reason: 'MISSING_GROUND_TRACK',
+      });
+      expect(range?.subLabel).toContain('CALCULATED');
+      expect(range?.subLabel).toContain('TARGET1');
+    });
+
     it('keeps CPA results in their own command domain', () => {
       const bravo = {
         ...mockEntities[1],
@@ -1341,6 +1578,7 @@ describe('CommandRegistry', () => {
       const commands = getCommands('CPA BRAVO', {
         ...mockContext,
         ownship: simulatedOwnship,
+        ownshipNavMode: NavMode.SIM,
         entities: [simulatedOwnship, bravo],
       });
 
@@ -1349,6 +1587,303 @@ describe('CommandRegistry', () => {
       expect(commands.some(command => command.id === 'save-text-note')).toBe(false);
       expect(commands.some(command => command.id.startsWith('dct-'))).toBe(false);
       expect(commands.some(command => command.id.startsWith('plan-'))).toBe(false);
+    });
+
+    it('attaches one structured ETA/ETE result with qualified inputs', () => {
+      const context = {
+        ...mockContext,
+        ownshipNavMode: NavMode.REAL,
+        groundSpeed: {
+          speedKnots: 120,
+          source: 'GPS' as const,
+          qualification: 'MEASURED' as const,
+          updatedAt: 1_735_732_800_000,
+        },
+        scenarioTimeMs: 1_735_732_800_000,
+        localTimeZone: 'UTC',
+      };
+
+      const command = getCommands('ETE TARGET1', context)
+        .find(candidate => candidate.id === 'ete-target1');
+
+      expect(command?.result).toMatchObject({
+        id: 'ete-target1',
+        state: 'AVAILABLE',
+        kind: 'READ_ONLY',
+        primary: { label: 'ETE', unit: 'DURATION' },
+      });
+      expect(command?.result?.references).toEqual(['ownship', 'target1']);
+      expect(command?.result?.qualifications).toEqual(expect.arrayContaining([
+        expect.objectContaining({ input: 'POSITION', origin: 'GPS', objectId: 'ownship' }),
+        expect.objectContaining({ input: 'SPEED', origin: 'GPS', qualification: 'MEASURED' }),
+        expect.objectContaining({ input: 'CLOCK', origin: 'SCENARIO', status: 'AVAILABLE' }),
+      ]));
+    });
+
+    it('keeps ETE available as a partial result when the scenario clock is absent', () => {
+      const command = getCommands('ETA TARGET1', {
+        ...mockContext,
+        groundSpeed: {
+          speedKnots: 120,
+          source: 'SIMULATION' as const,
+          qualification: 'SIMULATED' as const,
+        },
+      }).find(candidate => candidate.id === 'eta-target1');
+
+      expect(command?.result).toMatchObject({
+        state: 'PARTIAL',
+        primary: { label: 'ETA', value: 'UNAVAILABLE', unit: 'UTC' },
+        reason: {
+          code: 'CLOCK_MISSING',
+          rawCode: 'SCENARIO_TIME_UNAVAILABLE',
+        },
+      });
+      expect(command?.result?.secondary).toEqual(expect.arrayContaining([
+        expect.objectContaining({ label: 'ETE', unit: 'DURATION' }),
+      ]));
+    });
+
+    it('attaches structured CPA results and preserves exact ambiguous candidates', () => {
+      const ownship = {
+        ...mockOwnship,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const target = {
+        ...mockEntities[1],
+        metadata: {
+          groundTrackDegrees: 270,
+          groundSpeedKnots: 60,
+          freshness: 'FRESH',
+        },
+      };
+      const available = getCommands('CPA TARGET1', {
+        ...mockContext,
+        ownship,
+        entities: [ownship, target],
+        ownshipNavMode: NavMode.SIM,
+      }).find(candidate => candidate.id === 'relative-cpa-ownship-target1');
+
+      expect(available?.result).toMatchObject({
+        state: 'AVAILABLE',
+        kind: 'READ_ONLY',
+        primary: { label: 'CPA', unit: 'NM' },
+        capabilities: ['DETAILS'],
+      });
+
+      const bravo = getCommands('CPA BRAVO', {
+        ...mockContext,
+        ownship,
+        entities: [ownship, { ...target, label: 'BRAVO' }],
+        ownshipNavMode: NavMode.SIM,
+      }).find(candidate => candidate.id === 'relative-cpa-ownship-target1');
+      expect(bravo?.label).toBe('CPA BRAVO');
+
+      const ambiguous = getCommands('CPA HOSTILE', {
+        ...mockContext,
+        entities: [
+          mockOwnship,
+          { ...mockEntities[1], id: 'hostile-1', label: 'HOSTILE' },
+          { ...mockEntities[1], id: 'hostile-2', label: 'HOSTILE', position: { lat: 11, lon: 11 } },
+        ],
+      }).find(candidate => candidate.id.startsWith('relative-cpa-unavailable-'));
+
+      expect(ambiguous?.result).toMatchObject({
+        state: 'AMBIGUOUS',
+        reason: { code: 'REFERENCE_AMBIGUOUS', rawCode: 'AMBIGUOUS_REFERENCE' },
+      });
+      expect(ambiguous?.result?.candidates).toEqual([
+        { id: 'hostile-1', label: 'HOSTILE' },
+        { id: 'hostile-2', label: 'HOSTILE' },
+      ]);
+      expect(ambiguous?.result?.id).toBe(ambiguous?.id);
+      expect(ambiguous?.action).toBeUndefined();
+    });
+
+    it('resolves a multi-word implicit ETE target without inventing an origin', () => {
+      const hostile = {
+        ...mockEntities[1],
+        id: 'hostile-1',
+        label: 'HOSTILE 1',
+      };
+      const command = getCommands('ETE HOSTILE 1 @ 120KT', {
+        ...mockContext,
+        entities: [mockOwnship, hostile],
+        scenarioTimeMs: 1_735_732_800_000,
+      }).find(candidate => candidate.id === 'ete-hostile-1');
+
+      expect(command).toBeDefined();
+      expect(command?.result).toMatchObject({
+        state: 'AVAILABLE',
+        references: ['ownship', 'hostile-1'],
+      });
+      expect(command?.result?.qualifications).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          input: 'SPEED',
+          origin: 'USER_INPUT',
+          qualification: 'USER_ASSUMPTION',
+        }),
+      ]));
+    });
+
+    it('blocks every ambiguous explicit pair segmentation before CPA calculation', () => {
+      const context = {
+        ...mockContext,
+        ownshipNavMode: NavMode.SIM,
+        entities: [
+          mockOwnship,
+          { ...mockEntities[1], id: 'hostile', label: 'HOSTILE' },
+          { ...mockEntities[1], id: 'one-bravo', label: '1 BRAVO' },
+          { ...mockEntities[1], id: 'hostile-one', label: 'HOSTILE 1' },
+          { ...mockEntities[1], id: 'bravo', label: 'BRAVO' },
+        ],
+      };
+      const commands = getCommands('CPA FROM HOSTILE 1 TO BRAVO', context);
+      const ambiguous = commands.find(command => command.result?.state === 'AMBIGUOUS');
+
+      expect(ambiguous).toBeDefined();
+      expect(ambiguous?.result?.candidates).toHaveLength(2);
+      expect(commands.some(command => command.relativeMotionResult?.status === 'AVAILABLE')).toBe(false);
+      expect(commands.every(command => command.action === undefined)).toBe(true);
+    });
+
+    it('attaches structured future, bearing/range, and track information results', () => {
+      const target = {
+        ...mockEntities[1],
+        heading: undefined,
+        speed: undefined,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 120,
+          freshness: 'FRESH',
+          ageSeconds: 4,
+        },
+      };
+      const context = { ...mockContext, entities: [mockOwnship, target], scenarioTimeMs: 10_000 };
+
+      const future = getCommands('PREDICT TARGET1 +2MIN', context)
+        .find(candidate => candidate.id === 'future-position-target1');
+      expect(future?.result).toMatchObject({
+        state: 'AVAILABLE',
+        kind: 'READ_ONLY',
+        primary: { label: 'GHOST', unit: 'LAT/LON' },
+      });
+
+      const measurement = getCommands('RNG TARGET1', context)
+        .find(candidate => candidate.id.startsWith('measurement-result-'));
+      expect(measurement?.result).toMatchObject({
+        state: 'AVAILABLE',
+        primary: { label: 'RNG', unit: 'NM' },
+        kind: 'READ_ONLY',
+      });
+
+      const info = getCommands('INFO TARGET1', {
+        ...context,
+        entities: [mockOwnship, { ...target, metadata: { source: 'GPS', freshness: 'FRESH', quality: 'GOOD' } }],
+      }).find(candidate => candidate.id === 'track-info-target1');
+      expect(info?.result).toMatchObject({
+        state: 'AVAILABLE',
+        primary: { label: 'TRACK', value: 'TARGET1' },
+        kind: 'READ_ONLY',
+      });
+    });
+
+    it('labels speed hypotheses, missing GPS speed, retained vectors, and fixed-point quality', () => {
+      const hypothesis = getCommands('ETE TARGET1 @ 140KT', {
+        ...mockContext,
+        ownshipNavMode: NavMode.REAL,
+        scenarioTimeMs: 1_735_732_800_000,
+      }).find(candidate => candidate.id === 'ete-target1');
+      expect(hypothesis?.result?.qualifications).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          input: 'SPEED',
+          origin: 'USER_INPUT',
+          qualification: 'USER_ASSUMPTION',
+          assumption: 'SPEED HYPOTHESIS',
+        }),
+      ]));
+
+      const missingGpsSpeed = getCommands('ETE TARGET1', {
+        ...mockContext,
+        ownshipNavMode: NavMode.REAL,
+        scenarioTimeMs: 1_735_732_800_000,
+      }).find(candidate => candidate.id === 'ete-target1');
+      expect(missingGpsSpeed?.result).toMatchObject({
+        state: 'PARTIAL',
+        reason: { code: 'SPEED_MISSING', rawCode: 'SPEED_UNAVAILABLE' },
+      });
+      expect(missingGpsSpeed?.result?.qualifications).toEqual(expect.arrayContaining([
+        expect.objectContaining({ input: 'POSITION', origin: 'GPS', objectId: 'ownship' }),
+        expect.objectContaining({ input: 'SPEED', origin: 'GPS', status: 'MISSING' }),
+      ]));
+
+      const staleTarget = {
+        ...mockEntities[1],
+        heading: undefined,
+        speed: undefined,
+        metadata: {
+          groundTrackDegrees: 90,
+          groundSpeedKnots: 120,
+          freshness: 'STALE',
+          ageSeconds: 90,
+        },
+      };
+      const stale = getCommands('PREDICT TARGET1 +2MIN', {
+        ...mockContext,
+        entities: [mockOwnship, staleTarget],
+      }).find(candidate => candidate.id.startsWith('future-position-unavailable-'));
+      expect(stale?.result).toMatchObject({
+        state: 'PARTIAL',
+        reason: { code: 'DATA_STALE', rawCode: 'STALE_TRACK' },
+      });
+      expect(stale?.result?.id).toBe(stale?.id);
+      expect(stale?.result?.qualifications).toEqual(expect.arrayContaining([
+        expect.objectContaining({ input: 'VECTOR', origin: 'RETAINED_FIX', status: 'STALE' }),
+      ]));
+
+      const waypoint = {
+        ...mockEntities[1],
+        id: 'waypoint-1',
+        label: 'WP1',
+        type: EntityType.WAYPOINT,
+      };
+      const quality = getCommands('QUALITY WP1', {
+        ...mockContext,
+        entities: [mockOwnship, waypoint],
+      }).find(candidate => candidate.id === 'track-quality-waypoint-1');
+      expect(quality?.result).toMatchObject({
+        state: 'PARTIAL',
+        primary: { label: 'QUALITY', value: 'N/A' },
+        reason: { code: 'QUALITY_NOT_APPLICABLE', rawCode: 'QUALITY_NOT_APPLICABLE' },
+      });
+    });
+
+    it('marks projection results as explicit map previews', () => {
+      const projection = getCommands('TARGET1 090/10', mockContext)
+        .find(candidate => candidate.id === 'proj-focus');
+
+      expect(projection?.result).toMatchObject({
+        state: 'AVAILABLE',
+        kind: 'MAP_PREVIEW',
+        primary: { label: 'POSITION', unit: 'LAT/LON' },
+        capabilities: ['DETAILS', 'MAP_PREVIEW'],
+      });
+    });
+
+    it('attaches an incomplete result for a recognized calculation missing its reference', () => {
+      const command = getCommands('ETA', mockContext)
+        .find(candidate => candidate.result?.state === 'INCOMPLETE');
+
+      expect(command).toBeDefined();
+      expect(command?.result).toMatchObject({
+        state: 'INCOMPLETE',
+        kind: 'READ_ONLY',
+        reason: { code: 'INPUT_INCOMPLETE' },
+      });
+      expect(command?.action).toBeUndefined();
     });
   });
 });

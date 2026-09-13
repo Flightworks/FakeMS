@@ -9,6 +9,7 @@ import { calculateRelativeMotion, type RelativeMotionPreview } from '../../domai
 import type { TrackDisplayDetails } from '../../domain/trackDetails';
 import { convertTacticalQuantity, createTacticalQuantity, type TacticalQuantity } from '../../domain/tacticalUnits';
 import { parseCommand } from '../../domain/commandParser';
+import { createPartialCommandResult, displayValue, mapCommandReason } from '../../domain/commandResults';
 
 const projection = createProjectionPreview(
   'BRAVO',
@@ -389,5 +390,69 @@ describe('CommandInterpretationPanel', () => {
     expect(panel).toHaveTextContent('VALUE: 9.260 KM');
     expect(panel).toHaveTextContent('DIMENSION: DISTANCE');
     expect(panel).toHaveTextContent('SOURCE VALUE: 5 NM');
+  });
+
+  it('renders a typed result envelope through the presenter', () => {
+    const result = createPartialCommandResult({
+      id: 'eta-bravo',
+      kind: 'READ_ONLY',
+      references: ['ownship', 'bravo'],
+      qualifications: [
+        { input: 'POSITION', origin: 'GPS', objectId: 'ownship', status: 'AVAILABLE' },
+        { input: 'CLOCK', origin: 'SCENARIO', status: 'MISSING' },
+      ],
+      capabilities: ['DETAILS'],
+      primary: displayValue('ETE', '10', 'MIN'),
+      secondary: [displayValue('DISTANCE', '20', 'NM')],
+      reason: mapCommandReason('SCENARIO_TIME_UNAVAILABLE'),
+    });
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('ETA BRAVO')}
+        result={result}
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('STATE: PARTIAL');
+    expect(panel).toHaveTextContent('ETE: 10 MIN');
+    expect(panel).toHaveTextContent('DISTANCE: 20 NM');
+    expect(panel).toHaveTextContent('POSITION: GPS');
+    expect(panel).toHaveTextContent('REASON: The scenario clock is unavailable; elapsed time remains available.');
+  });
+
+  it('renders a compact structured summary and keeps secondary lines behind details', () => {
+    const result = createPartialCommandResult({
+      id: 'ete-bravo-compact',
+      kind: 'READ_ONLY',
+      references: ['ownship', 'bravo'],
+      qualifications: [
+        { input: 'POSITION', origin: 'SCENARIO', status: 'AVAILABLE' },
+        { input: 'SPEED', origin: 'SCENARIO', status: 'MISSING' },
+      ],
+      capabilities: ['DETAILS'],
+      primary: displayValue('ETE', '10', 'MIN'),
+      secondary: [
+        displayValue('DISTANCE', '20', 'NM'),
+        displayValue('GROUND SPEED', 'UNAVAILABLE', 'KT'),
+      ],
+      reason: mapCommandReason('SPEED_UNAVAILABLE'),
+    });
+
+    render(
+      <CommandInterpretationPanel
+        parsed={parseCommand('ETA BRAVO')}
+        result={result}
+      />,
+    );
+
+    const panel = screen.getByRole('region', { name: 'Command interpretation' });
+    expect(panel).toHaveTextContent('ETE: 10 MIN');
+    expect(panel).toHaveTextContent('Vitesse sol absente');
+    const details = screen.getByTestId('command-interpretation-details');
+    expect(details.closest('details')).not.toHaveAttribute('open');
+    expect(details).toHaveTextContent('DISTANCE: 20 NM');
+    expect(details).toHaveTextContent('GROUND SPEED: UNAVAILABLE KT');
   });
 });

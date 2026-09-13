@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { stepEntity } from '../../utils/useSimulation';
+import { createKinematicsSnapshot, projectKinematicsToEntity } from '../../domain/kinematics';
 import { Entity, EntityType } from '../../types';
 
 describe('Simulation Kinematics', () => {
@@ -74,5 +75,41 @@ describe('Simulation Kinematics', () => {
         // At 3 deg/sec, after 10 seconds it should be at -30 deg (330)
         const next = stepEntity(orbitEntity, 10.0);
         expect(next.heading).toBe(330);
+    });
+
+    it('captures a copied source-qualified vector without mutating the entity or metadata', () => {
+        const source: Entity = {
+            ...baseEntity,
+            metadata: {
+                groundTrackDegrees: 12,
+                groundSpeedKnots: 15,
+                freshness: 'STALE',
+            },
+        };
+        const before = structuredClone(source);
+        const snapshot = createKinematicsSnapshot(source, {
+            source: 'SIMULATION',
+            qualification: 'SIMULATED',
+            timestampMs: 42,
+            freshness: 'FRESH',
+        });
+        const projected = projectKinematicsToEntity(source, snapshot);
+
+        expect(snapshot).toMatchObject({
+            position: source.position,
+            headingDegrees: 0,
+            groundTrackDegrees: 0,
+            groundSpeedKnots: 100,
+            source: 'SIMULATION',
+            qualification: 'SIMULATED',
+            timestampMs: 42,
+            freshness: 'FRESH',
+            assumption: 'CONSTANT VELOCITY',
+        });
+        expect(snapshot.position).not.toBe(source.position);
+        expect(projected.position).toEqual(source.position);
+        expect(projected.heading).toBe(0);
+        expect(projected.speed).toBe(100);
+        expect(source).toEqual(before);
     });
 });

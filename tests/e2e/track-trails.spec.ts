@@ -36,6 +36,7 @@ test('renders sampled simulated trails and clears only after confirmation', asyn
   await cancelled.getByRole('button', { name: 'Reject mission action' }).click();
   await expect(cancelled).toContainText('REJECTED');
   await expect(page.locator('.track-trail-layer path')).toHaveCount(2);
+  await cancelled.getByRole('button', { name: 'Close mission action panel' }).click();
 
   await page.keyboard.press('Control+k');
   await input.fill('TRAIL CLEAR HOSTILE 1');

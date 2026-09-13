@@ -418,6 +418,90 @@ const parseProjection = (input: string, tokens: CommandToken[]): ParsedCommand =
 
 const ETA_SPEED_NUMBER_PATTERN = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+|NAN|INFINITY|INF)';
 
+const isLikelyMultiWordEntityReference = (references: readonly string[]): boolean => {
+  const finalReferencePart = references.at(-1);
+  return references.length > 1
+    && finalReferencePart !== undefined
+    && /^(?:\d+(?:-\d+)*|\d+[A-Z])$/.test(finalReferencePart);
+};
+
+const parseReferenceArguments = ({
+  references,
+  parameters,
+  errors,
+  command,
+  targetHint,
+}: {
+  references: string[];
+  parameters: Record<string, string | number | null>;
+  errors: CommandParseError[];
+  command: string;
+  targetHint: string;
+}): void => {
+  const fromMarker = references[0] === 'FROM';
+  const toMarkerIndex = references.indexOf('TO');
+
+  if (fromMarker || toMarkerIndex >= 0) {
+    const fromParts = references.slice(fromMarker ? 1 : 0, toMarkerIndex >= 0 ? toMarkerIndex : undefined);
+    const toParts = toMarkerIndex >= 0 ? references.slice(toMarkerIndex + 1) : [];
+    if (fromParts.length === 0 || toParts.length === 0 || !fromMarker || toMarkerIndex <= 1) {
+      errors.push({
+        code: 'INVALID_SYNTAX',
+        message: `${command} explicit pair syntax requires FROM <ORIGIN> TO <DESTINATION>.`,
+        hint: `Use ${command} FROM G01 TO BRAVO.`,
+      });
+      return;
+    }
+    parameters.fromReference = fromParts.join(' ');
+    parameters.toReference = toParts.join(' ');
+    parameters.referenceMode = 'EXPLICIT_PAIR';
+    parameters.referenceQuery = `${parameters.fromReference} ${parameters.toReference}`;
+    return;
+  }
+
+  if (references.length === 0) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires at least one entity reference.`,
+      hint: `Use ${command} <REFERENCE> or ${command} <FROM> <TO>.`,
+    });
+    return;
+  }
+
+  if (references.length === 1 || isLikelyMultiWordEntityReference(references)) {
+    parameters.fromReference = 'OWNSHIP';
+    parameters.toReference = references.join(' ');
+    parameters.referenceMode = 'IMPLICIT_TARGET';
+    parameters.referenceQuery = parameters.toReference;
+    return;
+  }
+
+  if (references.length !== 2) {
+    parameters.fromReference = references[0];
+    parameters.toReference = references.slice(1).join(' ');
+    parameters.referenceMode = 'EXPLICIT_PAIR';
+    parameters.referenceQuery = references.join(' ');
+    errors.push({
+      code: 'UNEXPECTED_ARGUMENT',
+      message: `Unexpected ${command} argument: ${references.slice(2).join(' ')}.`,
+      hint: targetHint,
+    });
+    return;
+  }
+
+  parameters.fromReference = references[0];
+  parameters.toReference = references.slice(1).join(' ');
+  parameters.referenceMode = 'EXPLICIT_PAIR';
+  parameters.referenceQuery = references.join(' ');
+  if (!parameters.toReference) {
+    errors.push({
+      code: 'INCOMPLETE_COMMAND',
+      message: `${command} requires a destination reference.`,
+      hint: targetHint,
+    });
+  }
+};
+
 const parseEtaEte = (input: string, tokens: CommandToken[]): ParsedCommand => {
   const command = tokens[0]?.normalized ?? '';
   const body = input.trim().replace(/^\S+\s*/u, '');
@@ -428,23 +512,18 @@ const parseEtaEte = (input: string, tokens: CommandToken[]): ParsedCommand => {
   const parameters: Record<string, string | number | null> = {
     command,
     query: referenceText,
+    referenceQuery: referenceText,
   };
   const errors: CommandParseError[] = [];
   const assumptions: string[] = [];
 
-  if (references.length === 0) {
-    errors.push({
-      code: 'INCOMPLETE_COMMAND',
-      message: `${command} requires at least one entity reference.`,
-      hint: `Use ${command} <REFERENCE> or ${command} <FROM> <TO>.`,
-    });
-  } else if (references.length === 1) {
-    parameters.fromReference = 'OWNSHIP';
-    parameters.toReference = references[0];
-  } else {
-    parameters.fromReference = references[0];
-    parameters.toReference = references.slice(1).join(' ');
-  }
+  parseReferenceArguments({
+    references,
+    parameters,
+    errors,
+    command,
+    targetHint: `Use ${command} <FROM> <TO>.`,
+  });
 
   if (atIndex >= 0) {
     const speedMatch = speedText.match(new RegExp(`^(${ETA_SPEED_NUMBER_PATTERN})(?:\\s*(.*))?$`, 'i'));
@@ -616,24 +695,17 @@ const parseMeasurement = (input: string, tokens: CommandToken[]): ParsedCommand 
   const parameters: Record<string, string | number | null> = {
     command,
     query,
+    referenceQuery: query,
   };
   const errors: CommandParseError[] = [];
 
-  if (!query) {
-    errors.push({
-      code: 'INCOMPLETE_COMMAND',
-      message: `${command} requires at least one entity reference.`,
-    });
-  } else {
-    const references = query.split(/\s+/).filter(Boolean);
-    if (command === 'BRG/RNG' && references.length >= 2) {
-      parameters.fromReference = references[0];
-      parameters.toReference = references.slice(1).join(' ');
-    } else {
-      parameters.fromReference = 'OWNSHIP';
-      parameters.toReference = query;
-    }
-  }
+  parseReferenceArguments({
+    references: query.split(/\s+/).filter(Boolean),
+    parameters,
+    errors,
+    command,
+    targetHint: `Use ${command} <FROM> <TO>.`,
+  });
 
   if (errors.length > 0) return createResult('MEASUREMENT', tokens, parameters, ['EXECUTION_NOT_ATTEMPTED'], errors);
   return createResult('MEASUREMENT', tokens, parameters);
@@ -1157,20 +1229,16 @@ const parseRelativeMotionCalculation = (tokens: CommandToken[]): ParsedCommand =
       });
     } else {
       parameters.targetReference = references.join(' ');
+      parameters.referenceMode = 'IMPLICIT_TARGET';
+      parameters.referenceQuery = parameters.targetReference;
     }
-  } else if (references.length === 1) {
-    parameters.fromReference = 'OWNSHIP';
-    parameters.toReference = references[0];
-  } else if (references.length === 2) {
-    parameters.fromReference = references[0];
-    parameters.toReference = references[1];
   } else {
-    errors.push({
-      code: references.length === 0 ? 'INCOMPLETE_COMMAND' : 'UNEXPECTED_ARGUMENT',
-      message: references.length === 0
-        ? 'CPA requires a target or an observer and target reference.'
-        : `Unexpected CPA argument: ${references.slice(2).join(' ')}.`,
-      hint: 'Use CPA BRAVO or CPA G01 BRAVO.',
+    parseReferenceArguments({
+      references,
+      parameters,
+      errors,
+      command,
+      targetHint: 'Use CPA <FROM> <TO>.',
     });
   }
 

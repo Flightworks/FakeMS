@@ -54,3 +54,12 @@ export const setLayerVisibility = (
     },
   };
 };
+
+export const isLayerEffectivelyVisible = (
+  state: TacticalLayerState,
+  layerId: TacticalLayerId,
+  hiddenByDeclutter = false,
+): boolean => {
+  const layer = state[layerId];
+  return Boolean(layer?.available && layer.visible && !hiddenByDeclutter);
+};

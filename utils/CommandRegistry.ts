@@ -1,4 +1,5 @@
-import { Entity, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
+import { Entity, EntityType, SystemStatus, MapMode, HistoryEntry, NavMode, Position } from '../types';
+import { createKinematicsSnapshot, type KinematicsFreshness, type KinematicsSnapshotOptions } from '../domain/kinematics';
 import { bearingBetween } from './geo';
 import { Zap, Radio, Eye, Navigation, Compass, Target, Calculator, MapPin, Crosshair, History, FileText, Copy, Trash2, Layers, Info } from 'lucide-react';
 import Fuse from 'fuse.js';
@@ -15,7 +16,9 @@ import {
 import { parseCommand } from '../domain/commandParser';
 import {
     formatEntityReferenceCandidate,
+    resolveEntityPairReference,
     resolveEntityReference,
+    type EntityReferencePairResolution,
     type EntityReferenceResolution,
 } from '../domain/entityResolution';
 import {
@@ -40,6 +43,7 @@ import {
 } from '../domain/spatialQueries';
 import {
     projectFuturePosition,
+    toFuturePositionTrack,
     type FuturePositionFreshness,
     type FuturePositionPreview,
     type FuturePositionResult,
@@ -47,6 +51,7 @@ import {
 } from '../domain/futurePosition';
 import {
     calculateRelativeMotion,
+    toRelativeMotionTrack,
     type RelativeMotionFreshness,
     type RelativeMotionPreview,
     type RelativeMotionResult,
@@ -124,6 +129,19 @@ import {
     rankCommandOptions,
     type CommandRankingMetadata,
 } from '../domain/commandRanking';
+import {
+    createAmbiguousCommandResult,
+    createAvailableCommandResult,
+    createIncompleteCommandResult,
+    createPartialCommandResult,
+    createUnavailableCommandResult,
+    displayValue,
+    mapCommandReason,
+    type CommandResult,
+    type InputQualification,
+    type ResultCandidate,
+    type ResultInputOrigin,
+} from '../domain/commandResults';
 
 // Configure math evaluation in the lazy-loaded `mathEvaluator` module.
 
@@ -157,6 +175,7 @@ export interface CommandContext {
     undoLastDesignation?: () => void;
     measurementPositionFreshness?: (entity: Entity) => TacticalPositionFreshness;
     groundSpeed?: GroundSpeedInput;
+    /** Absolute scenario epoch used for ETA qualification. */
     scenarioTimeMs?: number;
     timerState?: ScenarioTimerState;
     createTimer?: (durationMs: number, label: string, checkReference?: string) => void;
@@ -175,6 +194,7 @@ export interface CommandContext {
     setVisibleZone?: (zoneId: string | null) => void;
     simulationStatus?: 'RUNNING' | 'PAUSED' | 'RESET · PAUSED' | 'REPLAY · RUNNING';
     simulationIsRunning?: boolean;
+    /** Elapsed simulation duration used for T+ display. */
     simulationTimeMs?: number;
     simulationSpeed?: number;
     pauseSimulation?: () => void;
@@ -202,6 +222,10 @@ export interface CommandOption {
     autocompleteValue?: string;
     historyValue?: string;
     ranking?: CommandRankingMetadata;
+    /** Explicit opt-in for dispatching this command from a map drop. */
+    dragDropEligible?: boolean;
+    /** Explicit opt-in for the horizontal swipe execution gesture. */
+    swipeCapable?: boolean;
     futurePositionPreview?: FuturePositionPreview;
     futurePositionResult?: FuturePositionResult;
     relativeMotionPreview?: RelativeMotionPreview;
@@ -211,6 +235,8 @@ export interface CommandOption {
     timerState?: ScenarioTimerState;
     unitConversionResult?: TacticalQuantity;
     unitConversionError?: string;
+    /** One immutable, structured result calculated at the registry boundary. */
+    result?: CommandResult;
     keepPaletteOpen?: boolean;
 }
 
@@ -380,6 +406,46 @@ const saveRanking = (): CommandRankingMetadata => ({
     match: 'FUZZY',
 });
 
+type StructuredPaletteFamily =
+    | 'ETA_ETE'
+    | 'TACTICAL_MEASUREMENT'
+    | 'RELATIVE_MOTION'
+    | 'TRACK_INFO'
+    | 'NEAREST'
+    | 'FUTURE_POSITION';
+
+const structuredPaletteFamily = (
+    parsed: ReturnType<typeof parseCommand>,
+): StructuredPaletteFamily | undefined => {
+    const command = parsed.parameters.command;
+    if (parsed.type === 'MEASUREMENT' && (command === 'ETA' || command === 'ETE')) return 'ETA_ETE';
+    if (parsed.type === 'MEASUREMENT'
+        && (command === 'BRG' || command === 'RNG' || command === 'BRG/RNG')) {
+        return 'TACTICAL_MEASUREMENT';
+    }
+    if (parsed.type === 'CALCULATION' && (command === 'CPA' || command === 'CLOSURE')) return 'RELATIVE_MOTION';
+    if (parsed.type === 'SEARCH'
+        && (command === 'INFO' || command === 'AGE' || command === 'QUALITY' || command === 'STALE')) {
+        return 'TRACK_INFO';
+    }
+    if (parsed.type === 'SEARCH' && command === 'NEAREST') return 'NEAREST';
+    if (parsed.type === 'SEARCH' && command === 'PREDICT') return 'FUTURE_POSITION';
+    return undefined;
+};
+
+const belongsToStructuredPaletteFamily = (
+    option: CommandOption,
+    family: StructuredPaletteFamily,
+): boolean => {
+    const id = option.id.toLowerCase();
+    if (family === 'ETA_ETE') return id.startsWith('eta-') || id.startsWith('ete-');
+    if (family === 'TACTICAL_MEASUREMENT') return id.startsWith('measurement-') || id.startsWith('brg-') || id.startsWith('rng-');
+    if (family === 'RELATIVE_MOTION') return id.startsWith('relative-cpa-') || id.startsWith('relative-closure-') || id.startsWith('cpa-') || id.startsWith('closure-');
+    if (family === 'TRACK_INFO') return id.startsWith('track-info-') || id.startsWith('track-age-') || id.startsWith('track-quality-') || id.startsWith('info-') || id.startsWith('age-') || id.startsWith('quality-') || id.startsWith('stale-') || id === 'track-stale';
+    if (family === 'NEAREST') return id.startsWith('nearest-');
+    return id.startsWith('future-position-') || id.startsWith('predict-');
+};
+
 const formatNearestCandidate = (candidate: NearestCandidate): string => {
     const bearing = candidate.bearingTrueDegrees === null
         ? 'UNAVAILABLE'
@@ -411,30 +477,10 @@ const formatAngularBearing = (value: number): string => (
     Number.isInteger(value) ? value.toFixed(0).padStart(3, '0') : value.toFixed(1)
 );
 
-const readFuturePositionTrack = (entity: Entity): FuturePositionTrack => {
-    const metadata = entity.metadata;
-    const numeric = (key: string): number | undefined => {
-        const value = metadata?.[key];
-        return typeof value === 'number' ? value : undefined;
-    };
-    const rawFreshness = metadata?.freshness;
-    const freshness: FuturePositionFreshness | undefined = rawFreshness === 'FRESH'
-        || rawFreshness === 'STALE'
-        || rawFreshness === 'UNKNOWN'
-        ? rawFreshness
-        : undefined;
-
-    return {
-        id: entity.id,
-        label: entity.label,
-        position: { ...entity.position },
-        groundTrackDegrees: numeric('groundTrackDegrees'),
-        groundSpeedKnots: numeric('groundSpeedKnots'),
-        freshness,
-        lastSeenAtMs: numeric('lastSeenAtMs'),
-        ageSeconds: numeric('ageSeconds'),
-    };
-};
+const readFuturePositionTrack = (
+    entity: Entity,
+    options: KinematicsSnapshotOptions = {},
+): FuturePositionTrack => toFuturePositionTrack(createKinematicsSnapshot(entity, options));
 
 const formatFutureAge = (ageSeconds: number | null): string => (
     ageSeconds === null
@@ -446,6 +492,7 @@ const formatFutureUnavailable = (
     reference: string,
     reason: string,
     futurePositionResult?: FuturePositionResult,
+    structuredResult?: CommandResult,
 ): CommandOption => ({
     id: `future-position-unavailable-${normalizeRankingText(reference).replace(/\\s+/g, '-')}`,
     label: `PREDICT ${reference}: UNAVAILABLE`,
@@ -455,6 +502,7 @@ const formatFutureUnavailable = (
     historyValue: `PREDICT ${reference}`,
     isPreview: true,
     futurePositionResult,
+    ...(structuredResult ? { result: structuredResult } : {}),
     ranking: {
         category: 'STRUCTURED_EXACT',
         completeness: 3,
@@ -462,33 +510,17 @@ const formatFutureUnavailable = (
     },
 });
 
-const readRelativeMotionTrack = (entity: Entity): RelativeMotionTrack => {
-    const metadata = entity.metadata;
-    const numeric = (key: string): number | undefined => {
-        const value = metadata?.[key];
-        return typeof value === 'number' ? value : undefined;
-    };
-    const rawFreshness = metadata?.freshness;
-    const freshness: RelativeMotionFreshness | undefined = rawFreshness === 'FRESH'
-        || rawFreshness === 'STALE'
-        || rawFreshness === 'UNKNOWN'
-        ? rawFreshness
-        : undefined;
-    return {
-        id: entity.id,
-        label: entity.label,
-        position: { ...entity.position },
-        groundTrackDegrees: numeric('groundTrackDegrees'),
-        groundSpeedKnots: numeric('groundSpeedKnots'),
-        freshness,
-    };
-};
+const readRelativeMotionTrack = (
+    entity: Entity,
+    options: KinematicsSnapshotOptions = {},
+): RelativeMotionTrack => toRelativeMotionTrack(createKinematicsSnapshot(entity, options));
 
 const formatRelativeMotionUnavailable = (
     command: string,
     reference: string,
     reason: string,
     relativeMotionResult?: RelativeMotionResult,
+    structuredResult?: CommandResult,
 ): CommandOption => ({
     id: `relative-${command.toLowerCase()}-unavailable-${normalizeRankingText(reference).replace(/\\s+/g, '-')}`,
     label: `${command} ${reference}: UNAVAILABLE`,
@@ -498,6 +530,7 @@ const formatRelativeMotionUnavailable = (
     historyValue: `${command} ${reference}`,
     isPreview: true,
     relativeMotionResult,
+    ...(structuredResult ? { result: structuredResult } : {}),
     ranking: {
         category: 'STRUCTURED_EXACT',
         completeness: 3,
@@ -512,6 +545,10 @@ const createRelativeMotionOption = (
     result: Extract<RelativeMotionResult, { status: 'AVAILABLE' }>,
     previewRelativeMotion: ((preview: RelativeMotionPreview) => void) | undefined,
     historyValue: string,
+    ownship?: Entity,
+    ownshipNavMode: NavMode = NavMode.REAL,
+    groundSpeed?: GroundSpeedInput,
+    implicitReference = false,
 ): CommandOption => {
     const preview: RelativeMotionPreview = {
         type: 'RELATIVE_MOTION_PREVIEW',
@@ -525,7 +562,7 @@ const createRelativeMotionOption = (
     const tcpaLabel = result.tcpaMinutes === null ? 'N/A' : `${result.tcpaMinutes.toFixed(1)} MIN`;
     const label = command === 'CLOSURE'
         ? `CLOSURE ${target.label}`
-        : `CPA ${reference.label === 'VIPER 1-1' || reference.id === 'ownship' ? '' : `${reference.label} `}${target.label}`;
+        : `CPA ${implicitReference ? '' : `${reference.label} `}${target.label}`;
     return {
         id: command === 'CLOSURE'
             ? `relative-closure-${target.id}`
@@ -534,8 +571,10 @@ const createRelativeMotionOption = (
         subLabel: `CLOSURE: ${result.closureRateKnots.toFixed(1)} KT · CPA: ${result.cpaDistanceNauticalMiles.toFixed(1)} NM · TCPA: ${tcpaLabel} · STATUS: ${result.cpaStatus} · ASSUMPTION: ${result.assumption}`,
         icon: Compass,
         action: previewRelativeMotion ? () => previewRelativeMotion(preview) : undefined,
+        dragDropEligible: Boolean(previewRelativeMotion),
         relativeMotionPreview: preview,
         relativeMotionResult: result,
+        result: createRelativeMotionCommandResult(command, reference, target, result, Boolean(previewRelativeMotion), ownship, ownshipNavMode, groundSpeed),
         keywords: ['relative', 'motion', command.toLowerCase(), 'closure', 'cpa', 'tcpa', reference.label, target.label],
         historyValue,
         isPreview: true,
@@ -560,6 +599,7 @@ const createTrackInfoOption = (
     command: 'INFO' | 'AGE' | 'QUALITY',
     details: TrackDisplayDetails,
     historyValue: string,
+    result?: CommandResult,
 ): CommandOption => ({
     id: `track-${command.toLowerCase()}-${details.trackId}`,
     label: `${command} ${details.label}`,
@@ -573,6 +613,7 @@ const createTrackInfoOption = (
     historyValue,
     isPreview: true,
     trackDetails: details,
+    ...(result ? { result } : {}),
     keepPaletteOpen: true,
     ranking: {
         category: 'STRUCTURED_EXACT',
@@ -613,6 +654,706 @@ const coordinateRoundingLabel = (format: CoordinateFormat): string => {
     return '0.1"';
 };
 
+const withInteractionCapabilities = (options: readonly CommandOption[]): CommandOption[] => options.map(option => ({
+    ...option,
+    dragDropEligible: option.dragDropEligible === true,
+    swipeCapable: option.swipeCapable === true,
+}));
+
+type ResultQualificationState = InputQualification['status'];
+
+const resultOriginForSource = (source: string | undefined): ResultInputOrigin => {
+    if (source === 'GPS') return 'GPS';
+    if (source === 'RETAINED_FIX') return 'RETAINED_FIX';
+    return 'SCENARIO';
+};
+
+const metadataStringValue = (entity: Entity, key: string): string | undefined => {
+    const value = entity.metadata?.[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+};
+
+const metadataFiniteNumber = (entity: Entity, key: string): number | undefined => {
+    const value = entity.metadata?.[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+};
+
+const positionQualificationFor = (
+    entity: Entity,
+    ownship: Entity,
+    ownshipNavMode: NavMode,
+): InputQualification => {
+    const freshness = metadataStringValue(entity, 'freshness')?.toUpperCase();
+    const metadataSource = metadataStringValue(entity, 'source')?.toUpperCase();
+    const isRetained = metadataSource === 'RETAINED_FIX' || freshness === 'STALE';
+    const origin: ResultInputOrigin = isRetained
+        ? 'RETAINED_FIX'
+        : metadataSource === 'GPS' || (entity.id === ownship.id && ownshipNavMode === NavMode.REAL)
+            ? 'GPS'
+            : 'SCENARIO';
+    const status: ResultQualificationState = freshness === 'STALE'
+        ? 'STALE'
+        : freshness === 'UNKNOWN'
+            ? 'UNKNOWN'
+            : 'AVAILABLE';
+    return {
+        input: 'POSITION',
+        origin,
+        objectId: entity.id,
+        ageSeconds: metadataFiniteNumber(entity, 'ageSeconds'),
+        source: metadataSource,
+        qualification: origin === 'GPS' ? 'MEASURED' : origin === 'RETAINED_FIX' ? 'RETAINED' : 'SCENARIO',
+        status,
+    };
+};
+
+const speedQualificationFor = (
+    speed: GroundSpeedInput | undefined,
+    ownshipNavMode: NavMode,
+    objectId: string,
+    statusOverride?: ResultQualificationState,
+): InputQualification => {
+    const source = speed?.source;
+    const origin: ResultInputOrigin = source === 'USER_INPUT'
+        ? 'USER_INPUT'
+        : source === 'GPS'
+            ? (statusOverride === 'STALE' ? 'RETAINED_FIX' : 'GPS')
+            : 'SCENARIO';
+    const status = statusOverride ?? (speed ? 'AVAILABLE' : 'MISSING');
+    return {
+        input: 'SPEED',
+        origin: speed ? origin : ownshipNavMode === NavMode.REAL ? 'GPS' : 'SCENARIO',
+        objectId,
+        ...(speed?.updatedAt === undefined ? {} : { timestampMs: speed.updatedAt }),
+        qualification: speed?.qualification
+            ?? (origin === 'GPS' ? 'MEASURED' : origin === 'USER_INPUT' ? 'USER_ASSUMPTION' : 'SIMULATED'),
+        status,
+        ...(origin === 'USER_INPUT' ? { assumption: 'SPEED HYPOTHESIS' } : {}),
+    };
+};
+
+const clockQualificationFor = (scenarioTimeMs: number | undefined): InputQualification => ({
+    input: 'CLOCK',
+    origin: 'SCENARIO',
+    timestampMs: Number.isFinite(scenarioTimeMs) ? scenarioTimeMs : null,
+    qualification: 'SCENARIO TIME',
+    status: Number.isFinite(scenarioTimeMs) ? 'AVAILABLE' : 'MISSING',
+});
+
+interface ResultVectorInput {
+    id: string;
+    source?: string;
+    sourceLabel?: string;
+    qualification?: string;
+    freshness?: string;
+    groundTrackDegrees?: number;
+    groundSpeedKnots?: number;
+    ageSeconds?: number | null;
+    timestampMs?: number | null;
+}
+
+const vectorQualificationFor = (track: ResultVectorInput): InputQualification => {
+    const freshness = track.freshness?.toUpperCase();
+    const hasTrack = typeof track.groundTrackDegrees === 'number' && Number.isFinite(track.groundTrackDegrees);
+    const hasSpeed = typeof track.groundSpeedKnots === 'number' && Number.isFinite(track.groundSpeedKnots);
+    const status: ResultQualificationState = freshness === 'STALE'
+        ? 'STALE'
+        : freshness === 'UNKNOWN' || track.freshness === undefined
+            ? 'UNKNOWN'
+            : !hasTrack || !hasSpeed
+                ? 'MISSING'
+                : 'AVAILABLE';
+    const origin = status === 'STALE'
+        ? 'RETAINED_FIX'
+        : resultOriginForSource(track.source ?? track.sourceLabel);
+    return {
+        input: 'VECTOR',
+        origin,
+        objectId: track.id,
+        ageSeconds: track.ageSeconds ?? null,
+        timestampMs: track.timestampMs ?? null,
+        source: track.sourceLabel ?? track.source,
+        qualification: track.qualification ?? (origin === 'GPS' ? 'MEASURED' : 'SIMULATED'),
+        status,
+        assumption: 'CONSTANT VELOCITY',
+    };
+};
+
+const candidateValues = (candidates: readonly {
+    id: string;
+    label: string;
+    type?: string;
+}[]): ResultCandidate[] => candidates.map(candidate => ({
+    id: candidate.id,
+    label: candidate.label,
+}));
+
+const createReferenceResolutionResult = (
+    id: string,
+    resolution: EntityReferenceResolution,
+): CommandResult => {
+    const common = {
+        id,
+        kind: 'READ_ONLY' as const,
+        references: [resolution.reference],
+        qualifications: [],
+        capabilities: ['DETAILS'] as const,
+        details: resultReasonDetails(resolution.status),
+    };
+    if (resolution.status === 'AMBIGUOUS_REFERENCE'
+        || resolution.status === 'FUZZY_SUGGESTION'
+        || resolution.candidates.length > 1) {
+        return createAmbiguousCommandResult({
+            ...common,
+            candidates: candidateValues(resolution.candidates),
+            reason: mapCommandReason(resolution.status === 'FUZZY_SUGGESTION'
+                ? 'FUZZY_SUGGESTION'
+                : 'AMBIGUOUS_REFERENCE'),
+        });
+    }
+    return createUnavailableCommandResult({
+        ...common,
+        reason: mapCommandReason(resolution.status),
+    });
+};
+
+const createPairReferenceResolutionResult = (
+    id: string,
+    resolution: EntityReferencePairResolution,
+): CommandResult => {
+    const common = {
+        id,
+        kind: 'READ_ONLY' as const,
+        references: [
+            resolution.from?.id,
+            resolution.to?.id,
+        ].filter((reference): reference is string => typeof reference === 'string'),
+        qualifications: [],
+        capabilities: ['DETAILS'] as const,
+        details: resultReasonDetails(resolution.status),
+    };
+    if (resolution.status === 'AMBIGUOUS_REFERENCE'
+        || resolution.status === 'FUZZY_SUGGESTION'
+        || resolution.candidates.length > 1) {
+        return createAmbiguousCommandResult({
+            ...common,
+            candidates: resolution.candidates.map(candidate => ({
+                id: `${candidate.from.id}:${candidate.to.id}`,
+                label: `${candidate.from.label} → ${candidate.to.label}`,
+                reference: `${candidate.from.id} ${candidate.to.id}`,
+            })),
+            reason: mapCommandReason(resolution.status === 'FUZZY_SUGGESTION'
+                ? 'FUZZY_SUGGESTION'
+                : 'AMBIGUOUS_REFERENCE'),
+        });
+    }
+    return createUnavailableCommandResult({
+        ...common,
+        reason: mapCommandReason(resolution.status),
+    });
+};
+
+const resultReasonDetails = (rawCode: string | undefined): readonly ReturnType<typeof displayValue>[] => (
+    rawCode ? [displayValue('TECHNICAL REASON', rawCode)] : []
+);
+
+const createEtaEteCommandResult = ({
+    command,
+    from,
+    to,
+    result,
+    speed,
+    ownship,
+    ownshipNavMode,
+    scenarioTimeMs,
+    localTimeZone,
+}: {
+    command: 'ETA' | 'ETE';
+    from: Entity;
+    to: Entity;
+    result: import('../domain/etaEte').EtaEteResult;
+    speed?: GroundSpeedInput;
+    ownship: Entity;
+    ownshipNavMode: NavMode;
+    scenarioTimeMs?: number;
+    localTimeZone?: string;
+}): CommandResult => {
+    const display = formatEtaEte(result, localTimeZone ?? 'UTC');
+    const speedStatus: ResultQualificationState = result.reason === 'SPEED_STALE'
+        ? 'STALE'
+        : result.speedKnots === null
+            ? 'MISSING'
+            : 'AVAILABLE';
+    const qualifications = [
+        positionQualificationFor(from, ownship, ownshipNavMode),
+        positionQualificationFor(to, ownship, ownshipNavMode),
+        speedQualificationFor(speed, ownshipNavMode, from.id, speedStatus),
+        clockQualificationFor(scenarioTimeMs),
+    ];
+    const distance = displayValue(
+        'DISTANCE',
+        result.distanceNauticalMiles === null ? 'UNAVAILABLE' : result.distanceNauticalMiles.toFixed(1),
+        'NM',
+    );
+    const ete = displayValue(
+        'ETE',
+        display.ete.replace(/^ETE:\s*/, ''),
+        'DURATION',
+    );
+    const eta = displayValue(
+        'ETA',
+        result.etaUtcMs === null
+            ? 'UNAVAILABLE'
+            : display.etaUtc.replace(/^ETA UTC:\s*/, '').replace(/\s+UTC$/, ''),
+        'UTC',
+    );
+    const localEta = displayValue(
+        'ETA LOCAL',
+        display.etaLocal.replace(/^ETA LOCAL \([^)]*\):\s*/, '').replace(/\s+[^\s]+$/, ''),
+        localTimeZone ?? 'UTC',
+    );
+    const groundSpeed = displayValue(
+        'GROUND SPEED',
+        result.speedKnots === null ? 'UNAVAILABLE' : result.speedKnots.toFixed(1),
+        'KT',
+    );
+    const primary = command === 'ETA' ? eta : ete;
+    const secondary = command === 'ETA'
+        ? [ete, distance, groundSpeed, localEta]
+        : [eta, distance, groundSpeed, localEta];
+    const references = [from.id, to.id];
+    const common = {
+        id: from.id === ownship.id ? `${command.toLowerCase()}-${to.id}` : `${command.toLowerCase()}-${from.id}-${to.id}`,
+        kind: 'READ_ONLY' as const,
+        references,
+        qualifications,
+        capabilities: ['COPY', 'DETAILS'] as const,
+        details: resultReasonDetails(result.reason),
+    };
+
+    if (result.status === 'UNAVAILABLE') {
+        const isKnownPosition = result.distanceNauticalMiles !== null;
+        const canPartiallyExplain = isKnownPosition
+            && (result.reason === 'SPEED_UNAVAILABLE' || result.reason === 'SPEED_STALE');
+        const reason = mapCommandReason(result.reason ?? 'RESULT_UNAVAILABLE');
+        if (canPartiallyExplain) {
+            return createPartialCommandResult({
+                ...common,
+                primary: displayValue(primary.label, 'UNAVAILABLE', primary.unit),
+                secondary: [distance, groundSpeed],
+                reason,
+            });
+        }
+        return createUnavailableCommandResult({
+            ...common,
+            reason,
+        });
+    }
+
+    if (result.etaUtcMs === null) {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason('SCENARIO_TIME_UNAVAILABLE'),
+        });
+    }
+
+    return createAvailableCommandResult({
+        ...common,
+        primary,
+        secondary,
+    });
+};
+
+const createRelativeMotionCommandResult = (
+    command: 'CLOSURE' | 'CPA',
+    reference: Entity,
+    target: Entity,
+    result: Extract<RelativeMotionResult, { status: 'AVAILABLE' }>,
+    canPreview = false,
+    ownship?: Entity,
+    ownshipNavMode: NavMode = NavMode.REAL,
+    groundSpeed?: GroundSpeedInput,
+): CommandResult => {
+    const referenceSource = ownship && reference.id === ownship.id
+        ? ownshipNavMode === NavMode.REAL ? 'GPS' : 'SCENARIO'
+        : metadataStringValue(reference, 'source') ?? 'SCENARIO';
+    const targetSource = metadataStringValue(target, 'source') ?? 'SCENARIO';
+    const referenceVector = {
+        id: reference.id,
+        source: referenceSource,
+        qualification: referenceSource === 'GPS' ? 'MEASURED' : 'SIMULATED',
+        freshness: metadataStringValue(reference, 'freshness') ?? 'FRESH',
+        groundTrackDegrees: reference.heading ?? metadataFiniteNumber(reference, 'groundTrackDegrees'),
+        groundSpeedKnots: ownship && reference.id === ownship.id
+            ? groundSpeed?.speedKnots ?? reference.speed ?? metadataFiniteNumber(reference, 'groundSpeedKnots')
+            : reference.speed ?? metadataFiniteNumber(reference, 'groundSpeedKnots'),
+    };
+    const targetVector = {
+        id: target.id,
+        source: targetSource,
+        qualification: targetSource === 'GPS' ? 'MEASURED' : 'SIMULATED',
+        freshness: metadataStringValue(target, 'freshness') ?? 'FRESH',
+        groundTrackDegrees: target.heading ?? metadataFiniteNumber(target, 'groundTrackDegrees'),
+        groundSpeedKnots: target.speed ?? metadataFiniteNumber(target, 'groundSpeedKnots'),
+    };
+    const qualifications: InputQualification[] = [
+        positionQualificationFor(reference, ownship ?? reference, ownshipNavMode),
+        positionQualificationFor(target, ownship ?? reference, ownshipNavMode),
+        vectorQualificationFor(referenceVector),
+        vectorQualificationFor(targetVector),
+    ];
+    const primary = command === 'CLOSURE'
+        ? displayValue('CLOSURE', result.closureRateKnots.toFixed(1), 'KT')
+        : displayValue('CPA', result.cpaDistanceNauticalMiles.toFixed(1), 'NM');
+    const secondary = command === 'CLOSURE'
+        ? [
+            displayValue('CPA', result.cpaDistanceNauticalMiles.toFixed(1), 'NM'),
+            displayValue('TCPA', result.tcpaMinutes === null ? 'UNAVAILABLE' : result.tcpaMinutes.toFixed(1), 'MIN'),
+            displayValue('RELATIVE SPEED', result.relativeSpeedKnots.toFixed(1), 'KT'),
+        ]
+        : [
+            displayValue('CLOSURE', result.closureRateKnots.toFixed(1), 'KT'),
+            displayValue('TCPA', result.tcpaMinutes === null ? 'UNAVAILABLE' : result.tcpaMinutes.toFixed(1), 'MIN'),
+        ];
+    return createAvailableCommandResult({
+        id: command === 'CLOSURE'
+            ? `relative-closure-${target.id}`
+            : `relative-cpa-${reference.id}-${target.id}`,
+        kind: canPreview ? 'MAP_PREVIEW' : 'READ_ONLY',
+        references: [reference.id, target.id],
+        qualifications,
+        capabilities: canPreview ? ['DETAILS', 'MAP_PREVIEW'] : ['DETAILS'],
+        primary,
+        secondary,
+        details: [displayValue('ASSUMPTION', result.assumption)],
+    });
+};
+
+const createRelativeMotionFailureResult = ({
+    command,
+    reason,
+    id,
+    references = [],
+    qualifications = [],
+    candidates = [],
+    knownPosition = false,
+}: {
+    command: 'CLOSURE' | 'CPA';
+    reason: string;
+    id?: string;
+    references?: readonly string[];
+    qualifications?: readonly InputQualification[];
+    candidates?: readonly ResultCandidate[];
+    knownPosition?: boolean;
+}): CommandResult => {
+    const common = {
+        id: id ?? `relative-${command.toLowerCase()}-result-${references.join('-') || 'unknown'}`,
+        kind: 'READ_ONLY' as const,
+        references,
+        qualifications,
+        capabilities: ['DETAILS'] as const,
+        details: resultReasonDetails(reason),
+    };
+    if (candidates.length > 0) {
+        return createAmbiguousCommandResult({
+            ...common,
+            candidates,
+            reason: mapCommandReason('AMBIGUOUS_REFERENCE'),
+        });
+    }
+    if (knownPosition && (reason === 'MISSING_GROUND_SPEED'
+        || reason === 'MISSING_GROUND_TRACK'
+        || reason === 'STALE_TRACK'
+        || reason === 'UNKNOWN_FRESHNESS')) {
+        return createPartialCommandResult({
+            ...common,
+            primary: command === 'CLOSURE'
+                ? displayValue('CLOSURE', 'UNAVAILABLE', 'KT')
+                : displayValue('CPA', 'UNAVAILABLE', 'NM'),
+            secondary: [],
+            reason: mapCommandReason(reason),
+        });
+    }
+    return createUnavailableCommandResult({
+        ...common,
+        reason: mapCommandReason(reason),
+    });
+};
+
+const createFuturePositionCommandResult = ({
+    reference,
+    result,
+    track,
+    id,
+    kind,
+    canPreview,
+    candidates = [],
+}: {
+    reference: string;
+    result?: FuturePositionResult;
+    track?: FuturePositionTrack;
+    id?: string;
+    kind: 'READ_ONLY' | 'MAP_PREVIEW';
+    canPreview?: boolean;
+    candidates?: readonly ResultCandidate[];
+}): CommandResult => {
+    const resultId = id ?? `future-position-${normalizeRankingText(reference).replace(/\\s+/g, '-')}`;
+    const hasMapPreview = Boolean(canPreview && result?.status === 'AVAILABLE');
+    const effectiveKind = hasMapPreview ? kind : 'READ_ONLY';
+    const qualifications = track
+        ? [
+            {
+                input: 'POSITION' as const,
+                origin: track.freshness === 'STALE'
+                    ? 'RETAINED_FIX' as const
+                    : resultOriginForSource(track.source ?? track.sourceLabel),
+                objectId: track.id,
+                status: track.freshness === 'STALE'
+                    ? 'STALE' as const
+                    : track.freshness === 'UNKNOWN' ? 'UNKNOWN' as const : 'AVAILABLE' as const,
+                ageSeconds: track.ageSeconds ?? null,
+            },
+            vectorQualificationFor(track),
+        ]
+        : [];
+    const common = {
+        id: resultId,
+        kind: effectiveKind,
+        references: track ? [track.id] : [reference],
+        qualifications,
+        capabilities: hasMapPreview ? ['DETAILS', 'MAP_PREVIEW'] as const : ['DETAILS'] as const,
+        details: result?.status === 'UNAVAILABLE' ? resultReasonDetails(result.reason) : [],
+    };
+    if (candidates.length > 0) {
+        return createAmbiguousCommandResult({
+            ...common,
+            candidates,
+            reason: mapCommandReason('AMBIGUOUS_REFERENCE'),
+        });
+    }
+    if (!result) {
+        return createIncompleteCommandResult({
+            ...common,
+            reason: mapCommandReason('INCOMPLETE'),
+        });
+    }
+    if (result.status === 'UNAVAILABLE') {
+        const partialReasons = new Set([
+            'MISSING_GROUND_TRACK',
+            'MISSING_GROUND_SPEED',
+            'STALE_TRACK',
+            'UNKNOWN_FRESHNESS',
+        ]);
+        if (track && partialReasons.has(result.reason)) {
+            return createPartialCommandResult({
+                ...common,
+                primary: displayValue('GHOST', 'UNAVAILABLE', 'LAT/LON'),
+                secondary: [],
+                reason: mapCommandReason(result.reason),
+            });
+        }
+        return createUnavailableCommandResult({
+            ...common,
+            reason: mapCommandReason(result.reason),
+        });
+    }
+    return createAvailableCommandResult({
+        ...common,
+        primary: displayValue(
+            'GHOST',
+            `${result.targetPosition.lat.toFixed(5)}, ${result.targetPosition.lon.toFixed(5)}`,
+            'LAT/LON',
+        ),
+        secondary: [
+            displayValue('RANGE', result.projectedRangeNauticalMiles.toFixed(1), 'NM'),
+            displayValue('HORIZON', result.effectiveHorizonMinutes.toFixed(1), 'MIN'),
+            displayValue('PROJECTED AT', result.projectedAtMs === null ? 'UNAVAILABLE' : String(result.projectedAtMs), 'MS'),
+        ],
+        details: [displayValue('ASSUMPTION', result.assumption)],
+    });
+};
+
+const createTacticalMeasurementCommandResult = (
+    kind: 'BRG' | 'RNG' | 'BRG/RNG',
+    measurement: import('../domain/tacticalMeasurements').TacticalMeasurement,
+    from: Entity,
+    to: Entity,
+    ownship: Entity,
+    ownshipNavMode: NavMode,
+): CommandResult => {
+    const positionQualifications = [
+        positionQualificationFor(from, ownship, ownshipNavMode),
+        positionQualificationFor(to, ownship, ownshipNavMode),
+    ];
+    const bearing = measurement.bearingTrueDegrees === null
+        ? displayValue('BRG', 'UNAVAILABLE', '°T')
+        : displayValue('BRG', measurement.bearingTrueDegrees.toFixed(1), '°T');
+    const range = measurement.rangeNauticalMiles === null
+        ? displayValue('RNG', 'UNAVAILABLE', 'NM')
+        : displayValue('RNG', measurement.rangeNauticalMiles.toFixed(1), 'NM');
+    const primary = kind === 'BRG' ? bearing : kind === 'RNG' ? range : bearing;
+    const secondary = kind === 'BRG/RNG' ? [range] : [];
+    const common = {
+        id: `measurement-result-${kind.toLowerCase().replace('/', '-')}-${from.id}-${to.id}`,
+        kind: 'READ_ONLY' as const,
+        references: [from.id, to.id],
+        qualifications: positionQualifications,
+        capabilities: ['DETAILS'] as const,
+        details: [
+            displayValue('SOURCE', measurement.source),
+            displayValue('QUALIFICATION', measurement.qualification),
+            ...(measurement.reason ? resultReasonDetails(measurement.reason) : []),
+        ],
+    };
+    if (measurement.qualification === 'UNAVAILABLE') {
+        return createUnavailableCommandResult({
+            ...common,
+            reason: mapCommandReason(measurement.reason ?? 'RESULT_UNAVAILABLE'),
+        });
+    }
+    if (measurement.reason === 'IDENTICAL_POSITIONS' && kind !== 'RNG') {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason('IDENTICAL_POSITIONS'),
+        });
+    }
+    return createAvailableCommandResult({
+        ...common,
+        primary,
+        secondary,
+    });
+};
+
+const createTrackCommandResult = (
+    command: 'INFO' | 'AGE' | 'QUALITY',
+    details: TrackDisplayDetails,
+    entity: Entity,
+    ownship: Entity,
+    ownshipNavMode: NavMode,
+): CommandResult => {
+    const position = positionQualificationFor(entity, ownship, ownshipNavMode);
+    const age = details.ageSeconds === null ? 'UNKNOWN' : details.ageSeconds.toFixed(1);
+    const qualityNotApplicable = entity.type === EntityType.WAYPOINT || entity.type === EntityType.AIRPORT;
+    const primary = command === 'INFO'
+        ? displayValue('TRACK', details.label)
+        : command === 'AGE'
+            ? displayValue('AGE', age, 'S')
+            : displayValue('QUALITY', qualityNotApplicable ? 'N/A' : details.quality);
+    const secondary = command === 'INFO'
+        ? [
+            displayValue('SOURCE', details.sourceLabel ?? 'UNKNOWN'),
+            displayValue('AGE', age, 'S'),
+            displayValue('QUALITY', qualityNotApplicable ? 'N/A' : details.quality),
+            displayValue('CLASSIFICATION', details.classification),
+            displayValue('CONFIDENCE', details.confidence === null ? 'N/A' : `${(details.confidence * 100).toFixed(0)}%`),
+        ]
+        : command === 'AGE'
+            ? [displayValue('FRESHNESS', details.freshness)]
+            : [
+                displayValue('CLASSIFICATION', details.classification),
+                displayValue('CONFIDENCE', details.confidence === null ? 'N/A' : `${(details.confidence * 100).toFixed(0)}%`),
+            ];
+    const common = {
+        id: `track-${command.toLowerCase()}-${details.trackId}`,
+        kind: 'READ_ONLY' as const,
+        references: [details.trackId],
+        qualifications: [position],
+        capabilities: ['DETAILS'] as const,
+        details: [],
+    };
+    if (qualityNotApplicable && (command === 'QUALITY' || command === 'INFO')) {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason('QUALITY_NOT_APPLICABLE'),
+        });
+    }
+    if (details.freshness === 'STALE') {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason('STALE_TRACK'),
+        });
+    }
+    if (details.freshness === 'UNKNOWN') {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason('UNKNOWN_FRESHNESS'),
+        });
+    }
+    if ((command === 'AGE' && details.ageSeconds === null)
+        || (command !== 'AGE' && details.quality === 'UNKNOWN')) {
+        return createPartialCommandResult({
+            ...common,
+            primary,
+            secondary,
+            reason: mapCommandReason(command === 'AGE' ? 'UNKNOWN_AGE' : 'QUALITY_UNKNOWN'),
+        });
+    }
+    return createAvailableCommandResult({
+        ...common,
+        primary,
+        secondary,
+    });
+};
+
+const createStaleTrackListResult = (details: readonly TrackDisplayDetails[]): CommandResult => createAvailableCommandResult({
+    id: 'track-stale',
+    kind: 'READ_ONLY',
+    references: details.map(item => item.trackId),
+    qualifications: details.map(item => ({
+        input: 'POSITION' as const,
+        origin: 'RETAINED_FIX' as const,
+        objectId: item.trackId,
+        ageSeconds: item.ageSeconds,
+        status: 'STALE' as const,
+        qualification: item.sourceLabel ?? 'RETAINED',
+    })),
+    capabilities: ['DETAILS'],
+    primary: displayValue('COUNT', String(details.length), 'TRACKS'),
+    secondary: details.map(item => displayValue(
+        item.label,
+        item.ageSeconds === null ? 'UNKNOWN' : item.ageSeconds.toFixed(1),
+        'S',
+    )),
+});
+
+const createProjectionCommandResult = (
+    preview: ProjectionPreview,
+    reference: Entity,
+    ownship: Entity,
+    ownshipNavMode: NavMode,
+): CommandResult => createAvailableCommandResult({
+    id: 'proj-focus',
+    kind: 'MAP_PREVIEW',
+    references: [reference.id],
+    qualifications: [
+        positionQualificationFor(reference, ownship, ownshipNavMode),
+    ],
+    capabilities: ['DETAILS', 'MAP_PREVIEW'],
+    primary: displayValue(
+        'POSITION',
+        `${preview.targetPosition.lat.toFixed(5)}, ${preview.targetPosition.lon.toFixed(5)}`,
+        'LAT/LON',
+    ),
+    secondary: [
+        displayValue('BRG', preview.bearingDegrees.toFixed(1), '°T'),
+        displayValue('RNG', preview.rangeNauticalMiles.toFixed(1), 'NM'),
+    ],
+    details: [
+        displayValue('METHOD', preview.method),
+        displayValue('REFERENCE', reference.label),
+    ],
+});
+
 export const getCommands = (
     query: string,
     context: CommandContext,
@@ -622,6 +1363,7 @@ export const getCommands = (
     const {
         entities,
         ownship,
+        ownshipNavMode,
         systems,
         setMapMode,
         toggleSystem,
@@ -677,6 +1419,43 @@ export const getCommands = (
     } = context;
     const commands: CommandOption[] = [];
 
+    const metadataFreshness = (entity: Entity): KinematicsFreshness | undefined => {
+        const value = entity.metadata?.freshness;
+        return value === 'FRESH' || value === 'STALE' || value === 'UNKNOWN' ? value : undefined;
+    };
+    const kinematicsOptionsFor = (entity: Entity): KinematicsSnapshotOptions => {
+        if (entity.id !== ownship.id) {
+            return {
+                source: 'SCENARIO',
+                qualification: 'SIMULATED',
+                timestampMs: scenarioTimeMs ?? null,
+            };
+        }
+
+        if (ownshipNavMode === NavMode.SIM) {
+            return {
+                source: 'SIMULATION',
+                qualification: 'SIMULATED',
+                headingDegrees: entity.heading ?? null,
+                groundSpeedKnots: entity.speed ?? null,
+                timestampMs: scenarioTimeMs ?? null,
+                freshness: 'FRESH',
+                ageSeconds: 0,
+                allowMetadataVector: false,
+            };
+        }
+
+        return {
+            source: 'GPS',
+            qualification: groundSpeed ? 'MEASURED' : 'UNAVAILABLE',
+            headingDegrees: entity.heading ?? null,
+            groundSpeedKnots: groundSpeed?.speedKnots ?? null,
+            timestampMs: groundSpeed?.updatedAt ?? null,
+            freshness: groundSpeed ? 'FRESH' : metadataFreshness(entity) ?? 'UNKNOWN',
+            allowMetadataVector: false,
+        };
+    };
+
     const proposeUnavailableAction = (
         category: MissionActionCategory,
         actionId: string,
@@ -713,9 +1492,9 @@ export const getCommands = (
                 autocompleteValue: entry.canonical,
             };
         });
-        if (recentHistory.length > 0) return recentHistory;
+        if (recentHistory.length > 0) return withInteractionCapabilities(recentHistory);
 
-        return [{
+        return withInteractionCapabilities([{
             id: 'empty-invitation',
             label: 'TYPE A COMMAND',
             subLabel: 'Use the input to search',
@@ -723,7 +1502,7 @@ export const getCommands = (
             keywords: [],
             disabled: true,
             keepPaletteOpen: true,
-        }];
+        }]);
     }
 
     // 1. Calculator & Unit Conversion
@@ -844,6 +1623,7 @@ export const getCommands = (
                 action: () => focusMapAt(coords),
                 keywords: ['fly', 'goto', 'coord'],
                 isPreview: true,
+                dragDropEligible: true,
                 ranking: {
                     category: 'STRUCTURED_EXACT',
                     completeness: 3,
@@ -894,6 +1674,7 @@ export const getCommands = (
                 action: () => focusMapAt({ ...designation.position }),
                 keywords: ['focus', 'point', 'center', designation.label],
                 historyValue: `FOCUS ${designation.label}`,
+                dragDropEligible: true,
                 ranking: createStructuredRanking(q, `FOCUS ${designation.label}`),
             });
         }
@@ -986,6 +1767,7 @@ export const getCommands = (
         action: () => focusMapAt({ ...focusTarget.position }),
         keywords: ['focus', 'center', focusTarget.label],
         historyValue: `FOCUS ${focusTarget.label}`,
+        dragDropEligible: true,
         ranking: createStructuredRanking(q, `FOCUS ${focusTarget.label}`),
       });
     }
@@ -993,7 +1775,7 @@ export const getCommands = (
 
   // 4. Entity Projection
     const proj = parseProjection(q, entities, ownship);
-    if (proj?.preview && proj.label) {
+    if (proj?.preview && proj.label && proj.resolution.entity) {
         commands.push({
             id: 'proj-focus',
             label: proj.label,
@@ -1008,7 +1790,14 @@ export const getCommands = (
             },
             keywords: ['proj'],
             isPreview: true,
+            dragDropEligible: true,
             keepPaletteOpen: true,
+            result: createProjectionCommandResult(
+                proj.preview,
+                proj.resolution.entity,
+                ownship,
+                ownshipNavMode,
+            ),
             ranking: projectionRanking(),
         });
     } else if (proj) {
@@ -1029,6 +1818,10 @@ export const getCommands = (
             icon: Crosshair,
             keywords: ['proj', 'reference', resolution.status.toLowerCase()],
             keepPaletteOpen: true,
+            result: createReferenceResolutionResult(
+                `proj-reference-status-${resolution.status.toLowerCase()}`,
+                resolution,
+            ),
             ranking: {
                 category: 'STRUCTURED_PARTIAL',
                 completeness: 2,
@@ -1057,6 +1850,55 @@ export const getCommands = (
     }
 
     const parsedMeasurement = parseCommand(q);
+    const incompleteResultCommands = new Set([
+        'ETA',
+        'ETE',
+        'BRG',
+        'RNG',
+        'BRG/RNG',
+        'CLOSURE',
+        'CPA',
+        'INT',
+        'PREDICT',
+        'INFO',
+        'AGE',
+        'QUALITY',
+        'PROJ',
+        'PROJECTION',
+        'NEAREST',
+    ]);
+    const parsedCommandName = typeof parsedMeasurement.parameters.command === 'string'
+        ? parsedMeasurement.parameters.command
+        : parsedMeasurement.type === 'PROJECTION' ? 'PROJ' : undefined;
+    if (parsedMeasurement.errors.length > 0
+        && typeof parsedCommandName === 'string'
+        && incompleteResultCommands.has(parsedCommandName)) {
+        const parseError = parsedMeasurement.errors[0];
+        const resultId = `${parsedCommandName.toLowerCase().replace('/', '-')}-incomplete`;
+        commands.push({
+            id: resultId,
+            label: `${parsedCommandName}: INCOMPLETE`,
+            subLabel: `${parseError?.message ?? 'More input is required'} · CALCULATION NOT EXECUTED`,
+            icon: Calculator,
+            keywords: ['incomplete', 'input', parsedCommandName.toLowerCase()],
+            historyValue: q,
+            isPreview: true,
+            keepPaletteOpen: true,
+            result: createIncompleteCommandResult({
+                id: resultId,
+                kind: 'READ_ONLY',
+                references: [],
+                capabilities: ['DETAILS'],
+                details: parseError ? [displayValue('PARSER CODE', parseError.code)] : [],
+                reason: mapCommandReason('INCOMPLETE'),
+            }),
+            ranking: {
+                category: 'STRUCTURED_EXACT',
+                completeness: 2,
+                match: 'EXACT',
+            },
+        });
+    }
     const layerCommand = parsedMeasurement.parameters.system;
     if (parsedMeasurement.type === 'SYSTEM'
         && (layerCommand === 'LAYERS' || layerCommand === 'LAYER')) {
@@ -1368,7 +2210,9 @@ export const getCommands = (
             || simulationCommand === 'TIME'
             || simulationCommand === 'SPEED')) {
         const status = simulationStatus ?? (simulationIsRunning ? 'RUNNING' : 'PAUSED');
-        const simulatedSeconds = typeof simulationTimeMs === 'number' ? Math.floor(simulationTimeMs / 1000) : null;
+        const simulatedSeconds = typeof simulationTimeMs === 'number' && Number.isFinite(simulationTimeMs)
+            ? Math.floor(simulationTimeMs / 1000)
+            : null;
         const statusSuffix = simulatedSeconds === null ? '' : ` · SIM T+${simulatedSeconds}s`;
         if (parsedMeasurement.errors.length > 0) {
             commands.push({
@@ -1634,20 +2478,56 @@ export const getCommands = (
         if (typeof predictionReference !== 'string'
             || typeof predictionHorizonValue !== 'number'
             || (predictionHorizonUnit !== 'MIN' && predictionHorizonUnit !== 'NM')) {
-            commands.push(formatFutureUnavailable(String(predictionReference ?? 'UNKNOWN'), 'INVALID_INPUT'));
+            const reference = String(predictionReference ?? 'UNKNOWN');
+            const unavailableId = `future-position-unavailable-${normalizeRankingText(reference).replace(/\\\\s+/g, '-')}`;
+            commands.push(formatFutureUnavailable(
+                reference,
+                'INVALID_INPUT',
+                undefined,
+                createFuturePositionCommandResult({
+                    reference,
+                    id: unavailableId,
+                    kind: previewFuturePosition ? 'MAP_PREVIEW' : 'READ_ONLY',
+                    canPreview: Boolean(previewFuturePosition),
+                }),
+            ));
         } else {
             const resolution = resolveEntityReference(predictionReference, entities, ownship);
             if (!resolution.executable || !resolution.entity) {
-                commands.push(formatFutureUnavailable(predictionReference, 'AMBIGUOUS OR UNKNOWN REFERENCE'));
+                commands.push(formatFutureUnavailable(
+                    predictionReference,
+                    'AMBIGUOUS OR UNKNOWN REFERENCE',
+                    undefined,
+                    createReferenceResolutionResult(
+                        `future-position-unavailable-${normalizeRankingText(predictionReference).replace(/\\s+/g, '-')}`,
+                        resolution,
+                    ),
+                ));
             } else {
-                const futureTrack = readFuturePositionTrack(resolution.entity);
+                const futureTrack = readFuturePositionTrack(
+                    resolution.entity,
+                    kinematicsOptionsFor(resolution.entity),
+                );
                 const result = projectFuturePosition({
                     track: futureTrack,
                     horizon: { value: predictionHorizonValue, unit: predictionHorizonUnit },
                     nowMs: scenarioTimeMs,
                 });
                 if (result.status === 'UNAVAILABLE') {
-                    commands.push(formatFutureUnavailable(resolution.entity.label, result.reason, result));
+                    const unavailableId = `future-position-unavailable-${normalizeRankingText(resolution.entity.label).replace(/\\\\s+/g, '-')}`;
+                    commands.push(formatFutureUnavailable(
+                        resolution.entity.label,
+                        result.reason,
+                        result,
+                        createFuturePositionCommandResult({
+                            reference: resolution.entity.label,
+                            id: unavailableId,
+                            result,
+                            track: futureTrack,
+                            kind: previewFuturePosition ? 'MAP_PREVIEW' : 'READ_ONLY',
+                            canPreview: Boolean(previewFuturePosition),
+                        }),
+                    ));
                 } else {
                     const groundTrack = futureTrack.groundTrackDegrees as number;
                     const groundSpeed = futureTrack.groundSpeedKnots as number;
@@ -1667,8 +2547,17 @@ export const getCommands = (
                         subLabel: `GHOST: ${result.targetPosition.lat.toFixed(5)}, ${result.targetPosition.lon.toFixed(5)} · VECTOR: ${groundTrack.toFixed(1)}°T @ ${groundSpeed.toFixed(1)} KT · RANGE: ${result.projectedRangeNauticalMiles.toFixed(1)} NM · HORIZON: ${result.effectiveHorizonMinutes.toFixed(1)} MIN · AGE: ${formatFutureAge(result.ageSeconds)} · LIMIT: ${limitLabel} · ASSUMPTION: ${result.assumption}`,
                         icon: Navigation,
                         action: previewFuturePosition ? () => previewFuturePosition(preview) : undefined,
+                        dragDropEligible: Boolean(previewFuturePosition),
                         futurePositionPreview: preview,
                         futurePositionResult: result,
+                        result: createFuturePositionCommandResult({
+                            reference: resolution.entity.label,
+                            id: `future-position-${resolution.entity.id}`,
+                            result,
+                            track: futureTrack,
+                            kind: previewFuturePosition ? 'MAP_PREVIEW' : 'READ_ONLY',
+                            canPreview: Boolean(previewFuturePosition),
+                        }),
                         keywords: ['predict', 'future', 'position', 'ghost', resolution.entity.label, 'ground track', 'ground speed'],
                         historyValue: q,
                         isPreview: true,
@@ -1694,33 +2583,117 @@ export const getCommands = (
             : parsedMeasurement.parameters.toReference;
         const referenceLabel = typeof fromReference === 'string' ? fromReference : 'UNKNOWN';
         const targetLabel = typeof toReference === 'string' ? toReference : 'UNKNOWN';
+        const referenceQuery = typeof parsedMeasurement.parameters.referenceQuery === 'string'
+            ? parsedMeasurement.parameters.referenceQuery
+            : undefined;
+        const pairResolution = !isClosure
+            && parsedMeasurement.parameters.referenceMode === 'EXPLICIT_PAIR'
+            && referenceQuery
+            ? resolveEntityPairReference(referenceQuery, entities, ownship)
+            : undefined;
         const referenceResolution = isClosure
             ? { executable: true, entity: ownship }
-            : typeof fromReference === 'string'
-                ? resolveEntityReference(fromReference, entities, ownship)
+            : pairResolution
+                ? { executable: pairResolution.executable, entity: pairResolution.from }
+                : typeof fromReference === 'string'
+                    ? resolveEntityReference(fromReference, entities, ownship)
+                    : { executable: false, entity: undefined };
+        const targetResolution = pairResolution
+            ? { executable: pairResolution.executable, entity: pairResolution.to }
+            : typeof toReference === 'string'
+                ? resolveEntityReference(toReference, entities, ownship)
                 : { executable: false, entity: undefined };
-        const targetResolution = typeof toReference === 'string'
-            ? resolveEntityReference(toReference, entities, ownship)
-            : { executable: false, entity: undefined };
         if (!referenceResolution.executable || !referenceResolution.entity
             || !targetResolution.executable || !targetResolution.entity
             || referenceResolution.entity.id === targetResolution.entity.id) {
+            const failedResolution = pairResolution && !pairResolution.executable
+                ? pairResolution
+                : !referenceResolution.executable
+                    ? referenceResolution
+                    : !targetResolution.executable
+                        ? targetResolution
+                        : undefined;
+            const failedCandidates = pairResolution
+                ? pairResolution.candidates.map(candidate => ({
+                    id: `${candidate.from.id}:${candidate.to.id}`,
+                    label: `${candidate.from.label} → ${candidate.to.label}`,
+                }))
+                : failedResolution && !pairResolution && 'candidates' in failedResolution
+                    ? candidateValues((failedResolution as EntityReferenceResolution).candidates)
+                    : [];
+            const implicitTargetReference = !isClosure
+                && parsedMeasurement.parameters.referenceMode === 'IMPLICIT_TARGET';
+            const failureLabel = isClosure
+                ? targetLabel
+                : implicitTargetReference
+                    ? targetLabel
+                    : pairResolution ? referenceQuery ?? `${referenceLabel} ${targetLabel}` : `${referenceLabel} ${targetLabel}`;
+            const failureId = `relative-${relativeMotionCommand.toLowerCase()}-unavailable-${normalizeRankingText(failureLabel).replace(/\\s+/g, '-')}`;
+            const result = createRelativeMotionFailureResult({
+                command: relativeMotionCommand,
+                reason: pairResolution && !pairResolution.executable
+                    ? pairResolution.status
+                    : failedResolution && 'status' in failedResolution
+                        ? failedResolution.status
+                        : 'AMBIGUOUS OR UNKNOWN REFERENCE',
+                id: failureId,
+                references: [
+                    referenceResolution.entity?.id,
+                    targetResolution.entity?.id,
+                ].filter((id): id is string => typeof id === 'string'),
+                candidates: failedCandidates,
+            });
             commands.push(formatRelativeMotionUnavailable(
                 relativeMotionCommand,
-                isClosure ? targetLabel : `${referenceLabel} ${targetLabel}`,
+                isClosure
+                    ? targetLabel
+                    : implicitTargetReference
+                        ? targetLabel
+                        : pairResolution ? referenceQuery ?? `${referenceLabel} ${targetLabel}` : `${referenceLabel} ${targetLabel}`,
                 'AMBIGUOUS OR UNKNOWN REFERENCE',
+                undefined,
+                result,
             ));
         } else {
+            const referenceTrack = readRelativeMotionTrack(
+                referenceResolution.entity,
+                kinematicsOptionsFor(referenceResolution.entity),
+            );
+            const targetTrack = readRelativeMotionTrack(
+                targetResolution.entity,
+                kinematicsOptionsFor(targetResolution.entity),
+            );
             const result = calculateRelativeMotion({
-                reference: readRelativeMotionTrack(referenceResolution.entity),
-                target: readRelativeMotionTrack(targetResolution.entity),
+                reference: referenceTrack,
+                target: targetTrack,
             });
             if (result.status === 'UNAVAILABLE') {
+                const implicitTargetReference = !isClosure
+                    && parsedMeasurement.parameters.referenceMode === 'IMPLICIT_TARGET';
+                const displayReference = isClosure
+                    ? targetResolution.entity.label
+                    : implicitTargetReference
+                        ? targetResolution.entity.label
+                        : `${referenceResolution.entity.label} ${targetResolution.entity.label}`;
+                const structuredResult = createRelativeMotionFailureResult({
+                    command: relativeMotionCommand,
+                    reason: result.reason,
+                    id: `relative-${relativeMotionCommand.toLowerCase()}-unavailable-${normalizeRankingText(displayReference).replace(/\\s+/g, '-')}`,
+                    references: [referenceResolution.entity.id, targetResolution.entity.id],
+                    qualifications: [
+                        positionQualificationFor(referenceResolution.entity, ownship, ownshipNavMode),
+                        positionQualificationFor(targetResolution.entity, ownship, ownshipNavMode),
+                        vectorQualificationFor(referenceTrack),
+                        vectorQualificationFor(targetTrack),
+                    ],
+                    knownPosition: true,
+                });
                 commands.push(formatRelativeMotionUnavailable(
                     relativeMotionCommand,
-                    isClosure ? targetResolution.entity.label : `${referenceResolution.entity.label} ${targetResolution.entity.label}`,
+                    displayReference,
                     result.reason,
                     result,
+                    structuredResult,
                 ));
             } else {
                 commands.push(createRelativeMotionOption(
@@ -1730,6 +2703,10 @@ export const getCommands = (
                     result,
                     previewRelativeMotion,
                     q,
+                    ownship,
+                    ownshipNavMode,
+                    groundSpeed,
+                    parsedMeasurement.parameters.referenceMode === 'IMPLICIT_TARGET',
                 ));
             }
         }
@@ -1744,7 +2721,7 @@ export const getCommands = (
             command.id.startsWith('relative-cpa-')
             || command.relativeMotionPreview?.command === 'CPA'
         ));
-        return cpaCommands.slice(0, 3);
+        return withInteractionCapabilities(cpaCommands.slice(0, 3));
     }
 
     const trackInfoCommand = parsedMeasurement.parameters.command;
@@ -1768,6 +2745,7 @@ export const getCommands = (
                 historyValue: q,
                 isPreview: true,
                 staleTrackDetails: staleDetails,
+                result: createStaleTrackListResult(staleDetails),
                 keepPaletteOpen: true,
                 ranking: {
                     category: 'STRUCTURED_EXACT',
@@ -1779,14 +2757,16 @@ export const getCommands = (
             const reference = parsedMeasurement.parameters.reference;
             const resolution = resolveEntityReference(reference, entities, ownship);
             if (!resolution.executable || !resolution.entity) {
+                const resultId = `track-${trackInfoCommand.toLowerCase()}-unavailable`;
                 commands.push({
-                    id: `track-${trackInfoCommand.toLowerCase()}-unavailable`,
+                    id: resultId,
                     label: `${trackInfoCommand} ${reference}: UNAVAILABLE`,
                     subLabel: 'REASON: AMBIGUOUS OR UNKNOWN REFERENCE · TRACK DETAILS UNAVAILABLE',
                     icon: Compass,
                     keywords: ['track', trackInfoCommand.toLowerCase(), 'unavailable', 'reference'],
                     historyValue: q,
                     isPreview: true,
+                    result: createReferenceResolutionResult(resultId, resolution),
                     keepPaletteOpen: true,
                     ranking: {
                         category: 'STRUCTURED_EXACT',
@@ -1795,10 +2775,18 @@ export const getCommands = (
                     },
                 });
             } else {
+                const details = createEntityTrackDetails(resolution.entity, scenarioTimeMs);
                 commands.push(createTrackInfoOption(
                     trackInfoCommand,
-                    createEntityTrackDetails(resolution.entity, scenarioTimeMs),
+                    details,
                     q,
+                    createTrackCommandResult(
+                        trackInfoCommand,
+                        details,
+                        resolution.entity,
+                        ownship,
+                        ownshipNavMode,
+                    ),
                 ));
             }
         }
@@ -2330,6 +3318,7 @@ export const getCommands = (
                         keywords: ['nearest', nearestCategory.toLowerCase(), candidate.label, candidate.type, candidate.id],
                         historyValue: q,
                         isPreview: true,
+                        dragDropEligible: true,
                         ranking: {
                             category: 'STRUCTURED_EXACT',
                             completeness: 3,
@@ -2621,6 +3610,7 @@ export const getCommands = (
                             keywords: ['int', 'intersection', firstEntity.label, secondEntity.label],
                             historyValue: q,
                             isPreview: true,
+                            dragDropEligible: true,
                             keepPaletteOpen: true,
                             ranking: {
                                 category: 'STRUCTURED_EXACT',
@@ -2703,6 +3693,7 @@ export const getCommands = (
                             : 'Set scenario Bullseye · explicit confirmation required',
                         icon: Crosshair,
                         action: () => proposeSetBullseye?.(nextBullseye),
+                        dragDropEligible: Boolean(proposeSetBullseye),
                         keywords: ['set', 'bull', 'bullseye', nextBullseye.label],
                         historyValue: q,
                         isPreview: true,
@@ -2814,6 +3805,7 @@ export const getCommands = (
                             keywords: ['bull', 'bullseye', 'projection', 'preview'],
                             historyValue: q,
                             isPreview: true,
+                            dragDropEligible: Boolean(previewBullseyeProjection),
                             keepPaletteOpen: true,
                             ranking: {
                                 category: 'STRUCTURED_EXACT',
@@ -2849,19 +3841,39 @@ export const getCommands = (
             : undefined;
 
         if (fromReference && toReference) {
-            const fromResolution = resolveEntityReference(fromReference, entities, ownship);
-            const toResolution = resolveEntityReference(toReference, entities, ownship);
-            const failedResolution = [fromResolution, toResolution]
-                .find(resolution => resolution.status !== 'RESOLVED');
+            const referenceQuery = typeof parsedMeasurement.parameters.referenceQuery === 'string'
+                ? parsedMeasurement.parameters.referenceQuery
+                : undefined;
+            const pairResolution = parsedMeasurement.parameters.referenceMode === 'EXPLICIT_PAIR'
+                && referenceQuery
+                ? resolveEntityPairReference(referenceQuery, entities, ownship)
+                : undefined;
+            const fromResolution = pairResolution
+                ? undefined
+                : resolveEntityReference(fromReference, entities, ownship);
+            const toResolution = pairResolution
+                ? undefined
+                : resolveEntityReference(toReference, entities, ownship);
+            const fromEntity = pairResolution?.from ?? fromResolution?.entity;
+            const toEntity = pairResolution?.to ?? toResolution?.entity;
+            const failedResolution = pairResolution && !pairResolution.executable
+                ? pairResolution
+                : [fromResolution, toResolution]
+                    .find((resolution): resolution is EntityReferenceResolution => Boolean(resolution)
+                        && resolution.status !== 'RESOLVED');
 
             if (failedResolution) {
+                const resultId = `measurement-reference-status-${failedResolution.status.toLowerCase()}`;
                 commands.push({
-                    id: `measurement-reference-status-${failedResolution.status.toLowerCase()}`,
-                    label: `${failedResolution.status}: ${failedResolution.reference}`,
+                    id: resultId,
+                    label: `${measurementCommand} ${referenceQuery ?? failedResolution.reference}: UNAVAILABLE`,
                     subLabel: `${measurementCommand} blocked · choose an unambiguous reference`,
                     icon: Calculator,
                     keywords: ['brg', 'rng', 'reference', failedResolution.status.toLowerCase()],
                     isPreview: true,
+                    result: pairResolution
+                        ? createPairReferenceResolutionResult(resultId, pairResolution)
+                        : createReferenceResolutionResult(resultId, failedResolution as EntityReferenceResolution),
                     ranking: {
                         category: 'STRUCTURED_PARTIAL',
                         completeness: 2,
@@ -2869,28 +3881,36 @@ export const getCommands = (
                         intent: 'MEASUREMENT',
                     },
                 });
-            } else if (fromResolution.entity && toResolution.entity) {
+            } else if (fromEntity && toEntity) {
                 const kind = measurementCommand as 'BRG' | 'RNG' | 'BRG/RNG';
                 const measurement = calculateTacticalMeasurement(
-                    fromResolution.entity,
-                    toResolution.entity,
+                    fromEntity,
+                    toEntity,
                     {
-                        fromFreshness: context.measurementPositionFreshness?.(fromResolution.entity),
-                        toFreshness: context.measurementPositionFreshness?.(toResolution.entity),
+                        fromFreshness: context.measurementPositionFreshness?.(fromEntity),
+                        toFreshness: context.measurementPositionFreshness?.(toEntity),
                     },
                 );
-                const referenceLabel = fromReference === 'OWNSHIP'
-                    ? toResolution.entity.label
-                    : `${fromResolution.entity.label} ${toResolution.entity.label}`;
+                const referenceLabel = fromEntity.id === ownship.id
+                    ? toEntity.label
+                    : `${fromEntity.label} ${toEntity.label}`;
 
                 commands.push({
-                    id: `measurement-result-${kind.toLowerCase().replace('/', '-')}-${fromResolution.entity.id}-${toResolution.entity.id}`,
+                    id: `measurement-result-${kind.toLowerCase().replace('/', '-')}-${fromEntity.id}-${toEntity.id}`,
                     label: `${kind} ${referenceLabel}`,
                     subLabel: formatTacticalMeasurement(measurement, kind),
                     icon: Calculator,
-                    keywords: ['brg', 'rng', fromResolution.entity.label, toResolution.entity.label],
+                    keywords: ['brg', 'rng', fromEntity.label, toEntity.label],
                     historyValue: q,
                     isPreview: true,
+                    result: createTacticalMeasurementCommandResult(
+                        kind,
+                        measurement,
+                        fromEntity,
+                        toEntity,
+                        ownship,
+                        ownshipNavMode,
+                    ),
                     ranking: {
                         category: 'STRUCTURED_EXACT',
                         completeness: 3,
@@ -2999,6 +4019,8 @@ export const getCommands = (
                     keywords: ['dct', 'goto', 'direct', e.label],
                     type: 'command',
                     historyValue: `DCT ${e.label}`,
+                    dragDropEligible: true,
+                    swipeCapable: true,
                     ranking: createStructuredRanking(q, `DCT ${e.label}`),
                     // No autocompleteValue -> Click executes immediately
                 }
@@ -3027,73 +4049,101 @@ export const getCommands = (
             const toReference = typeof parsedMeasurement.parameters.toReference === 'string'
                 ? parsedMeasurement.parameters.toReference
                 : undefined;
+            const referenceQuery = typeof parsedMeasurement.parameters.referenceQuery === 'string'
+                ? parsedMeasurement.parameters.referenceQuery
+                : undefined;
+            const pairResolution = parsedMeasurement.parameters.referenceMode === 'EXPLICIT_PAIR'
+                && referenceQuery
+                ? resolveEntityPairReference(referenceQuery, entities, ownship)
+                : undefined;
+            const fromResolution = pairResolution || !fromReference
+                ? undefined
+                : resolveEntityReference(fromReference, entities, ownship);
+            const toResolution = pairResolution || !toReference
+                ? undefined
+                : resolveEntityReference(toReference, entities, ownship);
+            const fromEntity = pairResolution?.from ?? fromResolution?.entity;
+            const toEntity = pairResolution?.to ?? toResolution?.entity;
+            const failedResolution = pairResolution
+                ? pairResolution.executable ? undefined : pairResolution
+                : [fromResolution, toResolution]
+                    .find((resolution): resolution is EntityReferenceResolution => Boolean(resolution)
+                        && resolution.status !== 'RESOLVED');
 
-            if (fromReference && toReference) {
-                const fromResolution = resolveEntityReference(fromReference, entities, ownship);
-                const toResolution = resolveEntityReference(toReference, entities, ownship);
-                const failedResolution = [fromResolution, toResolution]
-                    .find(resolution => resolution.status !== 'RESOLVED');
+            if (failedResolution) {
+                const resultId = `${etaEteCommand.toLowerCase()}-reference-status-${failedResolution.status.toLowerCase()}`;
+                commands.push({
+                    id: resultId,
+                    label: `${etaEteCommand} ${referenceQuery ?? failedResolution.reference}: UNAVAILABLE`,
+                    subLabel: `${etaEteCommand} blocked · choose an unambiguous reference`,
+                    icon: Calculator,
+                    keywords: ['eta', 'ete', 'reference', failedResolution.status.toLowerCase()],
+                    isPreview: true,
+                    result: pairResolution
+                        ? createPairReferenceResolutionResult(resultId, pairResolution)
+                        : createReferenceResolutionResult(resultId, failedResolution as EntityReferenceResolution),
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                        intent: 'MEASUREMENT',
+                    },
+                });
+            } else if (fromEntity && toEntity) {
+                const explicitSpeed = typeof parsedMeasurement.parameters.speed === 'number'
+                    && parsedMeasurement.parameters.speedUnit === 'KT'
+                    ? {
+                        speedKnots: parsedMeasurement.parameters.speed,
+                        source: 'USER_INPUT' as const,
+                        qualification: 'USER_ASSUMPTION' as const,
+                    }
+                    : groundSpeed;
+                const result = calculateEtaEte(
+                    fromEntity.position,
+                    toEntity.position,
+                    explicitSpeed,
+                    scenarioTimeMs,
+                );
+                const display = formatEtaEte(result, localTimeZone ?? 'UTC');
+                const referenceLabel = fromReference === 'OWNSHIP'
+                    ? toEntity.label
+                    : `${fromEntity.label} → ${toEntity.label}`;
+                const resultId = fromEntity.id === ownship.id
+                    ? `${etaEteCommand.toLowerCase()}-${toEntity.id}`
+                    : `${etaEteCommand.toLowerCase()}-${fromEntity.id}-${toEntity.id}`;
+                const label = `${etaEteCommand} ${referenceLabel}`;
 
-                if (failedResolution) {
-                    commands.push({
-                        id: `${etaEteCommand.toLowerCase()}-reference-status-${failedResolution.status.toLowerCase()}`,
-                        label: `${etaEteCommand} ${failedResolution.reference}`,
-                        subLabel: `${failedResolution.status} · ${etaEteCommand} blocked`,
-                        icon: Calculator,
-                        keywords: ['eta', 'ete', 'reference', failedResolution.status.toLowerCase()],
-                        isPreview: true,
-                        ranking: {
-                            category: 'STRUCTURED_EXACT',
-                            completeness: 3,
-                            match: 'EXACT',
-                            intent: 'MEASUREMENT',
-                        },
-                    });
-                } else if (fromResolution.entity && toResolution.entity) {
-                    const explicitSpeed = typeof parsedMeasurement.parameters.speed === 'number'
-                        && parsedMeasurement.parameters.speedUnit === 'KT'
-                        ? {
-                            speedKnots: parsedMeasurement.parameters.speed,
-                            source: 'USER_INPUT' as const,
-                            qualification: 'USER_ASSUMPTION' as const,
+                commands.push({
+                    id: resultId,
+                    label,
+                    subLabel: `${display.distance} · ${display.ete} · ${display.etaUtc} · ${display.etaLocal} · ${display.speed} · SRC: ${result.speedSource}`,
+                    icon: Calculator,
+                    action: () => {
+                        if (navigator.clipboard) {
+                            void navigator.clipboard.writeText(`${label}: ${display.ete}; ${display.etaUtc}`);
                         }
-                        : groundSpeed;
-                    const result = calculateEtaEte(
-                        fromResolution.entity.position,
-                        toResolution.entity.position,
-                        explicitSpeed,
-                        scenarioTimeMs ?? Number.NaN,
-                    );
-                    const display = formatEtaEte(result, localTimeZone ?? 'UTC');
-                    const referenceLabel = fromReference === 'OWNSHIP'
-                        ? toResolution.entity.label
-                        : `${fromResolution.entity.label} → ${toResolution.entity.label}`;
-                    const resultId = fromReference === 'OWNSHIP'
-                        ? `${etaEteCommand.toLowerCase()}-${toResolution.entity.id}`
-                        : `${etaEteCommand.toLowerCase()}-${fromResolution.entity.id}-${toResolution.entity.id}`;
-                    const label = `${etaEteCommand} ${referenceLabel}`;
-
-                    commands.push({
-                        id: resultId,
-                        label,
-                        subLabel: `${display.distance} · ${display.ete} · ${display.etaUtc} · ${display.etaLocal} · ${display.speed} · SRC: ${result.speedSource}`,
-                        icon: Calculator,
-                        action: () => {
-                            if (navigator.clipboard) {
-                                void navigator.clipboard.writeText(`${label}: ${display.ete}; ${display.etaUtc}`);
-                            }
-                        },
-                        keywords: ['eta', 'ete', 'time', 'distance', fromResolution.entity.label, toResolution.entity.label],
-                        historyValue: q,
-                        isPreview: true,
-                        ranking: {
-                            category: 'STRUCTURED_EXACT',
-                            completeness: 3,
-                            match: 'EXACT',
-                            intent: 'MEASUREMENT',
-                        },
-                    });
-                }
+                    },
+                    keywords: ['eta', 'ete', 'time', 'distance', fromEntity.label, toEntity.label],
+                    historyValue: q,
+                    isPreview: true,
+                    result: createEtaEteCommandResult({
+                        command: etaEteCommand,
+                        from: fromEntity,
+                        to: toEntity,
+                        result,
+                        speed: explicitSpeed,
+                        ownship,
+                        ownshipNavMode,
+                        scenarioTimeMs,
+                        localTimeZone,
+                    }),
+                    ranking: {
+                        category: 'STRUCTURED_EXACT',
+                        completeness: 3,
+                        match: 'EXACT',
+                        intent: 'MEASUREMENT',
+                    },
+                });
             }
         }
 
@@ -3194,6 +4244,16 @@ export const getCommands = (
         // If empty, append system commands after history
         commands.push(...systemCommands);
     }
+    const exactStructuredFamily = q.length > 0 ? structuredPaletteFamily(parsedMeasurement) : undefined;
+    if (exactStructuredFamily) {
+        const exactStructuredCommands = commands.filter(command => (
+            belongsToStructuredPaletteFamily(command, exactStructuredFamily)
+        ));
+        if (exactStructuredCommands.length > 0) {
+            return withInteractionCapabilities(exactStructuredCommands);
+        }
+    }
+
     const rankedCommands = q.length > 0 ? rankCommandOptions(q, commands) : commands;
     const nearestResults = parsedMeasurement.type === 'SEARCH'
         && parsedMeasurement.parameters.command === 'NEAREST'
@@ -3201,10 +4261,10 @@ export const getCommands = (
         : [];
     if (nearestResults.length > 0) {
         const nearestIds = new Set(nearestResults.map(command => command.id));
-        return [
+        return withInteractionCapabilities([
             ...nearestResults,
             ...rankedCommands.filter(command => !nearestIds.has(command.id)),
-        ];
+        ]);
     }
-    return rankedCommands;
+    return withInteractionCapabilities(rankedCommands);
 };

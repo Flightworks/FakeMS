@@ -284,6 +284,30 @@ describe('typed tactical command parser', () => {
     expect(ete.errors).toEqual([]);
   });
 
+  it('keeps a multi-word implicit target together instead of inventing an origin', () => {
+    const parsed = parseCommand('ETE HOSTILE 1');
+
+    expect(parsed.parameters).toMatchObject({
+      command: 'ETE',
+      fromReference: 'OWNSHIP',
+      toReference: 'HOSTILE 1',
+    });
+    expect(parsed.errors).toEqual([]);
+  });
+
+  it('preserves explicit origin and destination syntax', () => {
+    const parsed = parseCommand('ETE FROM G01 TO HOSTILE 1');
+
+    expect(parsed.parameters).toMatchObject({
+      command: 'ETE',
+      fromReference: 'G01',
+      toReference: 'HOSTILE 1',
+      referenceMode: 'EXPLICIT_PAIR',
+      referenceQuery: 'G01 HOSTILE 1',
+    });
+    expect(parsed.errors).toEqual([]);
+  });
+
   it('rejects a user ETA speed without an explicit speed unit', () => {
     const parsed = parseCommand('ETA BRAVO @ 140');
 

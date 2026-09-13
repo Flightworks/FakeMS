@@ -35,6 +35,17 @@ L’assainissement ne doit pas supprimer ni remplacer cette architecture. Il doi
 
 Toute suppression d’un PW, des QAK ou du principe de menu radial demande une décision de produit explicite. Une revue IHM ordinaire ne doit pas modifier ces fondations.
 
+### Parcours protégés
+
+Ces quatre chemins sont des accès fonctionnels protégés, pas des variantes décoratives. Ils restent disponibles et partagent le même contrat : même cible, même effet local, même état retourné et même règle de confirmation.
+
+- **Menu radial :** ouvrir sur le contexte capturé (fond, ownship, waypoint, piste ou base scénario), choisir un secteur puis une feuille utile ; conserver l’ordre, deux niveaux au maximum et l’annulation par le centre, l’extérieur ou `Escape`.
+- **PW :** lire l’état fermé, ouvrir le panneau, choisir une valeur explicite puis appliquer ; `RESET` et `REPLAY` passent par la demande de confirmation commune, quel que soit le PW.
+- **QAK :** déclencher en un geste `STAB`, `FIND` ou `VER` et rendre le résultat ou l’état immédiatement observable ; un QAK ne contourne jamais une confirmation.
+- **Palette de commandes :** saisir, choisir explicitement une cible ou une complétion, puis cliquer ou presser `Entrée` ; la saisie, la suggestion et l’aperçu ne modifient pas le scénario.
+
+Un radial ne doit pas devenir un anneau vide pour réduire le bruit, et un PW ou une QAK ne doit pas disparaître parce qu’une autre voie existe. Une fonction simulée reste admissible seulement si elle respecte le contrat de capacité défini plus bas.
+
 ## Contenu des PW, QAK et menus radiaux
 
 ### PW fermé
@@ -214,9 +225,14 @@ Le libellé de l’action doit décrire son effet réel. Ne pas afficher `DIRECT
 
 ## Règles d’interaction
 
+### Frontière explicite de confirmation
+
+La frontière de confirmation se situe juste avant la mutation d’un état local sensible. Ouvrir un menu ou un PW, saisir une commande, choisir une complétion, afficher un aperçu et déplacer une consultation ne modifient rien. La mutation, lorsqu’elle est sensible, n’arrive qu’après l’action explicite prévue et une confirmation visible ; `Annuler` laisse le scénario, la cible et les données inchangés.
+
 - Une consultation ou un calcul demande au plus une validation ; ne pas en ajouter pour lire un résultat déjà affiché.
 - Une action locale réversible demande une seule validation.
-- Une action destructive locale demande une validation puis une confirmation.
+- Une action destructive locale demande une validation puis une confirmation, au maximum une fois.
+- `SIM RESET`, `SIM REPLAY`, l’effacement d’une route ou d’une trajectoire et l’activation d’une route DCT simulée suivent cette frontière depuis le radial, le PW, la QAK et la palette.
 - Une fonction absente n’est pas cliquable et n’apparaît pas dans le parcours principal.
 - Un contrôle désactivé indique une condition temporaire, pas une fonction inexistante.
 - Un menu de second niveau existe seulement s’il contient au moins deux actions disponibles.
@@ -235,11 +251,16 @@ Une fonction peut apparaître si elle modifie ou interroge réellement :
 - une trajectoire locale ;
 - un calcul déterministe fondé sur les données disponibles.
 
-### Capacité fictive ou incomplète
+### Fonction simulée observable
 
-Une fonction ne doit pas apparaître si elle mène à `NOT_IMPLEMENTED` ou si son résultat repose sur des valeurs arbitraires présentées comme opérationnelles.
+Une fonction simulée ou expérimentale peut apparaître dans l’interface normale lorsque les quatre éléments suivants sont observables :
 
-Une démonstration expérimentale peut rester dans le code ou dans un mode développeur. Elle ne doit pas concurrencer les fonctions utilisables dans l’interface normale.
+- le **modèle** qui produit le comportement ou le calcul ;
+- les **entrées** utilisées, avec leur origine, unité et hypothèse utile ;
+- l’**état** courant et sa transition après l’action ;
+- l’**effet local** dans le simulateur, la carte ou un panneau vérifiable.
+
+Son libellé doit rester honnête (`SIMULÉ`, `SCÉNARIO`, `HYPOTHÈSE`, `PRÉVISUALISATION` ou `LOCAL` selon le cas). Cette règle autorise la richesse du démonstrateur sans suggérer un capteur réel, une transmission externe ou une qualification opérationnelle. Une fonction sans modèle observable, sans effet local, qui mène à `NOT_IMPLEMENTED` ou qui affiche une valeur arbitraire comme opérationnelle reste absente du parcours normal.
 
 ### Confirmation proportionnée
 
@@ -276,6 +297,23 @@ Une confirmation simple suffit pour ces effets locaux. Ne pas imposer une séque
 - aucune action locale ne demande plus d’une confirmation ;
 - les menus contextuels contiennent uniquement des actions disponibles ;
 - l’interface permanente n’affiche pas un champ `N/A` accompagné d’un second message d’indisponibilité.
+
+## Objectifs tactiles et limites de preuve
+
+Les valeurs suivantes sont des objectifs de conception pour le démonstrateur, à mesurer sur le matériel cible ; elles ne constituent ni une certification cockpit ni une exigence aéronautique universelle :
+
+- zone active habituelle : au moins `48 × 48 px CSS` ; vérifier aussi la taille physique, la distance de visée et l’usage avec gants ;
+- valeur principale : au moins `18 px` ; texte d’action et qualification utile : au moins `14 px` ;
+- contraste visé : `4,5:1` pour le texte courant et `3:1` pour les composants ou états non textuels pertinents, sur les fonds et opacités réellement composés ;
+- aucune valeur principale ni unité tronquée, et aucune commande de premier usage en `8/9 px`.
+
+Un test unitaire, E2E, DOM, contraste ou débordement prouve un contrat technique ou une mesure dans ses conditions ; il ne prouve pas à lui seul la facilité d’usage. La revue de code et la comparaison avec `main` ne remplacent ni des utilisateurs représentatifs ni une tablette cible avec conditions de lumière, vibrations, gants et clavier virtuel. Les anciens résultats de tests ne qualifient donc pas l’ergonomie des comportements à venir. Toute conclusion ergonomique doit indiquer sa méthode, son échantillon et ses limites.
+
+## Décision de qualification
+
+La [fiche de qualification IHM T30](../reviews/hmi-qualification.md) rassemble le mapping AC01–AC21, les preuves des scénarios S01–S12 et les limites du pack côtier OSM/ODbL et de la PWA. Elle conclut à une **qualification technique obtenue** pour les contrats testés, pas à une qualification opérationnelle.
+
+**T29 facteurs humains reste à faire faute de 5–8 participants représentatifs et de tablette/matériel cible.** Les tests DOM, E2E et unitaires ne remplacent ni observation physique, ni essai avec gants, ni conditions de lumière ou de vibrations. Aucun taux de réussite, temps, NASA-TLX ou résultat matériel ne doit être déduit d’un test automatisé.
 
 ## Revue avant intégration
 

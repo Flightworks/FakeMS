@@ -65,5 +65,11 @@ La palette regroupe les calculs, les consultations du scénario et les contrôle
 
 👉 Consultez le [guide rapide de la palette de commandes](./05-scratchpad-guide.md) pour les commandes et exemples.
 
+## 7. Qualification technique et limites
+
+La qualification technique du périmètre IHM audité est documentée dans la [fiche de qualification T30](./reviews/hmi-qualification.md). Elle couvre les contrats DOM, navigateur, calculs locaux, confirmations, pack côtier et PWA dans les conditions testées.
+
+Les seuils tactiles et de contraste restent des objectifs techniques du démonstrateur. **T29 facteurs humains reste à faire faute de 5–8 participants représentatifs et de tablette/matériel cible** : aucune qualification opérationnelle, certification cockpit ou mesure d’ergonomie sur matériel réel n’est revendiquée.
+
 ---
 [Back to Getting Started](./02-getting-started.md) | [Next: Configuration](./04-configuration.md)

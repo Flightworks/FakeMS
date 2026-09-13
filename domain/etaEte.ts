@@ -47,6 +47,22 @@ const isValidPosition = (position: Position): boolean => (
   && position.lon <= 180
 );
 
+export const isQualifiedGroundSpeed = (speed: GroundSpeedInput | undefined): speed is GroundSpeedInput => {
+  if (!speed || !Number.isFinite(speed.speedKnots) || speed.speedKnots <= 0) return false;
+
+  return (speed.source === 'SIMULATION' && speed.qualification === 'SIMULATED')
+    || (speed.source === 'GPS' && speed.qualification === 'MEASURED')
+    || (speed.source === 'USER_INPUT' && speed.qualification === 'USER_ASSUMPTION');
+};
+
+export const isGroundSpeedStale = (
+  speed: GroundSpeedInput | undefined,
+  scenarioTimeMs?: number,
+): boolean => Number.isFinite(scenarioTimeMs)
+  && Number.isFinite(speed?.updatedAt)
+  && Number.isFinite(speed?.staleAfterMs)
+  && (scenarioTimeMs as number - (speed?.updatedAt as number)) > (speed?.staleAfterMs as number);
+
 const unavailable = (
   reason: EtaEteUnavailableReason,
   distanceNauticalMiles: number | null,
@@ -66,7 +82,7 @@ export const calculateEtaEte = (
   origin: Position,
   destination: Position,
   speed: GroundSpeedInput | undefined,
-  scenarioTimeMs: number,
+  scenarioTimeMs?: number,
 ): EtaEteResult => {
   if (!isValidPosition(origin) || !isValidPosition(destination)) {
     return unavailable('INVALID_POSITION', null, speed);
@@ -79,29 +95,27 @@ export const calculateEtaEte = (
     destination.lon,
   ) / METERS_PER_NAUTICAL_MILE;
 
-  if (!Number.isFinite(scenarioTimeMs)) {
-    return unavailable('SCENARIO_TIME_UNAVAILABLE', distanceNauticalMiles, speed);
-  }
-
-  if (!speed || !Number.isFinite(speed.speedKnots) || speed.speedKnots <= 0) {
+  if (!isQualifiedGroundSpeed(speed)) {
     return unavailable('SPEED_UNAVAILABLE', distanceNauticalMiles, speed);
   }
 
-  if (Number.isFinite(speed.updatedAt)
-    && Number.isFinite(speed.staleAfterMs)
-    && (scenarioTimeMs - (speed.updatedAt as number)) > (speed.staleAfterMs as number)) {
+  if (isGroundSpeedStale(speed, scenarioTimeMs)) {
     return unavailable('SPEED_STALE', distanceNauticalMiles, speed);
   }
 
   const eteSeconds = distanceNauticalMiles / speed.speedKnots * 3600;
+  const etaUtcMs = Number.isFinite(scenarioTimeMs)
+    ? (scenarioTimeMs as number) + eteSeconds * 1000
+    : null;
   return {
     status: 'AVAILABLE',
     distanceNauticalMiles,
     eteSeconds,
-    etaUtcMs: scenarioTimeMs + eteSeconds * 1000,
+    etaUtcMs,
     speedKnots: speed.speedKnots,
     speedSource: speed.source,
     speedQualification: speed.qualification,
+    ...(etaUtcMs === null ? { reason: 'SCENARIO_TIME_UNAVAILABLE' as const } : {}),
   };
 };
 
@@ -152,11 +166,16 @@ export const formatEtaEte = (
     };
   }
 
+  const etaUtc = formatDateTime(result.etaUtcMs, 'UTC');
+  const etaLocal = formatDateTime(result.etaUtcMs, localTimeZone);
+
   return {
     distance,
     ete: `ETE: ${formatDuration(result.eteSeconds)}`,
-    etaUtc: `ETA UTC: ${formatDateTime(result.etaUtcMs, 'UTC')} UTC`,
-    etaLocal: `ETA LOCAL (${localTimeZone}): ${formatDateTime(result.etaUtcMs, localTimeZone)} ${localTimeZone}`,
+    etaUtc: etaUtc === 'UNAVAILABLE' ? 'ETA UTC: UNAVAILABLE' : `ETA UTC: ${etaUtc} UTC`,
+    etaLocal: etaLocal === 'UNAVAILABLE'
+      ? `ETA LOCAL (${localTimeZone}): UNAVAILABLE`
+      : `ETA LOCAL (${localTimeZone}): ${etaLocal} ${localTimeZone}`,
     speed,
   };
 };

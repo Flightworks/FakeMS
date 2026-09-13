@@ -57,6 +57,18 @@ describe('simulated route summary', () => {
     expect(summary.etaUtcMs).toBeCloseTo(1_000 + (summary.eteSeconds ?? 0) * 1_000, 5);
   });
 
+  it('keeps ETE available when the absolute scenario clock is unavailable', () => {
+    const summary = summarizeRoute(route, {
+      currentPosition: { lat: 0, lon: 0 },
+      speed: simulationSpeed,
+    });
+
+    expect(summary.status).toBe('ACTIVE');
+    expect(summary.eteSeconds).toBeCloseTo((summary.remainingDistanceNauticalMiles / 120) * 3600, 10);
+    expect(summary.etaUtcMs).toBeNull();
+    expect(summary.timingReason).toBe('SCENARIO_TIME_UNAVAILABLE');
+  });
+
   it('advances to the second branch and does not present a completed branch as next', () => {
     const activeSecondBranch = summarizeRoute({
       ...route,
@@ -83,6 +95,72 @@ describe('simulated route summary', () => {
     expect(completed.message).toBe('ROUTE COMPLETE');
     expect(completed.activeBranch).toBeNull();
     expect(completed.nextPoint).toBeNull();
+  });
+
+  it('rejects a stale speed consistently in route timing', () => {
+    const summary = summarizeRoute(route, {
+      currentPosition: { lat: 0, lon: 0 },
+      speed: {
+        ...simulationSpeed,
+        updatedAt: 1_000,
+        staleAfterMs: 100,
+      },
+      scenarioTimeMs: 1_101,
+    });
+
+    expect(summary.eteSeconds).toBeNull();
+    expect(summary.etaUtcMs).toBeNull();
+    expect(summary.timingReason).toBe('SPEED_STALE');
+    expect(summary.speedKnots).toBe(120);
+  });
+
+  it('keeps zero speed unavailable without changing its source qualification', () => {
+    const summary = summarizeRoute(route, {
+      currentPosition: { lat: 0, lon: 0 },
+      speed: {
+        speedKnots: 0,
+        source: 'GPS',
+        qualification: 'MEASURED',
+      },
+      scenarioTimeMs: 1_000,
+    });
+
+    expect(summary.eteSeconds).toBeNull();
+    expect(summary.etaUtcMs).toBeNull();
+    expect(summary.timingReason).toBe('SPEED_UNAVAILABLE');
+    expect(summary.speedKnots).toBeNull();
+    expect(summary.speedSource).toBe('GPS');
+    expect(summary.speedQualification).toBe('MEASURED');
+  });
+
+  it('preserves timing qualification when the selected source changes', () => {
+    const gps = summarizeRoute(route, {
+      currentPosition: { lat: 0, lon: 0 },
+      speed: { speedKnots: 90, source: 'GPS', qualification: 'MEASURED' },
+      scenarioTimeMs: 1_000,
+    });
+    const simulation = summarizeRoute(route, {
+      currentPosition: { lat: 0, lon: 0 },
+      speed: simulationSpeed,
+      scenarioTimeMs: 1_000,
+    });
+
+    expect(gps.speedSource).toBe('GPS');
+    expect(gps.speedQualification).toBe('MEASURED');
+    expect(simulation.speedSource).toBe('SIMULATION');
+    expect(simulation.speedQualification).toBe('SIMULATED');
+  });
+
+  it('reports zero ETE for a completed route without requiring absolute time', () => {
+    const summary = summarizeRoute({ ...route, remainingWaypointCount: 0 }, {
+      currentPosition: { lat: 0.2, lon: 0 },
+      speed: undefined,
+    });
+
+    expect(summary.status).toBe('COMPLETED');
+    expect(summary.eteSeconds).toBe(0);
+    expect(summary.etaUtcMs).toBeNull();
+    expect(summary.timingReason).toBe('SCENARIO_TIME_UNAVAILABLE');
   });
 
   it('keeps the route summary visible while reporting unavailable timing data', () => {

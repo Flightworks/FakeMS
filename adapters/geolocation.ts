@@ -4,6 +4,8 @@ export interface GeoUpdate {
   position: Position;
   accuracyMeters?: number;
   timestamp: number;
+  speedMetersPerSecond?: number | null;
+  headingDegrees?: number | null;
 }
 
 export interface GeoError {
@@ -43,6 +45,8 @@ export const createBrowserGeolocationAdapter = (): GeolocationAdapter => {
           },
           accuracyMeters: position.coords.accuracy,
           timestamp: position.timestamp,
+          speedMetersPerSecond: position.coords.speed,
+          headingDegrees: position.coords.heading,
         }),
         error => onError({ code: error.code, message: error.message }),
         {

@@ -46,6 +46,43 @@ Source : le même `ne_10m_land.geojson` Natural Earth, découpé par `scripts/pr
 
 Le rendu masque d’abord la forme 1:110m dans cette zone, puis applique les polygones 1:10m. Les limites de découpe restent au-delà de la vue nominale autour de Toulon.
 
+### Pack côtier OSM Toulon (prototype hors ligne)
+
+Le pack local `toulon/` contient des lignes de côte OpenStreetMap préparées par
+`scripts/prepare-mission-coast.py` et contrôlées par
+`scripts/validate-mission-coast.py`. Il est destiné au prototype visuel local
+et pourra être consommé par la couche côtière de FakeMS sans requête réseau.
+
+- zone source et validation : longitude `4.8` à `6.5`, latitude `42.8` à `43.5` ;
+- requête Overpass :
+  `[out:json][timeout:60];way["natural"="coastline"](42.8,4.8,43.5,6.5);out geom;` ;
+- récupération enregistrée : `2026-09-12T19:09:16Z` (métadonnée du fichier source) ;
+- source : `https://overpass-api.de/api/interpreter` ;
+- licence : ODbL-1.0 ; attribution : `© OpenStreetMap contributors` ;
+- source filtrée : `620` ways `natural=coastline` ;
+- sortie : `622` features `LineString`, `59444` sommets, `1406486` octets ;
+- projection : WGS84 ; aucune propriété civile ni libellé n’est copié dans les features.
+
+Les secteurs stables sont :
+
+| Fichier | Secteur | Features | Sommets | Taille | SHA-256 |
+| --- | --- | ---: | ---: | ---: | --- |
+| `toulon/coast-west.geojson` | `4.8`–`5.65` E | 316 | 30592 | 723577 | `6b61edbad26bedb075a965b373dd1d0e49416f9b4f2d57ea102e8c933cc2509f` |
+| `toulon/coast-east.geojson` | `5.65`–`6.5` E | 306 | 28852 | 682909 | `60933fa6cbb81d0a35d6d94ff267c1a0d5cbb39059bad30ce84bdec368d7fa9d` |
+
+Les ways ouverts restent ouverts et sont toujours des `LineString` ; aucun
+polygone de terre n’est fabriqué à partir de lignes potentiellement
+discontinues. La surface de terre mondiale Natural Earth
+(`ne_110m_land.geojson`) reste donc le repli de remplissage.
+
+Ce jeu OSM n’est pas un levé hydrographique : il n’est pas de qualité
+topographique garantie, dépend de mises à jour communautaires hétérogènes et
+ne constitue pas une carte de navigation certifiée. Le produit SHOM LimTM
+reste une source potentielle pour une acquisition configurée ultérieure ; son
+endpoint WFS/WMS demande une ressource ou un jeton (réponse HTTP 401 observée)
+et son téléchargement passe par une commande configurable. Aucun identifiant
+ou contournement d’accès n’est utilisé ici.
+
 ## Aéroports majeurs
 
 Source complète :

@@ -56,6 +56,29 @@ describe('command dispatcher', () => {
     expect(accepted.events.at(-1)).toMatchObject({ kind: 'ROUTE_ACCEPTED', simTimeMs: 300 });
   });
 
+  it('does not accept the same proposal twice', () => {
+    const proposed = dispatchCommand(createCommandState(), {
+      type: 'PROPOSE_DIRECT_TO',
+      targetId: 'track-1',
+      targetLabel: 'G01',
+      position: target,
+      issuedAt: 200,
+    });
+    const accepted = dispatchCommand(proposed, {
+      type: 'ACCEPT_ROUTE_PROPOSAL',
+      proposalId: proposed.directToProposal!.id,
+      authorizedAt: 300,
+    });
+    const repeated = dispatchCommand(accepted, {
+      type: 'ACCEPT_ROUTE_PROPOSAL',
+      proposalId: proposed.directToProposal!.id,
+      authorizedAt: 301,
+    });
+
+    expect(repeated).toBe(accepted);
+    expect(repeated.events).toHaveLength(2);
+  });
+
   it('rejects an unknown proposal without mutating the route', () => {
     const state = dispatchCommand(createCommandState(), {
       type: 'ACCEPT_ROUTE_PROPOSAL',

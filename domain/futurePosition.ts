@@ -3,6 +3,11 @@ import {
   projectTacticalPosition,
   TACTICAL_PROJECTION_METHOD,
 } from './tacticalProjection';
+import type {
+  KinematicsQualification,
+  KinematicsSnapshot,
+  KinematicsSource,
+} from './kinematics';
 
 export const MAX_FUTURE_PROJECTION_MINUTES = 60;
 export const MAX_FUTURE_PROJECTION_NM = 500;
@@ -31,7 +36,28 @@ export interface FuturePositionTrack {
   freshness?: FuturePositionFreshness;
   lastSeenAtMs?: number;
   ageSeconds?: number;
+  source?: KinematicsSource;
+  sourceLabel?: string;
+  qualification?: KinematicsQualification;
+  timestampMs?: number | null;
+  assumption?: 'CONSTANT VELOCITY';
 }
+
+export const toFuturePositionTrack = (snapshot: KinematicsSnapshot): FuturePositionTrack => ({
+  id: snapshot.id,
+  label: snapshot.label,
+  position: { ...snapshot.position },
+  groundTrackDegrees: snapshot.groundTrackDegrees ?? undefined,
+  groundSpeedKnots: snapshot.groundSpeedKnots ?? undefined,
+  freshness: snapshot.freshness,
+  lastSeenAtMs: snapshot.timestampMs ?? undefined,
+  ageSeconds: snapshot.ageSeconds ?? undefined,
+  source: snapshot.source,
+  sourceLabel: snapshot.sourceLabel,
+  qualification: snapshot.qualification,
+  timestampMs: snapshot.timestampMs,
+  assumption: snapshot.assumption,
+});
 
 export interface FuturePositionRequest {
   track: FuturePositionTrack;

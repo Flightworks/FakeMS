@@ -5,6 +5,7 @@ import changelogRaw from '../CHANGELOG.md?raw';
 import {
   Menu, ArrowUp, Search, X, Info, BookOpen, Crosshair
 } from 'lucide-react';
+import { HMI_CLASSES } from './hmiTokens';
 
 interface LeftSidebarProps {
   mapMode: MapMode;
@@ -21,6 +22,7 @@ interface LeftSidebarProps {
   stabMode: StabMode;
   setStabMode: (m: StabMode) => void;
   onResetStab: () => void;
+  onOpenStabilizationPanel?: () => void;
 }
 
 interface QakOption {
@@ -40,6 +42,9 @@ interface SidebarButtonProps {
   icon?: any;
   active?: boolean;
   onClick: () => void;
+  description?: string;
+  descriptionId?: string;
+  buttonRef?: React.Ref<HTMLButtonElement>;
 }
 
 const SidebarButton: React.FC<SidebarButtonProps> = ({
@@ -47,13 +52,19 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
   subLabel,
   icon: Icon,
   active = false,
-  onClick
+  onClick,
+  description,
+  descriptionId,
+  buttonRef,
 }) => (
   <button
+    ref={buttonRef}
     type="button"
     aria-label={label || 'Toggle tactical menu'}
+    aria-describedby={description && descriptionId ? descriptionId : undefined}
     onClick={onClick}
     className={`
+      ${HMI_CLASSES.activeTarget} ${HMI_CLASSES.actionText} ${HMI_CLASSES.focusRing}
       w-16 h-16 flex flex-col items-center justify-center rounded-md border-2 shadow-lg transition-all duration-100 active:scale-95 shrink-0 pointer-events-auto
       ${active
         ? 'bg-emerald-900 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
@@ -62,8 +73,9 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
     `}
   >
     {Icon && <Icon size={24} className={`mb-0.5 ${active ? 'text-emerald-200' : 'text-slate-400'}`} />}
-    {label && <span className="text-[10px] font-bold uppercase leading-none">{label}</span>}
-    {subLabel && <span className={`text-[9px] font-bold uppercase leading-none mt-0.5 ${active ? 'text-emerald-300' : 'text-emerald-500'}`}>{subLabel}</span>}
+    {label && <span className={`${HMI_CLASSES.actionText} text-sm font-bold uppercase leading-none`}>{label}</span>}
+    {subLabel && <span className={`${HMI_CLASSES.qualification} text-sm font-bold uppercase leading-none mt-0.5 ${active ? 'text-emerald-300' : 'text-emerald-500'}`}>{subLabel}</span>}
+    {description && descriptionId && <span id={descriptionId} className="sr-only">{description}</span>}
   </button>
 );
 
@@ -99,16 +111,37 @@ const ParameterHelper: React.FC<{ activeCategory: QakOption | undefined }> = ({ 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   mapMode, setMapMode, toggleLayer, systems, toggleSystem, isOpen, onToggle,
   gestureSettings, setGestureSettings, onOpenCommandPalette, ownship,
-  stabMode, setStabMode, onResetStab
+  stabMode, setStabMode, onResetStab, onOpenStabilizationPanel,
 }) => {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const lastTopRef = useRef(0);
   const compassAngleRef = useRef(0);
+  const versionButtonRef = useRef<HTMLButtonElement>(null);
+  const changelogCloseRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isOpen) setActiveCategoryId(null);
   }, [isOpen]);
+
+  const closeChangelog = React.useCallback(() => {
+    setShowChangelog(false);
+    versionButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    if (!showChangelog) return undefined;
+
+    changelogCloseRef.current?.focus({ preventScroll: true });
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeChangelog();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [closeChangelog, showChangelog]);
 
   const handleCategoryClick = (item: QakOption) => {
     if (activeCategoryId === item.id) {
@@ -126,16 +159,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       subLabel: stabMode === StabMode.GND ? 'GND' : 'H/C',
       icon: Crosshair,
       active: stabMode === StabMode.GND,
-      action: () => stabMode === StabMode.GND ? onResetStab() : setStabMode(StabMode.GND),
-      description: 'GND / H/C stabilisation.'
-    },
-    {
-      id: 'version',
-      label: 'VER',
-      subLabel: `v${packageData.version}`,
-      icon: Info,
-      action: () => setShowChangelog(true),
-      active: showChangelog
+      action: () => {
+        if (onOpenStabilizationPanel) {
+          onOpenStabilizationPanel();
+          return;
+        }
+        if (stabMode === StabMode.GND) onResetStab();
+        else setStabMode(StabMode.GND);
+      },
+      description: stabMode === StabMode.GND
+        ? 'GND fixed-ground anchor active. Open STABLN controls.'
+        : 'H/C ownship-follow mode active. Open STABLN controls.',
     },
     {
       id: 'search',
@@ -143,7 +177,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       subLabel: 'CMD',
       icon: Search,
       action: onOpenCommandPalette,
-      active: activeCategoryId === 'search'
+      description: 'Open the tactical command palette.',
+    },
+    {
+      id: 'version',
+      label: 'VER',
+      subLabel: `v${packageData.version}`,
+      icon: Info,
+      action: () => setShowChangelog(true),
+      active: showChangelog,
+      description: 'Open the served version and changelog.',
     }
   ];
 
@@ -190,11 +233,25 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </button>
         </div>
         <div className="relative flex flex-row items-start gap-2">
-          <div className={`flex flex-col gap-2 p-1 bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-800/50 transition-all duration-300 ease-in-out origin-top-left ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}>
+          <nav
+            data-testid="quick-access-keys"
+            aria-label="Quick access keys"
+            className={`flex flex-col gap-2 p-1 bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-800/50 ${isOpen ? 'border-emerald-800/60' : ''}`}
+          >
             {menuConfig.map(item => (
-              <SidebarButton key={item.id} label={item.label} subLabel={item.subLabel} icon={item.icon} active={item.active} onClick={() => handleCategoryClick(item)} />
+              <SidebarButton
+                key={item.id}
+                label={item.label}
+                subLabel={item.subLabel}
+                icon={item.icon}
+                active={item.active}
+                onClick={() => handleCategoryClick(item)}
+                description={item.description}
+                descriptionId={`qak-${item.id}-description`}
+                buttonRef={item.id === 'version' ? versionButtonRef : undefined}
+              />
             ))}
-          </div>
+          </nav>
           <div className={`absolute left-[calc(100%+0.5rem)] flex flex-col gap-2 p-1 bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-700/50 shadow-2xl transition-all duration-200 ease-out origin-left ${activeCategory && !activeCategory.action ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 -translate-x-4 scale-95 pointer-events-none'}`} style={{ top: `${currentTopRem}rem` }}>
             {(activeCategory?.children || menuConfig.find(c => c.id === activeCategoryId)?.children)?.map(sub => (
               <SidebarButton key={sub.id} label={sub.label} subLabel={sub.subLabel} icon={sub.icon} active={sub.active} onClick={sub.action || (() => { })} />
@@ -206,7 +263,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
       {/* Changelog Modal */}
       {showChangelog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto" onClick={() => setShowChangelog(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Changelog"
+          onClick={closeChangelog}
+        >
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
             className="relative bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl w-[600px] max-w-[90vw] h-[70vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
@@ -218,8 +281,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <h2 className="text-emerald-400 font-bold uppercase tracking-widest text-sm">Changelog</h2>
               </div>
               <button
-                onClick={() => setShowChangelog(false)}
-                className="text-slate-400 hover:text-white transition-colors"
+                ref={changelogCloseRef}
+                type="button"
+                aria-label="Close changelog"
+                onClick={closeChangelog}
+                className={`${HMI_CLASSES.activeTarget} ${HMI_CLASSES.focusRing} min-w-[48px] min-h-[48px] flex items-center justify-center rounded text-slate-400 hover:text-white transition-colors`}
               >
                 <X size={20} />
               </button>

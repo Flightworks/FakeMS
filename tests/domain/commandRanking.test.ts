@@ -125,4 +125,27 @@ describe('deterministic command ranking', () => {
 
     expect(rankCommandOptions('BRAVO 180/5', options).map(option => option.id)).toEqual(['projection']);
   });
+
+  it('filters unrelated options before fuzzy ranking for an exact ETE query', () => {
+    const options = [
+      command('save-text-note', 'SAVE: "ETE BRAVO"', {
+        category: 'SAVE',
+        completeness: 0,
+        match: 'FUZZY',
+      }),
+      command('dct-bravo', 'DCT BRAVO', {
+        category: 'FUZZY',
+        completeness: 3,
+        match: 'EXACT',
+      }),
+      command('ete-bravo', 'ETE BRAVO', {
+        category: 'STRUCTURED_EXACT',
+        completeness: 3,
+        match: 'EXACT',
+        intent: 'MEASUREMENT',
+      }),
+    ];
+
+    expect(rankCommandOptions('ETE BRAVO', options).map(option => option.id)).toEqual(['ete-bravo']);
+  });
 });

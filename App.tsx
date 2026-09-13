@@ -14,9 +14,12 @@ const JustificationPanel = React.lazy(() => import('./components/JustificationPa
 import { OwnshipPanel, TargetPanel } from './components/InfoPanels';
 import { SimulationBanner } from './components/SimulationBanner';
 import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
-import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode } from './types';
-import { createNavigationState, markNavigationError, markNavigationUpdate, OwnshipNavigationState } from './domain/navigation';
+import { HMI_CLASSES } from './components/hmiTokens';
+import { Entity, EntityType, MapMode, SystemStatus, PrototypeSettings, StabMode, NavMode, HistoryEntry } from './types';
+import { createNavigationState, markNavigationError, markNavigationUpdate, markSimulationUpdate, OwnshipNavigationState } from './domain/navigation';
+import { createKinematicsSnapshot, projectKinematicsToEntity } from './domain/kinematics';
 import { createBrowserGeolocationAdapter } from './adapters/geolocation';
+import { selectGroundSpeedInput } from './domain/navigationInputs';
 import { positionToMeterOffset } from './domain/mapCoordinates';
 import { bearingBetween } from './utils/geo';
 import { CommandIntent, CommandState } from './domain/commands';
@@ -35,7 +38,14 @@ import type { MissionObjective } from './domain/intent';
 import type { RouteProposal, RouteProposalSet } from './domain/proposals';
 import { solveSimpleRouteProposals } from './simulation/simpleRouteSolver';
 import type { CommandContext } from './utils/CommandRegistry';
-import { resolveCommandIntent, type CommandIntent as CommandExecutionIntent } from './application/commandExecutor';
+import {
+  buildCommandContext,
+  createCommandContextFactory,
+  dispatchContextAction,
+  type ContextActionHandlers,
+  type ContextActionRequest,
+} from './application/buildCommandContext';
+import { executeCommandIntent, type CommandIntent as CommandExecutionIntent } from './application/commandExecutor';
 import { useSimulation } from './utils/useSimulation';
 import {
   addScenarioTimer,
@@ -46,14 +56,17 @@ import {
 } from './domain/simulationTimers';
 import {
   createLayerState,
+  setLayerVisibility,
   type TacticalLayerState,
 } from './domain/layers';
 import {
   createDeclutterState,
+  setDeclutterPreset,
   type DeclutterState,
 } from './domain/declutter';
 import {
   createGridState,
+  setGridEnabled,
   type GridState,
 } from './domain/grid';
 import {
@@ -73,15 +86,70 @@ import {
   DEFAULT_MISSION_ORIGIN,
   translateScenarioPosition,
 } from './domain/missionOrigin';
+import { CONTEXT_ACTION_IDS } from './domain/contextActions';
+import { calculateEtaEte, formatEtaEte } from './domain/etaEte';
+import { calculateTacticalMeasurement, formatTacticalMeasurement } from './domain/tacticalMeasurements';
+import {
+  createBullseye,
+} from './domain/bullseye';
+import {
+  projectFuturePosition,
+  toFuturePositionTrack,
+} from './domain/futurePosition';
 
 const DEFAULT_ORIGIN = DEFAULT_MISSION_ORIGIN;
 const BUILD_ID = import.meta.env.VITE_BUILD_ID || 'local';
+
+type HmiRootStyle = React.CSSProperties & {
+  '--ui-scale': number;
+};
+
+type MapRenderSurfaceStyle = React.CSSProperties & {
+  '--hmi-map-base-opacity': number;
+};
 
 const formatTimerRemaining = (milliseconds: number): string => {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const readDraggedHistory = (value: unknown): HistoryEntry[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.original !== 'string'
+      || typeof entry.canonical !== 'string'
+      || typeof entry.timestamp !== 'number'
+      || !Number.isFinite(entry.timestamp)) return [];
+    const original = entry.original.trim();
+    const canonical = entry.canonical.trim();
+    return original && canonical
+      ? [{ original, canonical, timestamp: entry.timestamp }]
+      : [];
+  }).slice(0, 100);
+};
+
+const capturePanelReturnFocus = (fallbackSelector: string): HTMLElement | null => {
+  if (typeof document === 'undefined') return null;
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement
+    && activeElement !== document.body
+    && !activeElement.closest('[data-command-palette="true"]')) {
+    return activeElement;
+  }
+  return document.querySelector<HTMLElement>(fallbackSelector);
+};
+
+const restorePanelFocus = (focusRef: React.MutableRefObject<HTMLElement | null>) => {
+  const target = focusRef.current;
+  focusRef.current = null;
+  if (typeof document === 'undefined' || !target || !document.contains(target)) return;
+  target.focus({ preventScroll: true });
+  target.style.setProperty('outline', '3px solid rgb(103 232 249)');
+  target.style.setProperty('outline-offset', '2px');
 };
 
 const INITIAL_OWNSHIP: Entity = {
@@ -109,6 +177,12 @@ type BullseyeProposal =
   | { type: 'SET'; bullseye: BullseyeReference }
   | { type: 'CLEAR'; previous: BullseyeReference };
 
+interface ContextActionResult {
+  actionId: string;
+  label: string;
+  detail: string;
+}
+
 const App: React.FC = () => {
   const [origin, setOrigin] = useState<{ lat: number, lon: number } | null>(DEFAULT_ORIGIN);
   const [ownship, setOwnship] = useState<Entity>(INITIAL_OWNSHIP);
@@ -116,8 +190,11 @@ const App: React.FC = () => {
   const [ownshipNavMode, setOwnshipNavMode] = useState<NavMode>(NavMode.REAL);
   const [navigationState, setNavigationState] = useState<OwnshipNavigationState>(() => createNavigationState(INITIAL_OWNSHIP.position));
   const [commandState, setCommandState] = useState<CommandState>(() => createCommandState());
+  const [directToPanelOpen, setDirectToPanelOpen] = useState(false);
+  const directToReturnFocusRef = useRef<HTMLElement | null>(null);
   const [missionActionState, setMissionActionState] = useState(() => createMissionActionState());
   const [missionActionPanelOpen, setMissionActionPanelOpen] = useState(false);
+  const missionActionReturnFocusRef = useRef<HTMLElement | null>(null);
   const [routeProposalSet, setRouteProposalSet] = useState<RouteProposalSet | null>(null);
   const [activeSimulatedRoute, setActiveSimulatedRoute] = useState<ActiveSimulatedRoute | undefined>();
   const [acceptedRouteProposalId, setAcceptedRouteProposalId] = useState<string | null>(null);
@@ -150,13 +227,73 @@ const App: React.FC = () => {
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     [],
   );
-  const simulationGroundSpeed = ownshipNavMode === NavMode.SIM
-    ? {
-        speedKnots: ownship.speed,
-        source: 'SIMULATION' as const,
-        qualification: 'SIMULATED' as const,
-      }
-    : undefined;
+  const groundSpeed = selectGroundSpeedInput(
+    ownshipNavMode === NavMode.SIM ? 'SIM' : 'GPS',
+    ownship.speed,
+    navigationState.groundSpeed,
+  );
+  const ownshipKinematics = React.useMemo(() => {
+    const isSimulation = ownshipNavMode === NavMode.SIM;
+    const gpsCurrent = navigationState.validity === 'VALID';
+    // Before the first GPS fix, the app still has the explicit scenario
+    // ownship model. Keep its heading available as SCENARIO data for local
+    // angular calculations; do not relabel it as GPS or promote its speed.
+    const scenarioOwnship = isSimulation
+      || (!gpsCurrent && navigationState.positionSource === 'SIM');
+    const freshness = scenarioOwnship
+      ? 'FRESH' as const
+      : gpsCurrent
+        ? 'FRESH' as const
+        : navigationState.validity === 'STALE' || navigationState.validity === 'LOST'
+          ? 'STALE' as const
+          : 'UNKNOWN' as const;
+    return createKinematicsSnapshot(ownship, {
+      source: isSimulation ? 'SIMULATION' : scenarioOwnship ? 'SCENARIO' : 'GPS',
+      qualification: scenarioOwnship ? 'SIMULATED' : groundSpeed ? 'MEASURED' : 'UNAVAILABLE',
+      position: isSimulation ? ownship.position : navigationState.position,
+      headingDegrees: scenarioOwnship
+        ? ownship.heading ?? null
+        : gpsCurrent ? navigationState.headingDegrees ?? null : null,
+      groundSpeedKnots: isSimulation
+        ? ownship.speed ?? null
+        : gpsCurrent ? groundSpeed?.speedKnots ?? null : null,
+      timestampMs: isSimulation
+        ? simulationControls.scenarioTimeMs ?? simulationControls.simTimeMs
+        : navigationState.positionUpdatedAt ?? navigationState.updatedAt,
+      freshness,
+      ageSeconds: scenarioOwnship || gpsCurrent ? 0 : null,
+      allowMetadataVector: false,
+    });
+  }, [
+    groundSpeed,
+    navigationState,
+    ownship,
+    ownshipNavMode,
+    simulationControls.scenarioTimeMs,
+    simulationControls.simTimeMs,
+  ]);
+  const displayOwnship = React.useMemo(
+    () => projectKinematicsToEntity(ownship, ownshipKinematics),
+    [ownship, ownshipKinematics],
+  );
+  const displayEntities = React.useMemo(() => entities.map(entity => {
+    const freshnessValue = entity.metadata?.freshness;
+    const freshness = freshnessValue === 'FRESH' || freshnessValue === 'STALE' || freshnessValue === 'UNKNOWN'
+      ? freshnessValue
+      : undefined;
+    const ageValue = entity.metadata?.ageSeconds;
+    const ageSeconds = typeof ageValue === 'number' && Number.isFinite(ageValue) ? ageValue : undefined;
+    return projectKinematicsToEntity(
+      entity,
+      createKinematicsSnapshot(entity, {
+        source: 'SCENARIO',
+        qualification: 'SIMULATED',
+        timestampMs: simulationControls.scenarioTimeMs ?? simulationControls.simTimeMs,
+        freshness,
+        ageSeconds,
+      }),
+    );
+  }), [entities, simulationControls.scenarioTimeMs, simulationControls.simTimeMs]);
 
   useEffect(() => {
     if (simulationControls.status === 'RESET · PAUSED' || simulationControls.status === 'REPLAY · RUNNING') {
@@ -255,12 +392,16 @@ const App: React.FC = () => {
   const [bullseyeProjectionPreview, setBullseyeProjectionPreview] = useState<BullseyeProjectionPreview | null>(null);
   const [intersectionPreview, setIntersectionPreview] = useState<BearingIntersectionResult | null>(null);
   const [futurePositionPreview, setFuturePositionPreview] = useState<FuturePositionPreview | null>(null);
+  const [contextActionResult, setContextActionResult] = useState<ContextActionResult | null>(null);
+  const contextActionReturnFocusRef = useRef<HTMLElement | null>(null);
   const [timerState, setTimerState] = useState(() => createTimerState());
   const [designationListRequested, setDesignationListRequested] = useState(false);
   const projectionPreview = designationState.activePreview;
   const [mapReady, setMapReady] = useState(false);
   const [controlsReady, setControlsReady] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  const documentReturnFocusRef = useRef<HTMLElement | null>(null);
+  const qakStabFocusReturnPendingRef = useRef(false);
   const [systems, setSystems] = useState<SystemStatus>({ radar: true, adsb: true, ais: false, eots: true });
   const lastOriginRef = useRef<{ lat: number, lon: number }>(INITIAL_OWNSHIP.position);
   const ownshipPositionRef = useRef(INITIAL_OWNSHIP.position);
@@ -284,7 +425,7 @@ const App: React.FC = () => {
     ownshipPanelOpacity: 0.95,
     ownshipShowCoords: true,
     ownshipShowDetails: true,
-    showSpeedVectors: true,
+    showSpeedVectors: true, // Legacy fixture compatibility; layerState.VECTORS is authoritative.
     stabAutoGndOnPan: false,
     stabFreezeHeadingDrop: true,
     stabSnapRecenter: false,
@@ -307,6 +448,21 @@ const App: React.FC = () => {
     setDesignationState(prev => prev.phase === 'PREVIEWED'
       ? designationReducer(prev, { type: 'CANCEL_DESIGNATION' })
       : prev);
+  }, []);
+
+  const handleOpenDocument = React.useCallback((filename: string) => {
+    documentReturnFocusRef.current = capturePanelReturnFocus('button[aria-label="FIND"]');
+    setOpenDoc(filename);
+  }, []);
+
+  const closeDocument = React.useCallback(() => {
+    setOpenDoc(null);
+    restorePanelFocus(documentReturnFocusRef);
+  }, []);
+
+  const closeDirectToPanel = React.useCallback(() => {
+    setDirectToPanelOpen(false);
+    restorePanelFocus(directToReturnFocusRef);
   }, []);
 
   React.useEffect(() => {
@@ -477,6 +633,7 @@ const App: React.FC = () => {
   const panAnimationRef = useRef<number | undefined>(undefined);
   const lastPanActivityRef = useRef<number>(Date.now());
   const headingUnfreezeRef = useRef<number | undefined>(undefined);
+  const centerOnOwnshipRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -533,14 +690,13 @@ const App: React.FC = () => {
   useEffect(() => {
     const currentPosition = ownshipPositionRef.current;
     if (ownshipNavMode === NavMode.SIM) {
-      setNavigationState(prev => ({
-        ...prev,
-        source: 'SIM',
-        validity: 'SIMULATED',
-        position: currentPosition,
-        updatedAt: Date.now(),
-        accuracyMeters: undefined,
-      }));
+      setNavigationState(prev => markSimulationUpdate(
+        prev,
+        currentPosition,
+        Date.now(),
+        ownship.speed,
+        ownship.heading,
+      ));
       return;
     }
 
@@ -561,6 +717,10 @@ const App: React.FC = () => {
           loc,
           update.timestamp,
           update.accuracyMeters,
+          {
+            speedMetersPerSecond: update.speedMetersPerSecond,
+            headingDegrees: update.headingDegrees,
+          },
         ));
         setOrigin(loc);
         setOwnship(prev => ({ ...prev, position: loc }));
@@ -581,7 +741,7 @@ const App: React.FC = () => {
         setNavigationState(prev => markNavigationError(prev, validity, Date.now()));
       },
     );
-  }, [ownshipNavMode, setEntities]);
+  }, [ownship.heading, ownship.speed, ownshipNavMode, setEntities]);
 
   const handleManualPan = React.useCallback((newOffset: { x: number, y: number }) => {
     if (panAnimationRef.current) {
@@ -598,13 +758,26 @@ const App: React.FC = () => {
   }, []);
 
   const issueMissionAction = React.useCallback((request: MissionActionRequest) => {
+    missionActionReturnFocusRef.current = capturePanelReturnFocus('button[aria-label="FIND"]');
     setMissionActionPanelOpen(true);
     setMissionActionState(prev => dispatchMissionAction(prev, { type: 'PROPOSE', request }));
   }, []);
 
   const dismissMissionActionPanel = React.useCallback(() => {
     setMissionActionPanelOpen(false);
+    restorePanelFocus(missionActionReturnFocusRef);
   }, []);
+
+  useEffect(() => {
+    if (!missionActionPanelOpen) return undefined;
+    const handleMissionActionEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      dismissMissionActionPanel();
+    };
+    window.addEventListener('keydown', handleMissionActionEscape);
+    return () => window.removeEventListener('keydown', handleMissionActionEscape);
+  }, [dismissMissionActionPanel, missionActionPanelOpen]);
 
   const setActiveRouteVisibility = React.useCallback((visible: boolean) => {
     setActiveSimulatedRoute(previous => previous ? { ...previous, hidden: !visible } : previous);
@@ -728,6 +901,8 @@ const App: React.FC = () => {
   }, [groundAnchor, handleManualPan, issueCommand, ownship.position, stabMode]);
 
   const handleProposeDirectTo = React.useCallback((target: Pick<Entity, 'id' | 'label' | 'position'>) => {
+    directToReturnFocusRef.current = capturePanelReturnFocus('button[aria-label="FIND"]');
+    setDirectToPanelOpen(true);
     issueCommand({
       type: 'PROPOSE_DIRECT_TO',
       targetId: target.id,
@@ -775,6 +950,35 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!directToPanelOpen) return undefined;
+    const handleDirectToEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeDirectToPanel();
+    };
+    window.addEventListener('keydown', handleDirectToEscape);
+    return () => window.removeEventListener('keydown', handleDirectToEscape);
+  }, [closeDirectToPanel, directToPanelOpen]);
+
+  useEffect(() => {
+    if (!directToPanelOpen && !missionActionPanelOpen) return undefined;
+    const handleProtectedPanelOutsideEvent = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('[aria-label="Direct-to route proposal status"], [aria-label="Mission action status"], [aria-label="Close direct-to route proposal"]')) return;
+      if (target.closest('[data-top-system-bar], [data-testid="quick-access-keys"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener('pointerdown', handleProtectedPanelOutsideEvent, true);
+    document.addEventListener('click', handleProtectedPanelOutsideEvent, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleProtectedPanelOutsideEvent, true);
+      document.removeEventListener('click', handleProtectedPanelOutsideEvent, true);
+    };
+  }, [directToPanelOpen, missionActionPanelOpen]);
+
+  useEffect(() => {
     const route = commandState.route;
     if (!route || ownshipNavMode !== NavMode.SIM) return;
 
@@ -794,6 +998,8 @@ const App: React.FC = () => {
     setStabMode(prev => {
       const next = typeof mode === 'function' ? mode(prev) : mode;
       if (next === StabMode.GND && prev !== StabMode.GND) {
+        // Start the inactivity window when GND is entered, not at app mount.
+        lastPanActivityRef.current = Date.now();
         // Anchor the ground position to current ownship position
         setGroundAnchor({ ...ownship.position });
         
@@ -858,6 +1064,7 @@ const App: React.FC = () => {
     if (stabMode === StabMode.GND && groundAnchor) {
       const offset = positionToMeterOffset(groundAnchor, ownship.position);
       start = { x: offset.eastMeters, y: offset.northMeters };
+      setGroundAnchor(null);
     }
 
     const end = { x: 0, y: 0 };
@@ -925,6 +1132,9 @@ const App: React.FC = () => {
     panAnimationRef.current = requestAnimationFrame(animate);
   }, [panOffset, prototypeSettings.animationSpeed, prototypeSettings.stabSnapRecenter, prototypeSettings.stabSmoothUnfreeze, stabMode, groundAnchor, frozenHeading, ownship.position.lat, ownship.position.lon, ownship.heading]);
 
+  // Keep the delayed timer alive while the moving ownship changes callback identity.
+  centerOnOwnshipRef.current = centerOnOwnship;
+
   // 3A: Auto-recenter timer — fires centerOnOwnship() after idle in GND mode
   useEffect(() => {
     if (prototypeSettings.stabAutoRecenterDelay <= 0) return;
@@ -932,11 +1142,11 @@ const App: React.FC = () => {
       if (stabMode !== StabMode.GND) return;
       const elapsed = Date.now() - lastPanActivityRef.current;
       if (elapsed >= prototypeSettings.stabAutoRecenterDelay) {
-        centerOnOwnship();
+        centerOnOwnshipRef.current();
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [prototypeSettings.stabAutoRecenterDelay, stabMode, centerOnOwnship]);
+  }, [prototypeSettings.stabAutoRecenterDelay, stabMode]);
 
   const handleResetStab = React.useCallback(() => {
     setFrozenHeading(null);
@@ -944,12 +1154,350 @@ const App: React.FC = () => {
     centerOnOwnship(); // This now sets stabMode to HELICO and animates
   }, [centerOnOwnship, handleSetStabMode]);
 
+  const openStabilizationPanelFromQak = React.useCallback(() => {
+    qakStabFocusReturnPendingRef.current = true;
+    closeCommandPalette();
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="STABLN CFG"]');
+    trigger?.click();
+  }, [closeCommandPalette]);
+
+  React.useEffect(() => {
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!qakStabFocusReturnPendingRef.current) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || target.getAttribute('aria-label') !== 'STABLN CFG') return;
+
+      window.setTimeout(() => {
+        if (!qakStabFocusReturnPendingRef.current
+          || document.querySelector('[aria-label="Stabilisation controls"]')
+          || document.activeElement !== target) return;
+        qakStabFocusReturnPendingRef.current = false;
+        const qak = document.querySelector<HTMLElement>('button[aria-label="STAB"]');
+        qak?.focus({ preventScroll: true });
+        qak?.style.setProperty('outline', '3px solid rgb(103 232 249)');
+        qak?.style.setProperty('outline-offset', '2px');
+      }, 0);
+    };
+
+    document.addEventListener('focusin', handleFocusIn, true);
+    return () => document.removeEventListener('focusin', handleFocusIn, true);
+  }, []);
+
+  const dismissContextActionResult = React.useCallback(() => {
+    setContextActionResult(null);
+    restorePanelFocus(contextActionReturnFocusRef);
+  }, []);
+
+  const handleContextConsultation = React.useCallback((request: ContextActionRequest) => {
+    contextActionReturnFocusRef.current = capturePanelReturnFocus('button[aria-label="FIND"]');
+    const measurementActionIds = new Set<string>([
+      CONTEXT_ACTION_IDS.MAP.FROM_OWNSHIP,
+      CONTEXT_ACTION_IDS.WAYPOINT.BRG_RNG,
+      CONTEXT_ACTION_IDS.TRACK.BRG_RNG,
+      CONTEXT_ACTION_IDS.BASE.BRG_RNG,
+    ]);
+    const etaActionIds = new Set<string>([
+      CONTEXT_ACTION_IDS.WAYPOINT.ETA_ETE,
+      CONTEXT_ACTION_IDS.BASE.ETA_ETE,
+    ]);
+    const coordinateActionIds = new Set<string>([
+      CONTEXT_ACTION_IDS.MAP.COORDINATES,
+      CONTEXT_ACTION_IDS.WAYPOINT.COORDINATES,
+    ]);
+    const targetPosition = { ...request.position };
+    const target = {
+      id: request.targetId ?? 'map-center',
+      label: request.targetLabel ?? 'MAP CENTER',
+      position: targetPosition,
+    };
+    let detail: string;
+
+    if (coordinateActionIds.has(request.actionId)) {
+      detail = `POSITION ${targetPosition.lat.toFixed(5)}, ${targetPosition.lon.toFixed(5)} · CAPTURED ${request.context}`;
+    } else if (measurementActionIds.has(request.actionId)) {
+      const measurement = calculateTacticalMeasurement(
+        {
+          id: ownship.id,
+          label: ownship.label,
+          position: { ...ownship.position },
+        },
+        target,
+      );
+      detail = formatTacticalMeasurement(measurement, 'BRG/RNG');
+    } else if (etaActionIds.has(request.actionId)) {
+      const timing = calculateEtaEte(
+        { ...ownship.position },
+        targetPosition,
+        groundSpeed,
+        simulationControls.scenarioTimeMs,
+      );
+      const formatted = formatEtaEte(timing, localTimeZone);
+      detail = `${formatted.ete} · ${formatted.etaUtc} · ${formatted.distance} · ${formatted.speed}`;
+    } else {
+      detail = `NO LOCAL CONSULTATION FOR ${request.actionId}`;
+    }
+
+    setContextActionResult({
+      actionId: request.actionId,
+      label: request.targetLabel ?? request.context,
+      detail,
+    });
+  }, [groundSpeed, localTimeZone, ownship.id, ownship.label, ownship.position, simulationControls.scenarioTimeMs]);
+
+  useEffect(() => {
+    if (!contextActionResult) return undefined;
+    const handleContextActionEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      dismissContextActionResult();
+    };
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)
+        || target.closest('[data-testid="context-action-result"]')) return;
+      dismissContextActionResult();
+      if (!target.closest('[data-top-system-bar], [data-testid="quick-access-keys"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener('keydown', handleContextActionEscape);
+    document.addEventListener('pointerdown', handleOutsidePointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleContextActionEscape);
+      document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
+    };
+  }, [contextActionResult, dismissContextActionResult]);
+
+  const handleContextFuturePosition = React.useCallback((request: ContextActionRequest) => {
+    const sourceEntity = request.targetId === displayOwnship.id
+      ? displayOwnship
+      : displayEntities.find(entity => entity.id === request.targetId);
+    if (!sourceEntity) return;
+
+    const isOwnship = request.context === 'OWNSHIP';
+    const source = isOwnship
+      ? ownshipNavMode === NavMode.REAL ? 'GPS' as const : 'SIMULATION' as const
+      : 'SCENARIO' as const;
+    const qualification = source === 'GPS'
+      ? groundSpeed ? 'MEASURED' as const : 'UNAVAILABLE' as const
+      : 'SIMULATED' as const;
+    const freshnessValue = sourceEntity.metadata?.freshness;
+    const freshness = freshnessValue === 'FRESH' || freshnessValue === 'STALE' || freshnessValue === 'UNKNOWN'
+      ? freshnessValue
+      : 'FRESH' as const;
+    const metadataNumber = (key: string): number | undefined => {
+      const value = sourceEntity.metadata?.[key];
+      return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    };
+    const timestampMs = metadataNumber('lastSeenAtMs')
+      ?? simulationControls.scenarioTimeMs
+      ?? simulationControls.simTimeMs;
+    const snapshot = createKinematicsSnapshot(sourceEntity, {
+      source,
+      qualification,
+      position: { ...request.position },
+      headingDegrees: sourceEntity.heading ?? null,
+      groundSpeedKnots: sourceEntity.speed ?? null,
+      timestampMs,
+      freshness,
+      ageSeconds: source === 'GPS' ? metadataNumber('ageSeconds') ?? null : 0,
+      allowMetadataVector: false,
+    });
+    if (snapshot.groundTrackDegrees === null || snapshot.groundSpeedKnots === null) return;
+
+    const result = projectFuturePosition({
+      track: toFuturePositionTrack(snapshot),
+      horizon: { value: 2, unit: 'MIN' },
+      nowMs: simulationControls.scenarioTimeMs ?? simulationControls.simTimeMs,
+    });
+    if (result.status !== 'AVAILABLE') return;
+
+    previewFuturePosition({
+      type: 'FUTURE_POSITION_PREVIEW',
+      trackId: request.targetId ?? sourceEntity.id,
+      trackLabel: request.targetLabel ?? sourceEntity.label,
+      groundTrackDegrees: snapshot.groundTrackDegrees,
+      groundSpeedKnots: snapshot.groundSpeedKnots,
+      result,
+    });
+  }, [displayEntities, displayOwnship, groundSpeed, ownshipNavMode, previewFuturePosition, simulationControls.scenarioTimeMs, simulationControls.simTimeMs]);
+
+  const handleContextAction = React.useCallback((request: ContextActionRequest) => {
+    const handlers: ContextActionHandlers = {
+      focusMapAt: handleFocusMapAt,
+      onResetStab: handleResetStab,
+      setMapMode: handleMapModeChange,
+      toggleVectors: () => {
+        setLayerState(previous => {
+          const update = setLayerVisibility(previous, 'VECTORS', !previous.VECTORS.visible);
+          return update.status === 'AVAILABLE' ? update.state : previous;
+        });
+      },
+      toggleGrid: () => setGridState(previous => setGridEnabled(previous, !previous.enabled)),
+      toggleDeclutter: () => setDeclutterState(previous => setDeclutterPreset(
+        previous.preset === 'FULL' ? 'MINIMAL' : 'FULL',
+      )),
+      consult: handleContextConsultation,
+      toggleSimulation: () => {
+        if (simulationControls.isRunning) simulationControls.pause();
+        else simulationControls.resume();
+      },
+      setStabMode: handleSetStabMode,
+      toggleTrailVisibility: (targetId, label) => {
+        const trailTargetId = targetId === ownship.id ? 'OWNSHIP' : targetId;
+        const visible = !(trailState.trails[trailTargetId]?.visible ?? false);
+        setTrailVisibility(trailTargetId, visible, label);
+      },
+      requestClearTrail: (targetId, label) => {
+        const trailTargetId = targetId === ownship.id ? 'OWNSHIP' : targetId;
+        const issuedAt = Date.now();
+        issueMissionAction({
+          id: `command:view:trail-clear:${trailTargetId}:${issuedAt}`,
+          label: `TRAIL CLEAR ${label}`,
+          category: 'VIEW',
+          targetId: trailTargetId,
+          issuedAt,
+          implementation: 'SIMULATED_EFFECT',
+          requiresAuthorization: true,
+        });
+      },
+      previewFuturePosition: handleContextFuturePosition,
+      selectEntity: setSelectedEntityId,
+      proposeDirectTo: handleProposeDirectTo,
+      proposeSetBullseye: target => proposeSetBullseye(createBullseye(target)),
+    };
+    return dispatchContextAction(request, handlers);
+  }, [
+    handleContextConsultation,
+    handleContextFuturePosition,
+    handleFocusMapAt,
+    handleMapModeChange,
+    handleProposeDirectTo,
+    handleResetStab,
+    handleSetStabMode,
+    proposeSetBullseye,
+    issueMissionAction,
+    ownship.id,
+    setTrailVisibility,
+    simulationControls,
+    trailState.trails,
+  ]);
+
+  // All command entry points start from this typed application snapshot. The
+  // palette adds its own history/favorite state through the factory; map drop
+  // uses the same state and callbacks without reconstructing a partial bag.
+  const commandContext = React.useMemo<CommandContext>(() => buildCommandContext({
+    entities: displayEntities,
+    ownship: displayOwnship,
+    systems,
+    setMapMode: handleMapModeChange,
+    toggleSystem,
+    focusMapAt: handleFocusMapAt,
+    previewProjection,
+    previewIntersection,
+    previewBullseyeProjection,
+    previewFuturePosition,
+    proposeSetBullseye,
+    proposeClearBullseye,
+    bullseye: bullseyeState.bullseye,
+    proposeDirectTo: handleProposeDirectTo,
+    proposeRoute: handleProposeRoute,
+    requestMissionAction: issueMissionAction,
+    history: [],
+    openDocument: handleOpenDocument,
+    ownshipNavMode,
+    toggleNavMode: () => setOwnshipNavMode(previous => previous === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
+    designations: designationState.confirmedDesignations,
+    listDesignations,
+    renameDesignation,
+    deleteDesignation,
+    proposeClearDesignations,
+    undoLastDesignation,
+    groundSpeed,
+    scenarioTimeMs: simulationControls.scenarioTimeMs,
+    localTimeZone,
+    timerState,
+    createTimer,
+    cancelTimer,
+    simulationStatus: simulationControls.status,
+    simulationIsRunning: simulationControls.isRunning,
+    simulationTimeMs: simulationControls.simTimeMs,
+    simulationSpeed: simulationControls.speed,
+    pauseSimulation: simulationControls.pause,
+    resumeSimulation: simulationControls.resume,
+    setSimulationSpeed: simulationControls.setSpeed,
+    requestSimulationReset,
+    requestSimulationReplay,
+    activeRoute: activeRouteForPalette,
+    setRouteVisibility: setActiveRouteVisibility,
+    trails: trailState,
+    setTrailVisibility,
+    layers: layerState,
+    setLayers: setLayerState,
+    declutter: declutterState,
+    setDeclutter: setDeclutterState,
+    grid: gridState,
+    setGrid: setGridState,
+    zones,
+    visibleZoneId,
+    setVisibleZone: setVisibleZoneId,
+  }), [
+    activeRouteForPalette,
+    bullseyeState.bullseye,
+    cancelTimer,
+    createTimer,
+    declutterState,
+    deleteDesignation,
+    designationState.confirmedDesignations,
+    displayEntities,
+    displayOwnship,
+    handleFocusMapAt,
+    handleOpenDocument,
+    groundSpeed,
+    handleProposeRoute,
+    handleProposeDirectTo,
+    handleMapModeChange,
+    gridState,
+    layerState,
+    listDesignations,
+    localTimeZone,
+    ownshipNavMode,
+    previewBullseyeProjection,
+    previewFuturePosition,
+    previewIntersection,
+    previewProjection,
+    proposeClearBullseye,
+    proposeClearDesignations,
+    proposeSetBullseye,
+    renameDesignation,
+    requestSimulationReplay,
+    requestSimulationReset,
+    setActiveRouteVisibility,
+    setTrailVisibility,
+    simulationControls,
+    systems,
+    timerState,
+    trailState,
+    toggleSystem,
+    undoLastDesignation,
+    visibleZoneId,
+    zones,
+    issueMissionAction,
+  ]);
+  const createCommandContext = React.useMemo(
+    () => createCommandContextFactory(commandContext),
+    [commandContext],
+  );
+
   const handleDropCommand = async (e: React.DragEvent) => {
+    if (!mapReady) return;
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json')) as {
         type?: unknown;
         commandId?: unknown;
         query?: unknown;
+        history?: unknown;
       };
       if (data.type !== 'command' || typeof data.commandId !== 'string' || typeof data.query !== 'string') return;
 
@@ -957,67 +1505,48 @@ const App: React.FC = () => {
         import('./utils/CommandRegistry'),
         import('./utils/mathEvaluator'),
       ]);
-      const context: CommandContext = {
-        entities,
-        ownship,
-        systems,
-        history: [], // Stub history
-        setMapMode: handleMapModeChange,
-        toggleSystem,
-        focusMapAt: handleFocusMapAt,
-        previewProjection,
-        previewIntersection,
-        previewBullseyeProjection,
-        previewFuturePosition,
-        bullseye: bullseyeState.bullseye,
-        proposeSetBullseye,
-        proposeClearBullseye,
-        proposeDirectTo: handleProposeDirectTo,
-        proposeRoute: handleProposeRoute,
-        requestMissionAction: issueMissionAction,
-        designations: designationState.confirmedDesignations,
-        listDesignations,
-        renameDesignation,
-        deleteDesignation,
-        proposeClearDesignations,
-        undoLastDesignation,
-        openDocument: setOpenDoc,
-        ownshipNavMode,
-        layers: layerState,
-        setLayers: setLayerState,
-        declutter: declutterState,
-        setDeclutter: setDeclutterState,
-        grid: gridState,
-        setGrid: setGridState,
-        zones,
-        visibleZoneId,
-        setVisibleZone: setVisibleZoneId,
-        toggleNavMode: () => setOwnshipNavMode(prev => prev === NavMode.REAL ? NavMode.SIM : NavMode.REAL),
-      };
-
+      const context = createCommandContext({
+        history: readDraggedHistory(data.history),
+      });
       const commands = getCommands(data.query, context, createMathCommandProvider());
       const intent: CommandExecutionIntent = {
         commandId: data.commandId,
         query: data.query,
       };
-      const matched = resolveCommandIntent(commands, intent);
-      if (!matched) return;
-
-      matched.action?.();
+      const executed = executeCommandIntent(commands, intent, {
+        requireDragDropEligible: true,
+      });
+      if (!executed) return;
       if (prototypeSettings.hapticEnabled && navigator.vibrate) navigator.vibrate(50);
     } catch (err) {
       console.error('Drop failed', err);
     }
   };
 
+  const selectedDisplayEntity = displayEntities.find(entity => entity.id === selectedEntityId) ?? null;
+  const selectedSourceEntity = entities.find(entity => entity.id === selectedEntityId) ?? null;
+
   return (
     <div
       className="relative w-screen h-screen bg-black overflow-hidden font-sans select-none"
-      style={{ '--ui-scale': prototypeSettings.uiScale } as any}
+      data-hmi-scale-scope="pw-qak-target-panel"
+      style={{ '--ui-scale': prototypeSettings.uiScale } as HmiRootStyle}
     >
+      <style>{`
+        [data-map-render-surface] .tactical-map.leaflet-container {
+          background-color: rgba(9, 13, 18, var(--hmi-map-base-opacity));
+        }
+        [data-map-render-surface] .tactical-basemap-land,
+        [data-map-render-surface] .tactical-coastal-detail,
+        [data-map-render-surface] .tactical-airport-layer {
+          opacity: var(--hmi-map-base-opacity);
+        }
+      `}</style>
       <div
-        className="absolute inset-0 transition-opacity duration-500"
-        style={{ opacity: prototypeSettings.mapDim }}
+        data-map-render-surface
+        data-map-base-opacity={prototypeSettings.mapDim}
+        className="absolute inset-0"
+        style={{ '--hmi-map-base-opacity': prototypeSettings.mapDim } as MapRenderSurfaceStyle}
       >
         {origin && (
           mapReady ? (
@@ -1029,12 +1558,11 @@ const App: React.FC = () => {
               }
             >
               <MapDisplay
-            ownship={ownship} entities={entities} systems={systems} mapMode={mapMode} zoomLevel={zoomLevel}
+            ownship={displayOwnship} entities={displayEntities} systems={systems} mapMode={mapMode} zoomLevel={zoomLevel}
             onZoom={(val) => setZoomLevel(Math.min(Math.max(val, 0.0001), 5))}
             panOffset={panOffset} onPan={handleManualPan}
             selectedEntityId={selectedEntityId} onSelectEntity={setSelectedEntityId}
             origin={origin} gestureSettings={prototypeSettings}
-            setGestureSettings={setPrototypeSettings}
             onMapDrop={handleDropCommand}
             stabMode={stabMode}
             setStabMode={handleSetStabMode}
@@ -1045,12 +1573,14 @@ const App: React.FC = () => {
             groundAnchor={groundAnchor}
             onGhostEvent={handleGhostEvent}
             onMissionAction={issueMissionAction}
+            onContextAction={handleContextAction}
             projectionPreview={projectionPreview}
             intersectionPreview={intersectionPreview}
             bullseye={bullseyeState.bullseye}
             bullseyeProjectionPreview={bullseyeProjectionPreview}
             futurePositionPreview={futurePositionPreview}
             layers={layerState}
+            setLayers={setLayerState}
             activeRoute={activeRouteForPalette}
             declutter={declutterState}
             grid={gridState}
@@ -1073,6 +1603,31 @@ const App: React.FC = () => {
         )}
       </div>
 
+      {contextActionResult && (
+        <aside
+          className="pointer-events-auto fixed top-20 left-1/2 z-[105] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-cyan-400/70 bg-slate-950/95 p-3 font-mono text-xs text-slate-100 shadow-xl"
+          role="status"
+          aria-label="Context action result"
+          aria-live="polite"
+          data-testid="context-action-result"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-2 text-cyan-300">
+            <span>LOCAL CONSULTATION</span>
+            <button
+              type="button"
+              className="min-h-8 min-w-8 rounded border border-slate-600 px-2 text-slate-300 hover:border-cyan-400 hover:text-white"
+              aria-label="Dismiss context action result"
+              onClick={dismissContextActionResult}
+            >
+              ×
+            </button>
+          </div>
+          <div className="mt-2 text-white">{contextActionResult.label}</div>
+          <div className="mt-1 break-words text-slate-300">{contextActionResult.detail}</div>
+          <div className="mt-2 text-[10px] text-slate-500">ACTION {contextActionResult.actionId} · LOCAL DATA ONLY</div>
+        </aside>
+      )}
+
       {controlsReady && (
         <React.Suspense fallback={null}>
           <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'top left' }} className="absolute inset-0 pointer-events-none">
@@ -1085,6 +1640,7 @@ const App: React.FC = () => {
               stabMode={stabMode}
               setStabMode={handleSetStabMode}
               onResetStab={handleResetStab}
+              onOpenStabilizationPanel={openStabilizationPanelFromQak}
             />
           </div>
         </React.Suspense>
@@ -1095,6 +1651,7 @@ const App: React.FC = () => {
           <CommandPalette
             isOpen={commandPaletteOpen}
             onClose={closeCommandPalette}
+            commandContextFactory={createCommandContext}
             focusMapAt={handleFocusMapAt}
             previewProjection={previewProjection}
             previewIntersection={previewIntersection}
@@ -1124,16 +1681,16 @@ const App: React.FC = () => {
             proposeDirectTo={handleProposeDirectTo}
             proposeRoute={handleProposeRoute}
             requestMissionAction={issueMissionAction}
-            entities={entities}
+            entities={displayEntities}
             systems={systems}
             toggleSystem={toggleSystem}
             setMapMode={handleMapModeChange}
-            ownship={ownship}
-            openDocument={setOpenDoc}
+            ownship={displayOwnship}
+            openDocument={handleOpenDocument}
             ownshipNavMode={ownshipNavMode}
             setOwnshipNavMode={setOwnshipNavMode}
-            groundSpeed={simulationGroundSpeed}
-            scenarioTimeMs={simulationControls.simTimeMs}
+            groundSpeed={groundSpeed}
+            scenarioTimeMs={simulationControls.scenarioTimeMs}
             localTimeZone={localTimeZone}
             activeRoute={activeRouteForPalette}
             setRouteVisibility={setActiveRouteVisibility}
@@ -1309,14 +1866,24 @@ const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      {commandState.directToProposal && (
-        <React.Suspense fallback={null}>
-          <ActionStatusPanel
-            proposal={commandState.directToProposal}
-            onAccept={handleAcceptProposal}
-            onReject={handleRejectProposal}
-          />
-        </React.Suspense>
+      {directToPanelOpen && commandState.directToProposal && (
+        <>
+          <React.Suspense fallback={null}>
+            <ActionStatusPanel
+              proposal={commandState.directToProposal}
+              onAccept={handleAcceptProposal}
+              onReject={handleRejectProposal}
+            />
+          </React.Suspense>
+          <button
+            type="button"
+            aria-label="Close direct-to route proposal"
+            onClick={closeDirectToPanel}
+            className={`${HMI_CLASSES.activeTarget} ${HMI_CLASSES.actionText} ${HMI_CLASSES.focusRing} pointer-events-auto fixed bottom-4 right-4 z-[91] min-h-[48px] min-w-[48px] rounded border border-slate-600 bg-slate-950/95 px-3 py-2 font-mono text-xs font-bold text-slate-300 shadow-xl hover:border-cyan-400 hover:text-white`}
+          >
+            CLOSE DCT
+          </button>
+        </>
       )}
 
       {missionActionPanelOpen && missionActionState.active && (
@@ -1343,17 +1910,42 @@ const App: React.FC = () => {
               gestureSettings={prototypeSettings}
               setGestureSettings={setPrototypeSettings}
               simulationControls={simulationControls}
+              stabMode={stabMode}
+              setStabMode={handleSetStabMode}
+              mapMode={mapMode}
+              setMapMode={handleMapModeChange}
+              groundAnchor={groundAnchor}
+              onResetStab={handleResetStab}
+              layers={layerState}
+              setLayers={setLayerState}
+              declutter={declutterState}
+              requestSimulationReset={requestSimulationReset}
+              requestSimulationReplay={requestSimulationReplay}
             />
           </div>
         </React.Suspense>
       )}
 
       <div style={{ transformOrigin: 'bottom left' }} className="absolute inset-0 pointer-events-none">
-        {origin && <OwnshipPanel ownship={ownship} origin={origin} prototypeSettings={prototypeSettings} />}
+        {origin && (
+          <OwnshipPanel
+            ownship={displayOwnship}
+            origin={displayOwnship.position}
+            prototypeSettings={prototypeSettings}
+            navigationState={navigationState}
+            scenarioTimeMs={simulationControls.scenarioTimeMs}
+            simTimeMs={simulationControls.simTimeMs}
+          />
+        )}
       </div>
 
       <div style={{ transform: `scale(${prototypeSettings.uiScale})`, transformOrigin: 'bottom right' }} className="absolute bottom-0 right-0 pointer-events-none">
-        <TargetPanel ownship={ownship} entity={entities.find(e => e.id === selectedEntityId) || null} animationSpeed={prototypeSettings.animationSpeed} />
+        <TargetPanel
+          ownship={displayOwnship}
+          entity={selectedDisplayEntity}
+          trackMetadata={selectedSourceEntity?.metadata ?? null}
+          animationSpeed={prototypeSettings.animationSpeed}
+        />
       </div>
 
 
@@ -1362,7 +1954,17 @@ const App: React.FC = () => {
 
       {openDoc && (
         <React.Suspense fallback={null}>
-          <DocumentViewer filename={openDoc} onClose={() => setOpenDoc(null)} uiScale={prototypeSettings.uiScale} />
+          <>
+            <DocumentViewer filename={openDoc} onClose={closeDocument} uiScale={prototypeSettings.uiScale} />
+            <button
+              type="button"
+              aria-label="Close document viewer"
+              onClick={closeDocument}
+              className={`${HMI_CLASSES.activeTarget} ${HMI_CLASSES.actionText} ${HMI_CLASSES.focusRing} pointer-events-auto fixed right-4 top-4 z-[151] min-h-[48px] rounded border border-emerald-500/70 bg-slate-950/95 px-3 py-2 font-mono text-xs font-bold text-emerald-200 shadow-xl hover:bg-emerald-900/70`}
+            >
+              CLOSE DOCUMENT
+            </button>
+          </>
         </React.Suspense>
       )}
 
