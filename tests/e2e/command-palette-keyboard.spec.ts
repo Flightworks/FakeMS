@@ -131,7 +131,8 @@ test('keeps the selected command id when the result list rebuilds', async ({ pag
   await input.fill('DCT');
   await expect(results.getByRole('option').nth(1)).toBeVisible();
 
-  const selectedOption = results.locator('[role="option"][aria-selected="true"]');
+  const selectedOption = results.locator('[role="option"][aria-selected="true"][draggable="true"]');
+  await expect(selectedOption).toHaveCount(1);
   const firstSelectedLabel = await selectedOption.getAttribute('aria-label');
   await expect.poll(() => selectedOption.getAttribute('aria-label')).toBe(firstSelectedLabel);
   await input.press('ArrowDown');

@@ -135,7 +135,9 @@ test('keeps vertical palette gestures away from the map and long-press actions',
 });
 
 test('keeps clipboard failure honest on an HTTP LAN origin', async ({ page }) => {
-  await page.goto('http://192.168.1.99:4173/FakeMS/');
+  const lanUrl = process.env.FAKE_MS_LAN_URL
+    ?? (process.env.CI ? 'http://0.0.0.0:4173/FakeMS/' : 'http://192.168.1.99:4173/FakeMS/');
+  await page.goto(lanUrl);
   await expect.poll(() => page.evaluate(() => window.isSecureContext)).toBe(false);
   await page.keyboard.press('Control+k');
 

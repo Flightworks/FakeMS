@@ -72,7 +72,7 @@ test.describe('command palette information density', () => {
       await expect(card.getByText('Détails')).toBeVisible();
       await expect(card.getByRole('button', { name: 'Copier le résultat' })).toBeVisible();
 
-      const overflow = await palette.evaluate((element) => {
+      const readOverflow = () => palette.evaluate((element) => {
         const overflowing = Array.from(element.querySelectorAll<HTMLElement>('*'))
           .filter(child => child.scrollWidth > child.clientWidth + 1)
           .map(child => ({
@@ -87,6 +87,8 @@ test.describe('command palette information density', () => {
           overflowing,
         };
       });
+      await expect.poll(async () => (await readOverflow()).overflowing, { timeout: 5_000 }).toEqual([]);
+      const overflow = await readOverflow();
       expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
       expect(overflow.overflowing).toEqual([]);
     }
